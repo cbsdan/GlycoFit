@@ -40,13 +40,7 @@ def create_indexes():
     try:
         # User collection indexes
         db.users.create_index("email", unique=True)
-        db.users.create_index("username", unique=True)
-        
-        # Glucose readings indexes
-        db.glucose_readings.create_index([("user_id", 1), ("timestamp", -1)])
-        
-        # Meals indexes
-        db.meals.create_index([("user_id", 1), ("date", -1)])
+        db.users.create_index("uid", unique=True)  # Firebase UID should be unique
         
         logging.info("Database indexes created successfully")
         

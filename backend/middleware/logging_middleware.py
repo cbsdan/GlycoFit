@@ -3,6 +3,19 @@ import os
 from datetime import datetime
 from flask import request, g
 import json
+from bson import ObjectId
+
+def datetime_serializer(obj):
+    """JSON serializer for datetime and ObjectId objects"""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, ObjectId):
+        return str(obj)
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+def safe_json_dumps(data, **kwargs):
+    """Safely serialize data to JSON with datetime support"""
+    return json.dumps(data, default=datetime_serializer, **kwargs)
 
 def setup_logging():
     """Setup logging configuration"""
@@ -65,7 +78,7 @@ def log_request():
             logging.warning(f"Could not log request body: {str(e)}")
     
     # Log the request
-    logging.info(f"Incoming Request: {json.dumps(request_data, indent=2)}")
+    logging.info(f"Incoming Request: {safe_json_dumps(request_data, indent=2)}")
 
 def log_database_operation(operation, collection, query=None, result=None):
     """Log database operations for debugging"""
@@ -95,7 +108,7 @@ def log_database_operation(operation, collection, query=None, result=None):
         else:
             log_data['result_count'] = len(result) if hasattr(result, '__len__') else 1
     
-    logging.info(f"Database Operation: {json.dumps(log_data, indent=2)}")
+    logging.info(f"Database Operation: {safe_json_dumps(log_data, indent=2)}")
 
 def log_authentication_attempt(email, success, reason=None):
     """Log authentication attempts for security monitoring"""
@@ -112,9 +125,9 @@ def log_authentication_attempt(email, success, reason=None):
         log_data['reason'] = reason
     
     if success:
-        logging.info(f"Successful Authentication: {json.dumps(log_data, indent=2)}")
+        logging.info(f"Successful Authentication: {safe_json_dumps(log_data, indent=2)}")
     else:
-        logging.warning(f"Failed Authentication: {json.dumps(log_data, indent=2)}")
+        logging.warning(f"Failed Authentication: {safe_json_dumps(log_data, indent=2)}")
 
 def log_error(error, context=None):
     """Log errors with context information"""
@@ -129,4 +142,4 @@ def log_error(error, context=None):
     if context:
         log_data['context'] = context
     
-    logging.error(f"Application Error: {json.dumps(log_data, indent=2)}")
+    logging.error(f"Application Error: {safe_json_dumps(log_data, indent=2)}")

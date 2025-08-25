@@ -84,11 +84,21 @@ class AuthController:
     def register_user():
         """Register a new user with Firebase UID"""
         try:
-            data = request.get_json()
-            files = request.files
+            # Handle both application/json and multipart/form-data
+            if request.content_type and 'multipart/form-data' in request.content_type:
+                # Extract data from form data
+                data = request.form.to_dict()
+                files = request.files
+                logging.info(f"Multipart form data received: {data}, Files: {list(files.keys())}")
+            else:
+                # Extract data from JSON
+                data = request.get_json() or {}
+                files = request.files
+                logging.info(f"JSON data received: {data}, Files: {list(files.keys())}")
+            
             logging.info("User registration started")
             
-            # Extract data
+            # Extract required fields
             uid = data.get('uid')
             first_name = data.get('firstName')
             last_name = data.get('lastName')
@@ -97,7 +107,11 @@ class AuthController:
             # Validate required fields
             if not all([uid, first_name, last_name, email]):
                 logging.warning("Registration failed: Missing required fields")
-                return jsonify({'error': 'UID, firstName, lastName, and email are required'}), 400
+                return jsonify({
+                    'success': False,
+                    'message': 'Validation errors',
+                    'errors': ['UID, firstName, lastName, and email are required']
+                }), 400
             
             email = email.lower().strip()
             
@@ -105,46 +119,98 @@ class AuthController:
             try:
                 firebase_user_data = get_firebase_user(uid)
                 if not firebase_user_data:
-                    return jsonify({'error': 'Invalid Firebase UID'}), 400
+                    return jsonify({
+                        'success': False,
+                        'message': 'Invalid Firebase UID',
+                        'errors': ['Invalid Firebase UID']
+                    }), 400
                 
                 # Verify email matches Firebase account
                 if firebase_user_data.get('email', '').lower() != email:
-                    return jsonify({'error': 'Email does not match Firebase account'}), 400
+                    return jsonify({
+                        'success': False,
+                        'message': 'Email does not match Firebase account',
+                        'errors': ['Email does not match Firebase account']
+                    }), 400
                     
             except Exception as e:
                 logging.error(f"Firebase UID verification failed: {str(e)}")
-                return jsonify({'error': 'Invalid Firebase UID'}), 400
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid Firebase UID',
+                    'errors': ['Invalid Firebase UID']
+                }), 400
             
-            # Check if user already exists
-            existing_user = User.find_by_uid(uid)
-            if existing_user:
-                log_authentication_attempt(email, False, 'User with UID already exists')
-                return jsonify({'error': 'User with this UID already exists'}), 409
-            
+            # Check if user already exists by email
             existing_email = User.find_by_email(email)
             if existing_email:
                 log_authentication_attempt(email, False, 'Email already exists')
-                return jsonify({'error': 'User with this email already exists'}), 409
+                return jsonify({
+                    'success': False,
+                    'message': 'Email already exists',
+                    'errors': ['Email already exists']
+                }), 400
+            
+            # Check if user already exists by UID
+            existing_user = User.find_by_uid(uid)
+            if existing_user:
+                log_authentication_attempt(email, False, 'User with UID already exists')
+                return jsonify({
+                    'success': False,
+                    'message': 'User with this UID already exists',
+                    'errors': ['User with this UID already exists']
+                }), 400
             
             # Handle avatar upload if provided
             avatar = {'public_id': None, 'url': None}
             if 'avatar' in files:
                 try:
                     avatar_file = files['avatar']
-                    # Save temporarily
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
-                        avatar_file.save(temp_file.name)
+                    
+                    # Validate file type
+                    allowed_types = ['image/jpeg', 'image/jpg', 'image/png']
+                    if avatar_file.mimetype not in allowed_types:
+                        return jsonify({
+                            'success': False,
+                            'message': 'Unsupported file type! Please upload a JPEG, JPG, or PNG image.',
+                            'errors': ['Unsupported file type! Please upload a JPEG, JPG, or PNG image.']
+                        }), 400
+                    
+                    # Save temporarily and upload to Cloudinary
+                    temp_file_path = None
+                    try:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
+                            temp_file_path = temp_file.name
+                            avatar_file.save(temp_file_path)
                         
-                        # Upload to Cloudinary
-                        upload_result = CloudinaryService.upload_avatar(temp_file.name, uid)
+                        # Upload to Cloudinary with specific folder and dimensions
+                        upload_result = CloudinaryService.upload_avatar(temp_file_path, uid)
                         avatar = upload_result
                         
-                        # Clean up temp file
-                        os.unlink(temp_file.name)
+                    finally:
+                        # Clean up temp file with error handling
+                        if temp_file_path and os.path.exists(temp_file_path):
+                            try:
+                                os.unlink(temp_file_path)
+                            except PermissionError:
+                                # On Windows, file might still be locked, try again after a brief delay
+                                import time
+                                time.sleep(0.1)
+                                try:
+                                    os.unlink(temp_file_path)
+                                except Exception:
+                                    # If we still can't delete it, log a warning but don't fail the request
+                                    logging.warning(f"Could not delete temporary file: {temp_file_path}")
+                            except Exception as e:
+                                logging.warning(f"Error deleting temporary file: {str(e)}")
                         
                 except Exception as e:
                     logging.warning(f"Avatar upload failed: {str(e)}")
-                    # Continue registration without avatar
+                    return jsonify({
+                        'success': False,
+                        'message': 'Failed to upload avatar',
+                        'errors': ['Failed to upload avatar']
+                    }), 500
             
             # Create user
             user = User(
@@ -154,6 +220,22 @@ class AuthController:
                 email=email,
                 avatar=avatar
             )
+            
+            # Validate user data (you can add custom validation here)
+            validation_errors = []
+            if len(first_name.strip()) < 1:
+                validation_errors.append('First name is required')
+            if len(last_name.strip()) < 1:
+                validation_errors.append('Last name is required')
+            if '@' not in email:
+                validation_errors.append('Invalid email format')
+            
+            if validation_errors:
+                return jsonify({
+                    'success': False,
+                    'message': 'Validation errors',
+                    'errors': validation_errors
+                }), 400
             
             # Save user
             result = user.save()
@@ -171,13 +253,17 @@ class AuthController:
             logging.info(f"User registered successfully: {email}")
             return jsonify({
                 'success': True,
-                'message': 'User registered successfully',
+                'message': 'Your registration is successful!',
                 'user': user.to_safe_dict()
             }), 201
             
         except Exception as e:
             log_error(e, 'Unexpected error during registration')
-            return jsonify({'error': 'Internal server error'}), 500
+            logging.error(f"Registration error: {str(e)}")
+            return jsonify({
+                'success': False,
+                'message': 'Server error'
+            }), 500
     
     @staticmethod
     def get_user():
@@ -299,19 +385,37 @@ class AuthController:
             if 'avatar' in files:
                 try:
                     avatar_file = files['avatar']
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
-                        avatar_file.save(temp_file.name)
+                    temp_file_path = None
+                    try:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
+                            temp_file_path = temp_file.name
+                            avatar_file.save(temp_file_path)
                         
                         # Upload new avatar (will delete old one)
                         old_public_id = current_user.avatar.get('public_id') if current_user.avatar else None
                         upload_result = CloudinaryService.upload_avatar(
-                            temp_file.name, 
+                            temp_file_path, 
                             current_user.uid, 
                             old_public_id
                         )
                         update_data['avatar'] = upload_result
                         
-                        os.unlink(temp_file.name)
+                    finally:
+                        # Clean up temp file with error handling
+                        if temp_file_path and os.path.exists(temp_file_path):
+                            try:
+                                os.unlink(temp_file_path)
+                            except PermissionError:
+                                # On Windows, file might still be locked, try again after a brief delay
+                                import time
+                                time.sleep(0.1)
+                                try:
+                                    os.unlink(temp_file_path)
+                                except Exception:
+                                    # If we still can't delete it, log a warning but don't fail the request
+                                    logging.warning(f"Could not delete temporary file: {temp_file_path}")
+                            except Exception as e:
+                                logging.warning(f"Error deleting temporary file: {str(e)}")
                         
                 except Exception as e:
                     logging.warning(f"Avatar update failed: {str(e)}")
