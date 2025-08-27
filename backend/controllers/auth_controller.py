@@ -281,7 +281,7 @@ class AuthController:
             
             if not user:
                 logging.warning(f"User not found for UID: {uid}")
-                return jsonify({'error': 'User not found'}), 404
+                return jsonify({'error': 'User not found', 'message': 'User not found'}), 404
             
             # Check if user is disabled
             if user.is_currently_disabled():

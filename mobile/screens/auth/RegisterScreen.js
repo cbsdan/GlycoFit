@@ -23,7 +23,7 @@ import { authService } from '../../services/api';
 GoogleSignin.configure(GOOGLE_SIGNIN_CONFIG);
 
 const RegisterScreen = ({ navigation }) => {
-  const { googleSignIn } = useAuth();
+  const { googleSignIn, setIsLoading } = useAuth();
   const { colors } = useTheme();
   const toast = useToast();
   
@@ -177,6 +177,8 @@ const RegisterScreen = ({ navigation }) => {
       
       console.log('Successfully extracted token');
       
+      setIsLoading(true);
+
       // Use our auth context's googleSignIn method
       const result = await googleSignIn(idToken);
       
@@ -200,6 +202,7 @@ const RegisterScreen = ({ navigation }) => {
       toast.error(errorMessage);
     } finally {
       setRegistrationInProgress(false);
+      setIsLoading(false);
     }
   };
 

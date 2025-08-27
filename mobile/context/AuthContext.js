@@ -137,10 +137,10 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const googleSignIn = async (idToken) => {
+  const googleSignIn = async (idToken, confirmRegistration = false) => {
     try {
       setIsLoading(true);
-      const result = await authService.googleSignIn(idToken);
+      const result = await authService.googleSignIn(idToken, confirmRegistration);
       
       if (result.success) {
         setUser(result.user);
@@ -189,6 +189,7 @@ export const AuthProvider = ({ children }) => {
     googleSignIn,
     logout,
     updateUserData,
+    setIsLoading
   };
 
   return (

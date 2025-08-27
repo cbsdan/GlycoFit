@@ -176,7 +176,7 @@ export const authService = {
     }
   },
   
-  googleSignIn: async (idToken) => {
+  googleSignIn: async (idToken, confirmRegistration = false) => {
     try {
       if (!idToken) {
         throw new Error("No token provided");
@@ -192,7 +192,7 @@ export const authService = {
         console.log("Fetching user data...");
         console.log("User ID:", user.uid);
         const response = await api.post('/auth/get-user', { uid: user.uid });
-        
+        console.log("Response: ", response.data);
         if (response.data.success && response.data.user) {
           await storeUserData(fbToken, response.data.user);
           return {
@@ -201,6 +201,34 @@ export const authService = {
             user: response.data.user
           };
         } else {
+          // If user exists but success is false, handle accordingly
+          throw new Error('Failed to retrieve user data');
+        }
+      } catch (backendError) {
+        console.log("Backend error during Google sign-in:", backendError);
+        
+        // Check if the error is 404 (User not found) - then handle registration
+        if (backendError.response?.status === 404 && 
+            backendError.response?.data?.error === 'User not found') {
+          
+          // User not found - check if we should proceed with registration
+          if (!confirmRegistration) {
+            // Return a special status to prompt for confirmation
+            return {
+              success: false,
+              needsRegistration: true,
+              userInfo: {
+                email: user.email,
+                displayName: user.displayName,
+                photoURL: user.photoURL
+              },
+              message: 'New user detected. Confirmation needed for registration.'
+            };
+          }
+          
+          // User confirmed, proceed with registration
+          console.log("User confirmed registration, proceeding...");
+          
           const displayName = user.displayName || '';
           const nameParts = displayName.split(/\s+/);
           const firstName = nameParts[0] || '';
@@ -223,25 +251,37 @@ export const authService = {
             },
           };
           
-          const registerResponse = await api.post('/auth/register', formData, config);
-          
-          if (registerResponse.data.success) {
-            await storeUserData(fbToken, registerResponse.data.user);
+          try {
+            const registerResponse = await api.post('/auth/register', formData, config);
+            
+            if (registerResponse.data.success) {
+              await storeUserData(fbToken, registerResponse.data.user);
+              return {
+                success: true,
+                token: fbToken,
+                user: registerResponse.data.user,
+                isNewUser: true
+              };
+            } else {
+              return {
+                success: false,
+                error: 'Failed to register Google user'
+              };
+            }
+          } catch (registerError) {
+            console.log("Registration error:", registerError);
             return {
-              success: true,
-              token: fbToken,
-              user: registerResponse.data.user
+              success: false,
+              error: registerError.response?.data?.error || 'Failed to register Google user'
             };
-          } else {
-            throw new Error('Failed to register Google user');
           }
+        } else {
+          // For other backend errors, return the error
+          return {
+            success: false,
+            error: backendError.response?.data?.error || backendError.message || 'Google sign-in failed'
+          };
         }
-      } catch (backendError) {
-        console.log("Backend error during Google sign-in:", backendError);
-        return {
-          success: false,
-          error: backendError.response?.data?.error || backendError.message || 'Google sign-in failed'
-        };
       }
     } catch (error) {
       console.log("Google sign-in error:", error);

@@ -9,7 +9,8 @@ import {
   Platform,
   StyleSheet,
   ActivityIndicator,
-  Image
+  Image,
+  Alert
 } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -32,7 +33,7 @@ const LoginScreen = ({ navigation }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loginInProgress, setLoginInProgress] = useState(false);
 
-  const { login, googleSignIn } = useAuth();
+  const { login, googleSignIn, setIsLoading } = useAuth();
   const { colors, toggleTheme, isDarkMode } = useTheme();
   const toast = useToast();
 
@@ -42,64 +43,99 @@ const LoginScreen = ({ navigation }) => {
     borderColor: colors.border,
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignIn = async (confirmRegistration = false) => {
     try {
+      setIsLoading(true);
       setLoginInProgress(true);
       console.log('Starting Google Sign-in process...');
-      
+
       // Check if your device has Google Play Services installed
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       console.log('Google Play Services check passed');
-      
+
       // Get the user ID token
       console.log('Requesting Google sign-in...');
       const signInResult = await GoogleSignin.signIn();
       console.log('Google sign-in successful, full result:', JSON.stringify(signInResult));
-      
+
       // The idToken is nested inside the data property, not directly on the result
       const idToken = signInResult.data?.idToken || signInResult.idToken;
-      
+
       if (!idToken) {
         throw new Error('Failed to get ID token from Google Sign-in');
       }
-      
+
       console.log('Successfully retrieved idToken');
-      
+
       // Create a Firebase credential with the token using the Web SDK
       console.log('Creating Firebase credential');
       const googleCredential = GoogleAuthProvider.credential(idToken);
-      
+
       // Sign in with credential to Firebase using the Web SDK
       console.log('Signing in to Firebase');
       const userCredential = await signInWithCredential(auth, googleCredential);
       const firebaseUser = userCredential.user;
-      
+
       console.log('Firebase User UID:', firebaseUser.uid);
       console.log('Firebase User Email:', firebaseUser.email);
       console.log('Firebase User DisplayName:', firebaseUser.displayName);
-      
-      // Use our auth context's googleSignIn method to properly save the user data
+
+      // Use our auth context's googleSignIn method
       console.log('Calling auth context googleSignIn method');
-      const result = await googleSignIn(idToken);
+      const result = await googleSignIn(idToken, confirmRegistration);
       console.log('Auth context googleSignIn completed:', result);
-      
+
       if (result && result.success) {
         // Show success message with user's name
         const displayName = result.user?.first_name || firebaseUser.displayName || 'User';
-        toast.success(`Welcome ${displayName}!`);
         
+        if (result.isNewUser) {
+          toast.success(`Welcome to GlycoFit, ${displayName}! Your account has been created successfully.`);
+        } else {
+          toast.success(`Welcome back, ${displayName}!`);
+        }
+
         // Navigation will be handled by auth state change in App.js
+      } else if (result && result.needsRegistration) {
+        // Show confirmation dialog for new user registration
+        const userInfo = result.userInfo;
+        Alert.alert(
+          'Create New Account',
+          `Welcome! It looks like this is your first time signing in with Google.\n\nEmail: ${userInfo.email}\nName: ${userInfo.displayName || 'Not provided'}\n\nWould you like to create a new GlycoFit account?`,
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => {
+                console.log('User cancelled registration');
+                toast.info('Sign-in cancelled');
+              }
+            },
+            {
+              text: 'Create Account',
+              onPress: async () => {
+                console.log('User confirmed registration');
+                toast.info('Creating your account...');
+                
+                // Call handleGoogleSignIn again with confirmation
+                setTimeout(() => {
+                  handleGoogleSignIn(true);
+                }, 500);
+              }
+            }
+          ]
+        );
       } else {
         const errorMsg = result?.error || 'Authentication failed';
         console.error('Authentication failed in auth context:', errorMsg);
         toast.error(errorMsg);
       }
-      
+
     } catch (error) {
       console.error('Google sign in error details:', error);
-      
+
       let errorMessage = 'Google sign in failed. Please try again.';
-      
+
       if (error) {
         if (typeof error === 'object') {
           if (error.message) {
@@ -118,10 +154,11 @@ const LoginScreen = ({ navigation }) => {
           errorMessage = error;
         }
       }
-      
+
       toast.error(errorMessage);
     } finally {
       setLoginInProgress(false);
+      setIsLoading(false);
     }
   };
 
@@ -130,11 +167,11 @@ const LoginScreen = ({ navigation }) => {
       toast.error('Please fill in all fields');
       return;
     }
-    
+
     try {
       setLoginInProgress(true);
       const result = await login(email, password);
-      
+
       if (result.success) {
         const user = result.user;
         toast.success(`Welcome back ${user?.first_name || "User"}!`);
@@ -150,96 +187,96 @@ const LoginScreen = ({ navigation }) => {
     }
   };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollContainer: {
-    flexGrow: 1,
-    padding: 24,
-  },
-  logoContainer: {
-    alignItems: 'center',
-    marginVertical: 30,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '600',
-  },
-  inputContainer: {
-    width: '100%',
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 8,
-    height: 50,
-    paddingHorizontal: 12,
-  },
-  inputIcon: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    height: 50,
-    paddingVertical: 8,
-  },
-  label: {
-    marginBottom: 8,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  orContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  divider: {
-    flex: 1,
-    height: 1,
-  },
-  orText: {
-    marginHorizontal: 10,
-    fontWeight: '600',
-  },
-  googleButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  registerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 24,
-  },
-  themeToggle: {
-    ...buttonStyles.text,
-    marginTop: 16,
-    alignSelf: 'center',
-  },
-  themeToggleText: {
-    fontSize: 14,
-  },
-});
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+    scrollContainer: {
+      flexGrow: 1,
+      padding: 24,
+    },
+    logoContainer: {
+      alignItems: 'center',
+      marginVertical: 30,
+    },
+    title: {
+      fontSize: 28,
+      fontWeight: '600',
+    },
+    inputContainer: {
+      width: '100%',
+    },
+    inputWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderRadius: 8,
+      height: 50,
+      paddingHorizontal: 12,
+    },
+    inputIcon: {
+      marginRight: 10,
+    },
+    input: {
+      flex: 1,
+      height: 50,
+      paddingVertical: 8,
+    },
+    label: {
+      marginBottom: 8,
+      fontSize: 14,
+      fontWeight: '500',
+    },
+    orContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginVertical: 20,
+    },
+    divider: {
+      flex: 1,
+      height: 1,
+    },
+    orText: {
+      marginHorizontal: 10,
+      fontWeight: '600',
+    },
+    googleButtonContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    registerContainer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      marginTop: 24,
+    },
+    themeToggle: {
+      ...buttonStyles.text,
+      marginTop: 16,
+      alignSelf: 'center',
+    },
+    themeToggleText: {
+      fontSize: 14,
+    },
+  });
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={[styles.container, { backgroundColor: colors.background }]}
     >
-      <ScrollView 
+      <ScrollView
         contentContainerStyle={styles.scrollContainer}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.logoContainer}>
           <Text style={[styles.title, { color: colors.text }]}>GlycoFit</Text>
         </View>
-        
+
         <Text style={[globalStyles.subtitle, { color: colors.text, alignSelf: 'center', marginBottom: 24 }]}>
           Log in to your account
         </Text>
-        
+
         <View style={styles.inputContainer}>
           <Text style={[styles.label, { color: colors.secondary }]}>Email</Text>
           <View style={[styles.inputWrapper, textInputStyle]}>
@@ -254,7 +291,7 @@ const styles = StyleSheet.create({
               keyboardType="email-address"
             />
           </View>
-          
+
           <Text style={[styles.label, { color: colors.secondary, marginTop: 16 }]}>Password</Text>
           <View style={[styles.inputWrapper, textInputStyle]}>
             <FontAwesome name="lock" size={20} color={colors.secondary} style={styles.inputIcon} />
@@ -274,7 +311,7 @@ const styles = StyleSheet.create({
               />
             </TouchableOpacity>
           </View>
-          
+
           <TouchableOpacity
             style={[buttonStyles.primary, { backgroundColor: colors.primary, marginTop: 24 }]}
             onPress={handleLogin}
@@ -286,15 +323,15 @@ const styles = StyleSheet.create({
               <Text style={{ color: '#fff', fontWeight: '600', fontSize: 16 }}>Log In</Text>
             )}
           </TouchableOpacity>
-          
+
           <View style={styles.orContainer}>
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
             <Text style={[styles.orText, { color: colors.secondary }]}>OR</Text>
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
           </View>
-          
+
           <TouchableOpacity
-            style={[buttonStyles.secondary, { 
+            style={[buttonStyles.secondary, {
               borderColor: colors.border,
               backgroundColor: colors.surface,
             }]}
@@ -308,7 +345,7 @@ const styles = StyleSheet.create({
               </Text>
             </View>
           </TouchableOpacity>
-          
+
           <View style={styles.registerContainer}>
             <Text style={{ color: colors.secondary }}>Don't have an account? </Text>
             <TouchableOpacity onPress={() => navigation.navigate('Register')}>
