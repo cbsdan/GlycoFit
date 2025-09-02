@@ -8,3 +8,6 @@ flask-mail==0.9.1
 cloudinary==1.36.0
 waitress==3.0.2
 firebase-admin==6.4.0
+torch==2.8.0
+torchvision==0.23.0
+pillow==11.3.0

@@ -15,6 +15,8 @@ import { ToastProvider } from './context/ToastContext';
 import LoginScreen from './screens/auth/LoginScreen';
 import RegisterScreen from './screens/auth/RegisterScreen';
 import OTPScreen from './screens/auth/OTPScreen';
+import MealDetailScreen from './screens/MealDetailScreen';
+import MealHistoryScreen from './screens/MealHistoryScreen';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingScreen from './components/LoadingScreen';
 
@@ -91,16 +93,43 @@ function AppNavigator() {
         }}
       >
         {isAuthenticated ? (
-          <Stack.Screen 
-            name="Main" 
-            options={{ headerShown: false }} 
-          >
-            {(props) => (
-              <UniversalScreenWrapper>
-                <TabNavigator {...props} />
-              </UniversalScreenWrapper>
-            )}
-          </Stack.Screen>
+          <>
+            <Stack.Screen 
+              name="Main" 
+              options={{ headerShown: false }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <TabNavigator {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="MealHistory" 
+              options={{ 
+                headerShown: false
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <MealHistoryScreen {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="MealDetail" 
+              options={{ 
+                headerShown: false,
+                presentation: 'modal'
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <MealDetailScreen {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+          </>
         ) : (
           <>
             <Stack.Screen 

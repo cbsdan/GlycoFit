@@ -12,8 +12,10 @@ from config.firebase_admin import init_firebase
 from middleware.logging_middleware import setup_logging, log_request
 from routes.auth_routes import auth_bp
 from routes.user_routes import user_bp
+from routes.nutrient_routes import nutrient_bp
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
+from services.ml_service import init_ml_service
 
 # Load environment variables
 load_dotenv()
@@ -26,6 +28,10 @@ def create_app():
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET', 'jwt-secret-change-this')
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)  # Changed to 7 days like your .env
     app.config['DB_URI'] = os.getenv('DB_URI', 'mongodb://localhost:27017/glycofit')
+    
+    # File upload configuration
+    app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max file size
+    app.config['UPLOAD_FOLDER'] = 'uploads'
     
     # CORS Configuration - Allow your mobile app and any localhost for development
     CORS(app, origins=[
@@ -59,6 +65,14 @@ def create_app():
     except Exception as e:
         logging.error(f"Failed to initialize Cloudinary: {str(e)}")
     
+    # Initialize ML Service
+    try:
+        init_ml_service()
+        logging.info("ML Service initialized successfully")
+    except Exception as e:
+        logging.error(f"Failed to initialize ML Service: {str(e)}")
+        logging.warning("ML features will be disabled")
+    
     # Initialize Firebase Admin
     try:
         init_firebase()
@@ -83,11 +97,25 @@ def create_app():
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/api/v1/auth')
     app.register_blueprint(user_bp, url_prefix='/api/v1/users')
+    app.register_blueprint(nutrient_bp, url_prefix='/api/v1/nutrients')
     
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])
     def health_check():
         logging.info("Health check endpoint accessed")
+        
+        # Check ML service status
+        ml_status = 'disabled'
+        try:
+            from services.ml_service import get_ml_service
+            ml_service = get_ml_service()
+            if ml_service and ml_service.is_model_ready():
+                ml_status = 'ready'
+            else:
+                ml_status = 'not_ready'
+        except Exception:
+            ml_status = 'error'
+        
         return jsonify({
             'status': 'healthy',
             'message': 'GlycoFit Backend is running',
@@ -96,7 +124,8 @@ def create_app():
                 'database': 'connected',
                 'email': 'configured',
                 'cloudinary': 'configured',
-                'firebase': 'configured'
+                'firebase': 'configured',
+                'ml_model': ml_status
             }
         }), 200
     

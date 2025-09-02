@@ -358,4 +358,128 @@ export const authService = {
   },
 };
 
+// Nutrient Prediction APIs
+const predictNutrientsOnly = async (imageUri) => {
+  try {
+    const formData = new FormData();
+    formData.append('image', {
+      uri: imageUri,
+      type: 'image/jpeg',
+      name: 'food_image.jpg',
+    });
+
+    const response = await api.post('/nutrients/predict-only', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 30000, // 30 seconds timeout for ML processing
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error predicting nutrients only:', error);
+    throw error;
+  }
+};
+
+const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePublicId) => {
+  try {
+    const data = {
+      nutrients,
+      meal_name: mealName,
+      food_type: foodType,
+      notes,
+      temp_image_public_id: tempImagePublicId
+    };
+
+    const response = await api.post('/nutrients/save-meal', data, {
+      timeout: 30000, // 30 seconds timeout for image processing
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error saving meal:', error);
+    throw error;
+  }
+};
+
+// Meal Management APIs
+const getUserMeals = async (limit = 50, offset = 0, startDate = null, endDate = null) => {
+  try {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      offset: offset.toString(),
+    });
+
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+
+    const response = await api.get(`/users/meals?${params.toString()}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting user meals:', error);
+    throw error;
+  }
+};
+
+const getMealById = async (mealId) => {
+  try {
+    const response = await api.get(`/users/meals/${mealId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting meal by id:', error);
+    throw error;
+  }
+};
+
+const updateMeal = async (mealId, mealName = null, notes = null) => {
+  try {
+    const updateData = {};
+    if (mealName !== null) updateData.meal_name = mealName;
+    if (notes !== null) updateData.notes = notes;
+
+    const response = await api.put(`/users/meals/${mealId}`, updateData);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating meal:', error);
+    throw error;
+  }
+};
+
+const deleteMeal = async (mealId) => {
+  try {
+    const response = await api.delete(`/users/meals/${mealId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting meal:', error);
+    throw error;
+  }
+};
+
+const getNutritionSummary = async (startDate = null, endDate = null) => {
+  try {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+
+    const queryString = params.toString();
+    const url = `/users/nutrition-summary${queryString ? `?${queryString}` : ''}`;
+
+    const response = await api.get(url);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting nutrition summary:', error);
+    throw error;
+  }
+};
+
+// Add the functions to the api object
+api.predictNutrientsOnly = predictNutrientsOnly;
+api.saveMeal = saveMeal;
+api.getUserMeals = getUserMeals;
+api.getMealById = getMealById;
+api.updateMeal = updateMeal;
+api.deleteMeal = deleteMeal;
+api.getNutritionSummary = getNutritionSummary;
+
 export default api;

@@ -62,20 +62,12 @@ const HomeScreen = ({ navigation }) => {
 
   const quickActions = [
     {
-      id: 'measure',
-      title: 'Quick Measure',
-      subtitle: 'Record glucose level',
-      icon: 'plus-circle',
-      color: '#27AE60',
-      action: () => navigation.navigate('Measure'),
-    },
-    {
       id: 'food',
-      title: 'Log Food',
-      subtitle: 'Scan or add meal',
+      title: 'Meal Records',
+      subtitle: 'Monitor your meals',
       icon: 'food',
       color: '#F39C12',
-      action: () => navigation.navigate('Measure'),
+      action: () => navigation.navigate('MealHistory'),
     },
     {
       id: 'insights',
