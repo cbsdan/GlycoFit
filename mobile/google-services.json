@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "528174172461",
+    "project_id": "glycofit-c3e87",
+    "storage_bucket": "glycofit-c3e87.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:528174172461:android:3f44ae5f89e58f4d296ba4",
+        "android_client_info": {
+          "package_name": "com.tupt.glycofit"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "528174172461-uv74hqa98csop8ujr49ndffqtlnpjm7t.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.tupt.glycofit",
+            "certificate_hash": "0bcbfc45757699fcc89482e5b9c4e6a1faeea28c"
+          }
+        },
+        {
+          "client_id": "528174172461-7kgul1oc8tb0t5jfrbu1bh2v5p5a1d7g.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDG-lW1FvbMRFnsjbmSrCYj1fIurjHzdjQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "528174172461-7kgul1oc8tb0t5jfrbu1bh2v5p5a1d7g.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

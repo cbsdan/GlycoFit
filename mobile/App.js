@@ -17,6 +17,7 @@ import RegisterScreen from './screens/auth/RegisterScreen';
 import OTPScreen from './screens/auth/OTPScreen';
 import MealDetailScreen from './screens/MealDetailScreen';
 import MealHistoryScreen from './screens/MealHistoryScreen';
+import HeartRateScreen from './screens/HeartRateScreen';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingScreen from './components/LoadingScreen';
 
@@ -126,6 +127,19 @@ function AppNavigator() {
               {(props) => (
                 <UniversalScreenWrapper>
                   <MealDetailScreen {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="HeartRate" 
+              options={{ 
+                headerShown: false,
+                presentation: 'modal'
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <HeartRateScreen {...props} />
                 </UniversalScreenWrapper>
               )}
             </Stack.Screen>

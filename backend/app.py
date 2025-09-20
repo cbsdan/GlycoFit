@@ -13,6 +13,7 @@ from middleware.logging_middleware import setup_logging, log_request
 from routes.auth_routes import auth_bp
 from routes.user_routes import user_bp
 from routes.nutrient_routes import nutrient_bp
+from routes.heart_rate_routes import heart_rate_bp
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
 from services.ml_service import init_ml_service
@@ -98,6 +99,7 @@ def create_app():
     app.register_blueprint(auth_bp, url_prefix='/api/v1/auth')
     app.register_blueprint(user_bp, url_prefix='/api/v1/users')
     app.register_blueprint(nutrient_bp, url_prefix='/api/v1/nutrients')
+    app.register_blueprint(heart_rate_bp, url_prefix='/api/v1/heart-rates')
     
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])

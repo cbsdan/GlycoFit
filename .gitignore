@@ -13,4 +13,3 @@ venv/
 !.env.example
 
 backend/logs/
-mobile/google-services.json

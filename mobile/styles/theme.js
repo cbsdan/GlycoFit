@@ -71,6 +71,14 @@ export const lightTheme = {
   },
   // Add fonts to theme to prevent undefined errors
   fonts: FONTS,
+  // Heart rate monitor colors
+  heartRate: {
+    heartIcon: "#E74C3C",
+    pulseActive: "#27AE60",
+    pulseInactive: "#BDC3C7",
+    liveDisplay: "#2ECC71",
+    background: "rgba(231, 76, 60, 0.1)",
+  },
 };
 
 export const darkTheme = {
@@ -120,6 +128,14 @@ export const darkTheme = {
   },
   // Add fonts to theme to prevent undefined errors
   fonts: FONTS,
+  // Heart rate monitor colors
+  heartRate: {
+    heartIcon: "#FF6B6B",
+    pulseActive: "#4ECDC4",
+    pulseInactive: "#95A5A6",
+    liveDisplay: "#45B7D1",
+    background: "rgba(255, 107, 107, 0.1)",
+  },
 };
 
 // Helper function to get theme based on mode

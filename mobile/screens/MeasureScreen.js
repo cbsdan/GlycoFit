@@ -332,9 +332,13 @@ const MeasureScreen = ({ navigation }) => {
   };
 
   const handleMeasurement = (measurementType) => {
-    toast.info(`${measurementType} feature coming soon!`);
-    // TODO: Navigate to specific measurement screen
-    // navigation.navigate(`${measurementType}Screen`);
+    if (measurementType === 'Heart Rate') {
+      navigation.navigate('HeartRate');
+    } else {
+      toast.info(`${measurementType} feature coming soon!`);
+      // TODO: Navigate to other specific measurement screens
+      // navigation.navigate(`${measurementType}Screen`);
+    }
   };
 
   // Handle nutrient value changes

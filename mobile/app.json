@@ -2,7 +2,17 @@
   "expo": {
     "name": "GlycoFit",
     "slug": "mobile",
-    "plugins": ["@react-native-google-signin/google-signin"],
+    "plugins": [
+      "@react-native-google-signin/google-signin",
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "$(PRODUCT_NAME) needs access to your Camera to measure heart rate using the camera and flashlight.",
+          "enableMicrophonePermission": false,
+          "enableFrameProcessors": true
+        }
+      ]
+    ],
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

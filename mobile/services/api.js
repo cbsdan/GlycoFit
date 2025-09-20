@@ -473,6 +473,104 @@ const getNutritionSummary = async (startDate = null, endDate = null) => {
   }
 };
 
+// Heart Rate API functions
+const createHeartRate = async (heartRateData) => {
+  try {
+    const response = await api.post('/heart-rates', heartRateData);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating heart rate:', error);
+    throw error;
+  }
+};
+
+const getHeartRates = async (page = 1, limit = 10, sortBy = 'created_at', sortOrder = 'desc') => {
+  try {
+    const params = new URLSearchParams();
+    params.append('page', page.toString());
+    params.append('limit', limit.toString());
+    params.append('sort_by', sortBy);
+    params.append('sort_order', sortOrder);
+
+    const response = await api.get(`/heart-rates?${params.toString()}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting heart rates:', error);
+    throw error;
+  }
+};
+
+const getHeartRateById = async (heartRateId) => {
+  try {
+    const response = await api.get(`/heart-rates/${heartRateId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting heart rate by ID:', error);
+    throw error;
+  }
+};
+
+const updateHeartRate = async (heartRateId, updates) => {
+  try {
+    const response = await api.put(`/heart-rates/${heartRateId}`, updates);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating heart rate:', error);
+    throw error;
+  }
+};
+
+const deleteHeartRate = async (heartRateId) => {
+  try {
+    const response = await api.delete(`/heart-rates/${heartRateId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting heart rate:', error);
+    throw error;
+  }
+};
+
+const getLatestHeartRate = async () => {
+  try {
+    const response = await api.get('/heart-rates/latest');
+    return response.data;
+  } catch (error) {
+    console.error('Error getting latest heart rate:', error);
+    throw error;
+  }
+};
+
+const getHeartRateStatistics = async (startDate = null, endDate = null) => {
+  try {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+
+    const queryString = params.toString();
+    const url = `/heart-rates/statistics${queryString ? `?${queryString}` : ''}`;
+
+    const response = await api.get(url);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting heart rate statistics:', error);
+    throw error;
+  }
+};
+
+const getHeartRatesByDateRange = async (startDate, endDate) => {
+  try {
+    const params = new URLSearchParams();
+    params.append('start_date', startDate);
+    params.append('end_date', endDate);
+
+    const response = await api.get(`/heart-rates/date-range?${params.toString()}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting heart rates by date range:', error);
+    throw error;
+  }
+};
+
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
 api.saveMeal = saveMeal;
@@ -481,5 +579,15 @@ api.getMealById = getMealById;
 api.updateMeal = updateMeal;
 api.deleteMeal = deleteMeal;
 api.getNutritionSummary = getNutritionSummary;
+
+// Heart Rate functions
+api.createHeartRate = createHeartRate;
+api.getHeartRates = getHeartRates;
+api.getHeartRateById = getHeartRateById;
+api.updateHeartRate = updateHeartRate;
+api.deleteHeartRate = deleteHeartRate;
+api.getLatestHeartRate = getLatestHeartRate;
+api.getHeartRateStatistics = getHeartRateStatistics;
+api.getHeartRatesByDateRange = getHeartRatesByDateRange;
 
 export default api;
