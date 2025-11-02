@@ -23,7 +23,17 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.tupt.glycofit",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.WRITE_STEPS"
+      ],
+      "intentFilters": [
+        {
+          "action": "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE",
+          "category": ["android.intent.category.DEFAULT"]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -33,5 +43,13 @@
         "projectId": "74ce8e12-691f-4034-bb81-5c74d407f8a8"
       }
     }
-  }
+  },
+  "plugins": [
+    [
+      "react-native-health-connect",
+      {
+        "permissions": ["READ_STEPS", "WRITE_STEPS"]
+      }
+    ]
+  ]
 }
