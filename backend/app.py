@@ -14,9 +14,11 @@ from routes.auth_routes import auth_bp
 from routes.user_routes import user_bp
 from routes.nutrient_routes import nutrient_bp
 from routes.heart_rate_routes import heart_rate_bp
+from routes.gemini_routes import gemini_bp
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
 from services.ml_service import init_ml_service
+from services.gemini_service import init_gemini_service
 
 # Load environment variables
 load_dotenv()
@@ -74,6 +76,14 @@ def create_app():
         logging.error(f"Failed to initialize ML Service: {str(e)}")
         logging.warning("ML features will be disabled")
     
+    # Initialize Gemini AI Service
+    try:
+        init_gemini_service()
+        logging.info("Gemini AI Service initialized successfully")
+    except Exception as e:
+        logging.error(f"Failed to initialize Gemini AI Service: {str(e)}")
+        logging.warning("Gemini AI features will be disabled")
+    
     # Initialize Firebase Admin
     try:
         init_firebase()
@@ -100,6 +110,7 @@ def create_app():
     app.register_blueprint(user_bp, url_prefix='/api/v1/users')
     app.register_blueprint(nutrient_bp, url_prefix='/api/v1/nutrients')
     app.register_blueprint(heart_rate_bp, url_prefix='/api/v1/heart-rates')
+    app.register_blueprint(gemini_bp, url_prefix='/api/v1/gemini')
     
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])
@@ -118,6 +129,18 @@ def create_app():
         except Exception:
             ml_status = 'error'
         
+        # Check Gemini service status
+        gemini_status = 'disabled'
+        try:
+            from services.gemini_service import get_gemini_service
+            gemini_service = get_gemini_service()
+            if gemini_service and gemini_service.is_ready():
+                gemini_status = 'ready'
+            else:
+                gemini_status = 'not_ready'
+        except Exception:
+            gemini_status = 'error'
+        
         return jsonify({
             'status': 'healthy',
             'message': 'GlycoFit Backend is running',
@@ -127,7 +150,8 @@ def create_app():
                 'email': 'configured',
                 'cloudinary': 'configured',
                 'firebase': 'configured',
-                'ml_model': ml_status
+                'ml_model': ml_status,
+                'gemini_ai': gemini_status
             }
         }), 200
     
