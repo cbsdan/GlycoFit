@@ -38,7 +38,9 @@ const MeasureScreen = ({ navigation }) => {
     mealName: '',
     foodType: 'unlabeled',
     notes: '',
-    nutrients: null
+    nutrients: null,
+    servingSize: '',
+    confidenceRate: 0
   });
 
   // Valid food types from backend model
@@ -63,13 +65,19 @@ const MeasureScreen = ({ navigation }) => {
       
       // Macronutrients
       'protein': { icon: 'dumbbell', color: '#E67E22' },
+      'protein_g': { icon: 'dumbbell', color: '#E67E22' },
       'carbohydrates': { icon: 'grain', color: '#F39C12' },
       'carbs': { icon: 'grain', color: '#F39C12' },
+      'carbs_g': { icon: 'grain', color: '#F39C12' },
       'fat': { icon: 'water-outline', color: '#9B59B6' },
+      'fat_g': { icon: 'water-outline', color: '#9B59B6' },
       'total_fat': { icon: 'water-outline', color: '#9B59B6' },
       'saturated_fat': { icon: 'water-alert', color: '#8E44AD' },
       'fiber': { icon: 'leaf', color: '#27AE60' },
+      'fiber_g': { icon: 'leaf', color: '#27AE60' },
       'sugar': { icon: 'cube-outline', color: '#E91E63' },
+      'added_sugars': { icon: 'cube-outline', color: '#E91E63' },
+      'added_sugars_g': { icon: 'cube-outline', color: '#E91E63' },
       
       // Minerals
       'sodium': { icon: 'shaker-outline', color: '#95A5A6' },
@@ -183,7 +191,9 @@ const MeasureScreen = ({ navigation }) => {
       mealName: '',
       foodType: 'unlabeled',
       notes: '',
-      nutrients: null
+      nutrients: null,
+      servingSize: '',
+      confidenceRate: 0
     });
     setIsProcessing(false);
     setProcessingMessage('');
@@ -276,24 +286,73 @@ const MeasureScreen = ({ navigation }) => {
       const response = await api.predictNutrientsOnly(imageUri);
       console.log('API response:', response);
       
+      // Check if food was successfully detected
       if (response && response.success && response.data) {
         console.log('Setting prediction data:', response.data);
         setPredictionData(response.data);
         setEditableNutrients(response.data.nutrients || {});
         setMealDetails(prev => ({
           ...prev,
-          nutrients: response.data.nutrients
+          mealName: response.data.meal_name || '',
+          nutrients: response.data.nutrients,
+          servingSize: response.data.serving_size || '',
+          confidenceRate: response.data.confidence_percentage || 0
         }));
         
         toast.success('Food analysis complete! Review and edit the details below.');
       } else {
-        console.log('API response failed:', response);
-        toast.error(response?.error || 'Failed to analyze food image');
+        // Handle case when no food is detected
+        console.log('API response failed - no food detected:', response);
+        
+        // Display appropriate error message
+        const errorMessage = response?.message || response?.error || 'Failed to analyze food image';
+        toast.error(errorMessage);
+        
+        // Clear the captured image so user can try again
         setCapturedImage(null);
+        
+        // Show helpful alert with more context
+        Alert.alert(
+          'No Food Detected',
+          response?.message || 'Unable to identify food in this image. Please ensure:\n\n• The image shows food clearly\n• Good lighting conditions\n• Food is in focus\n• Try a different angle',
+          [
+            {
+              text: 'Try Again',
+              onPress: () => setShowImagePickerModal(true)
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel'
+            }
+          ]
+        );
       }
     } catch (error) {
       console.error('Error processing image:', error);
-      toast.error('Failed to analyze food. Please check your connection and try again.');
+      
+      // Check if error response contains food detection failure
+      const errorResponse = error.response?.data;
+      if (errorResponse && !errorResponse.success && errorResponse.error) {
+        toast.error(errorResponse.message || errorResponse.error);
+        
+        Alert.alert(
+          'No Food Detected',
+          errorResponse.message || 'Unable to identify food in this image. Please try again with a clearer image of food.',
+          [
+            {
+              text: 'Try Again',
+              onPress: () => setShowImagePickerModal(true)
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel'
+            }
+          ]
+        );
+      } else {
+        toast.error('Failed to analyze food. Please check your connection and try again.');
+      }
+      
       setCapturedImage(null);
     } finally {
       setIsProcessing(false);
@@ -312,7 +371,9 @@ const MeasureScreen = ({ navigation }) => {
         mealDetails.mealName.trim(),
         mealDetails.foodType,
         mealDetails.notes.trim(),
-        predictionData.temp_image_public_id
+        predictionData.temp_image_public_id,
+        mealDetails.servingSize,
+        mealDetails.confidenceRate
       );
 
       if (response.success) {
@@ -560,6 +621,58 @@ const MeasureScreen = ({ navigation }) => {
       fontSize: 16,
       color: colors.text,
       textAlign: 'center',
+    },
+    
+    // Analysis information section
+    analysisInfoSection: {
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      padding: 20,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    infoCard: {
+      backgroundColor: colors.background,
+      borderRadius: 8,
+      padding: 12,
+      marginTop: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    infoHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    infoLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+      marginLeft: 8,
+    },
+    infoValue: {
+      fontSize: 16,
+      color: colors.primary,
+      marginTop: 4,
+    },
+    confidenceContainer: {
+      marginTop: 4,
+    },
+    confidenceValue: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      marginBottom: 8,
+    },
+    confidenceBar: {
+      height: 8,
+      backgroundColor: colors.border,
+      borderRadius: 4,
+      overflow: 'hidden',
+    },
+    confidenceBarFill: {
+      height: '100%',
+      borderRadius: 4,
     },
     
     // Prediction results section
@@ -876,10 +989,60 @@ const MeasureScreen = ({ navigation }) => {
 
             {/* Step 3: Display prediction results */}
             {predictionData && predictionData.nutrients && !isProcessing && (
-              <View style={styles.predictionSection}>
-                <Text style={styles.sectionTitle}>Predicted Nutrients</Text>
-                <Text style={styles.nutrientSubtitle}>Tap any value to edit</Text>
-                <View style={styles.nutrientsGrid}>
+              <>
+                {/* Analysis Information */}
+                <View style={styles.analysisInfoSection}>
+                  <Text style={styles.sectionTitle}>Analysis Results</Text>
+                  
+                  {/* Serving Size */}
+                  {mealDetails.servingSize && (
+                    <View style={styles.infoCard}>
+                      <View style={styles.infoHeader}>
+                        <Icon name="food-variant" size={20} color="#3498DB" />
+                        <Text style={styles.infoLabel}>Serving Size</Text>
+                      </View>
+                      <Text style={styles.infoValue}>{mealDetails.servingSize}</Text>
+                    </View>
+                  )}
+                  
+                  {/* Confidence Rate */}
+                  <View style={styles.infoCard}>
+                    <View style={styles.infoHeader}>
+                      <Icon name="shield-check" size={20} color={
+                        mealDetails.confidenceRate >= 70 ? '#27AE60' :
+                        mealDetails.confidenceRate >= 50 ? '#F39C12' : '#E74C3C'
+                      } />
+                      <Text style={styles.infoLabel}>Confidence</Text>
+                    </View>
+                    <View style={styles.confidenceContainer}>
+                      <Text style={[
+                        styles.confidenceValue,
+                        {
+                          color: mealDetails.confidenceRate >= 70 ? '#27AE60' :
+                                 mealDetails.confidenceRate >= 50 ? '#F39C12' : '#E74C3C'
+                        }
+                      ]}>
+                        {mealDetails.confidenceRate.toFixed(0)}%
+                      </Text>
+                      <View style={styles.confidenceBar}>
+                        <View style={[
+                          styles.confidenceBarFill,
+                          {
+                            width: `${mealDetails.confidenceRate}%`,
+                            backgroundColor: mealDetails.confidenceRate >= 70 ? '#27AE60' :
+                                           mealDetails.confidenceRate >= 50 ? '#F39C12' : '#E74C3C'
+                          }
+                        ]} />
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Predicted Nutrients */}
+                <View style={styles.predictionSection}>
+                  <Text style={styles.sectionTitle}>Predicted Nutrients</Text>
+                  <Text style={styles.nutrientSubtitle}>Tap any value to edit</Text>
+                  <View style={styles.nutrientsGrid}>
                   {Object.entries(editableNutrients).map(([key, value]) => {
                     const nutrientInfo = getNutrientIcon(key);
                     return (
@@ -913,6 +1076,7 @@ const MeasureScreen = ({ navigation }) => {
                   })}
                 </View>
               </View>
+              </>
             )}
 
             {/* Step 4: Meal details form */}

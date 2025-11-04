@@ -358,7 +358,7 @@ export const authService = {
   },
 };
 
-// Nutrient Prediction APIs
+// Nutrient Prediction APIs (Using Gemini AI)
 const predictNutrientsOnly = async (imageUri) => {
   try {
     const formData = new FormData();
@@ -368,31 +368,33 @@ const predictNutrientsOnly = async (imageUri) => {
       name: 'food_image.jpg',
     });
 
-    const response = await api.post('/nutrients/predict-only', formData, {
+    const response = await api.post('/gemini/analyze', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
-      timeout: 30000, // 30 seconds timeout for ML processing
+      timeout: 300000, // 30 seconds timeout for Gemini AI processing
     });
 
     return response.data;
   } catch (error) {
-    console.error('Error predicting nutrients only:', error);
+    console.error('Error predicting nutrients with Gemini:', error);
     throw error;
   }
 };
 
-const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePublicId) => {
+const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePublicId, servingSize = null, confidenceRate = null) => {
   try {
     const data = {
       nutrients,
       meal_name: mealName,
       food_type: foodType,
       notes,
-      temp_image_public_id: tempImagePublicId
+      temp_image_public_id: tempImagePublicId,
+      serving_size: servingSize,
+      confidence_rate: confidenceRate
     };
 
-    const response = await api.post('/nutrients/save-meal', data, {
+    const response = await api.post('/gemini/save-meal', data, {
       timeout: 30000, // 30 seconds timeout for image processing
     });
 

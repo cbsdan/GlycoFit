@@ -26,12 +26,12 @@ def init_cloudinary():
 
 class CloudinaryService:
     @staticmethod
-    def upload_image(file_path, folder=None, public_id=None, transformation=None):
+    def upload_image(file_path, folder=None, public_id=None, transformation=None, resource_type='image'):
         """Upload image to Cloudinary"""
         try:
             upload_options = {
                 'secure': True,
-                'resource_type': 'image'
+                'resource_type': resource_type
             }
             
             if folder:
@@ -51,6 +51,7 @@ class CloudinaryService:
                 'success': True,
                 'public_id': result.get('public_id'),
                 'url': result.get('secure_url'),
+                'secure_url': result.get('secure_url'),
                 'width': result.get('width'),
                 'height': result.get('height'),
                 'format': result.get('format'),

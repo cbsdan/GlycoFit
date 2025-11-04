@@ -17,14 +17,16 @@ class UserMeal:
         'other'
     ]
     
-    def __init__(self, user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None):
+    def __init__(self, user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None):
         self.user_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
-        self.nutrients = nutrients  # Dict with Calories, Protein (g), Carbs (g), Fat (g)
+        self.nutrients = nutrients  # Dict with Calories, Protein (g), Carbs (g), Fat (g), Added Sugars (g), Fiber (g)
         self.image_url = image_url
         self.image_public_id = image_public_id
         self.meal_name = meal_name  # Optional meal name
         self.notes = notes  # Optional user notes
         self.food_type = self._validate_food_type(food_type)  # breakfast, lunch, dinner, snacks, drinks, etc.
+        self.serving_size = serving_size  # Serving size information from Gemini
+        self.confidence_rate = confidence_rate  # Confidence percentage from Gemini (0-100)
         self.meal_datetime = datetime.utcnow()  # When the meal was recorded
         self.created_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
@@ -51,13 +53,15 @@ class UserMeal:
             'meal_name': self.meal_name,
             'notes': self.notes,
             'food_type': self.food_type,
+            'serving_size': self.serving_size,
+            'confidence_rate': self.confidence_rate,
             'meal_datetime': self.meal_datetime,
             'created_at': self.created_at,
             'updated_at': self.updated_at
         }
 
     @staticmethod
-    def create_meal(user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None):
+    def create_meal(user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None):
         """Create a new meal record"""
         try:
             db = get_db()
@@ -69,7 +73,9 @@ class UserMeal:
                 image_public_id=image_public_id,
                 meal_name=meal_name,
                 notes=notes,
-                food_type=food_type
+                food_type=food_type,
+                serving_size=serving_size,
+                confidence_rate=confidence_rate
             )
             
             result = db.user_meals.insert_one(meal.to_dict())
@@ -131,6 +137,8 @@ class UserMeal:
                     'meal_name': meal.get('meal_name'),
                     'notes': meal.get('notes'),
                     'food_type': meal.get('food_type', 'other'),
+                    'serving_size': meal.get('serving_size'),
+                    'confidence_rate': meal.get('confidence_rate'),
                     'meal_datetime': meal['meal_datetime'].isoformat(),
                     'created_at': meal['created_at'].isoformat(),
                     'updated_at': meal['updated_at'].isoformat()
@@ -173,6 +181,8 @@ class UserMeal:
                     'meal_name': meal.get('meal_name'),
                     'notes': meal.get('notes'),
                     'food_type': meal.get('food_type', 'other'),
+                    'serving_size': meal.get('serving_size'),
+                    'confidence_rate': meal.get('confidence_rate'),
                     'meal_datetime': meal['meal_datetime'].isoformat(),
                     'created_at': meal['created_at'].isoformat(),
                     'updated_at': meal['updated_at'].isoformat()
@@ -420,6 +430,8 @@ class UserMeal:
                     'meal_name': meal.get('meal_name'),
                     'notes': meal.get('notes'),
                     'food_type': meal.get('food_type', 'other'),
+                    'serving_size': meal.get('serving_size'),
+                    'confidence_rate': meal.get('confidence_rate'),
                     'meal_datetime': meal['meal_datetime'].isoformat(),
                     'created_at': meal['created_at'].isoformat(),
                     'updated_at': meal['updated_at'].isoformat()
