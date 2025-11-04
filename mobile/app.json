@@ -2,7 +2,6 @@
   "expo": {
     "name": "GlycoFit",
     "slug": "mobile",
-    "plugins": ["@react-native-google-signin/google-signin"],
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -31,7 +30,9 @@
       "intentFilters": [
         {
           "action": "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE",
-          "category": ["android.intent.category.DEFAULT"]
+          "category": [
+            "android.intent.category.DEFAULT"
+          ]
         }
       ]
     },
@@ -42,14 +43,33 @@
       "eas": {
         "projectId": "74ce8e12-691f-4034-bb81-5c74d407f8a8"
       }
-    }
-  },
-  "plugins": [
-    [
+    },
+    "plugins": [
+      "./androidManifestPlugin.js",
+      "@react-native-google-signin/google-signin",
       "react-native-health-connect",
-      {
-        "permissions": ["READ_STEPS", "WRITE_STEPS"]
-      }
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26,
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "buildToolsVersion": "35.0.0"
+          }
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "requiredPermissions": [
+            "READ_STEPS",
+            "READ_DISTANCE",
+            "READ_ACTIVE_CALORIES_BURNED"
+          ]
+        }
+      ],
+      "./withAndroidMinSdk.js"
     ]
-  ]
+  }
 }

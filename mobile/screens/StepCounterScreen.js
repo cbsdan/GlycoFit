@@ -1,123 +1,120 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  ActivityIndicator,
-  Alert,
+import React, { useEffect, useState } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  Platform, 
+  SafeAreaView, 
+  ActivityIndicator, 
+  Alert, 
   RefreshControl,
+  TouchableOpacity,
+  ScrollView
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import healthConnectService from '../services/healthConnectService';
+import useHealthData from '../hooks/useHealthData';
 
 const StepCounterScreen = ({ navigation }) => {
   const { colors } = useTheme();
   const toast = useToast();
+  const { androidPermissions, isInitialized, error, readHealthRecords } = useHealthData();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [todaySteps, setTodaySteps] = useState(0);
   const [weeklyData, setWeeklyData] = useState([]);
-  const [healthConnectAvailable, setHealthConnectAvailable] = useState(false);
-  const [permissionsGranted, setPermissionsGranted] = useState(false);
 
   const stepGoal = 10000; // Daily step goal
 
   useEffect(() => {
-    initializeHealthConnect();
-  }, []);
-
-  const initializeHealthConnect = async () => {
-    try {
-      setIsLoading(true);
-
-      // Check availability
-      const availability = await healthConnectService.checkAvailability();
-      
-      if (!availability.available) {
-        Alert.alert(
-          'Health Connect Not Available',
-          availability.message,
-          [{ text: 'OK' }]
-        );
-        setIsLoading(false);
-        return;
-      }
-
-      setHealthConnectAvailable(true);
-
-      // Initialize
-      const initialized = await healthConnectService.initialize();
-      if (!initialized) {
-        toast.error('Failed to initialize Health Connect');
-        setIsLoading(false);
-        return;
-      }
-
-      // Request permissions
-      const granted = await healthConnectService.requestStepsPermissions();
-      setPermissionsGranted(granted);
-
-      if (!granted) {
-        Alert.alert(
-          'Permissions Required',
-          'Please grant steps permissions to use the Step Counter feature.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Grant Permissions', onPress: () => requestPermissions() }
-          ]
-        );
-        setIsLoading(false);
-        return;
-      }
-
-      // Load data
-      await loadStepsData();
-    } catch (error) {
-      console.error('Error initializing Health Connect:', error);
-      toast.error('Failed to initialize Health Connect');
-    } finally {
+    if (Platform.OS !== 'android') {
       setIsLoading(false);
+      toast.error('Step tracking is only available on Android');
+      return;
     }
-  };
 
-  const requestPermissions = async () => {
-    const granted = await healthConnectService.requestStepsPermissions();
-    setPermissionsGranted(granted);
-    
-    if (granted) {
-      toast.success('Permissions granted!');
-      await loadStepsData();
-    } else {
-      toast.error('Permissions denied');
+    if (error) {
+      setIsLoading(false);
+      toast.error(error);
+      return;
     }
-  };
+
+    if (isInitialized) {
+      setIsLoading(false);
+      const hasStepsPermission = androidPermissions.some(
+        p => p.recordType === 'Steps' && p.accessType === 'read'
+      );
+      
+      if (hasStepsPermission) {
+        loadStepsData();
+      }
+    }
+  }, [isInitialized, error, androidPermissions]);
 
   const loadStepsData = async () => {
     try {
       // Get today's steps
-      const todayResult = await healthConnectService.getTodaySteps();
-      if (todayResult.success) {
-        setTodaySteps(todayResult.totalSteps);
-      }
-
-      // Get weekly data
-      const now = new Date();
-      const startOfWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      const weekResult = await healthConnectService.getStepsByDay(startOfWeek, now);
+      await fetchTodaySteps();
       
-      if (weekResult.success) {
-        setWeeklyData(weekResult.dailyData);
-      }
+      // Get weekly data
+      await fetchWeeklyData();
     } catch (error) {
       console.error('Error loading steps data:', error);
       toast.error('Failed to load steps data');
     }
+  };
+
+  const fetchTodaySteps = async () => {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const timeRangeFilter = {
+      operator: 'between',
+      startTime: startOfDay.toISOString(),
+      endTime: now.toISOString(),
+    };
+
+    const records = await readHealthRecords('Steps', timeRangeFilter);
+    
+    if (records && records.records) {
+      const totalSteps = records.records.reduce((sum, record) => sum + record.count, 0);
+      setTodaySteps(totalSteps);
+    }
+  };
+
+  const fetchWeeklyData = async () => {
+    const now = new Date();
+    const weekData = [];
+
+    // Get data for last 7 days
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+
+      const timeRangeFilter = {
+        operator: 'between',
+        startTime: startOfDay.toISOString(),
+        endTime: endOfDay.toISOString(),
+      };
+
+      const records = await readHealthRecords('Steps', timeRangeFilter);
+      
+      let totalSteps = 0;
+      if (records && records.records) {
+        totalSteps = records.records.reduce((sum, record) => sum + record.count, 0);
+      }
+
+      weekData.push({
+        date: startOfDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        totalSteps,
+        fullDate: startOfDay.toISOString(),
+      });
+    }
+
+    setWeeklyData(weekData);
   };
 
   const handleRefresh = async () => {
@@ -224,16 +221,6 @@ const StepCounterScreen = ({ navigation }) => {
       borderRadius: 100,
       borderWidth: 12,
       borderColor: colors.border,
-    },
-    progressFill: {
-      position: 'absolute',
-      width: 200,
-      height: 200,
-      borderRadius: 100,
-      borderWidth: 12,
-      borderColor: '#27AE60',
-      borderTopColor: 'transparent',
-      borderRightColor: 'transparent',
     },
     stepsCount: {
       fontSize: 48,
@@ -342,17 +329,6 @@ const StepCounterScreen = ({ navigation }) => {
       marginBottom: 24,
       lineHeight: 20,
     },
-    permissionButton: {
-      backgroundColor: colors.primary,
-      borderRadius: 8,
-      padding: 16,
-      paddingHorizontal: 32,
-    },
-    permissionButtonText: {
-      color: 'white',
-      fontSize: 16,
-      fontWeight: '600',
-    },
   });
 
   if (isLoading) {
@@ -377,7 +353,11 @@ const StepCounterScreen = ({ navigation }) => {
     );
   }
 
-  if (!healthConnectAvailable || !permissionsGranted) {
+  const hasStepsPermission = androidPermissions.some(
+    p => p.recordType === 'Steps' && p.accessType === 'read'
+  );
+
+  if (!isInitialized || !hasStepsPermission) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
@@ -399,17 +379,13 @@ const StepCounterScreen = ({ navigation }) => {
             style={styles.permissionIcon}
           />
           <Text style={styles.permissionTitle}>
-            Permissions Required
+            Health Connect Setup
           </Text>
           <Text style={styles.permissionText}>
-            To track your steps, we need access to Health Connect. This allows us to read and store your step count data securely on your device.
+            {!isInitialized 
+              ? 'Health Connect is initializing. Please wait...' 
+              : 'Permissions are being requested. Please grant access to step data in the Health Connect app.'}
           </Text>
-          <TouchableOpacity 
-            style={styles.permissionButton}
-            onPress={requestPermissions}
-          >
-            <Text style={styles.permissionButtonText}>Grant Permissions</Text>
-          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -447,9 +423,7 @@ const StepCounterScreen = ({ navigation }) => {
           
           <View style={styles.circularProgress}>
             <View style={styles.progressRing} />
-            <View style={styles.stepsCount}>
-              <Text style={styles.stepsCount}>{formatSteps(todaySteps)}</Text>
-            </View>
+            <Text style={styles.stepsCount}>{formatSteps(todaySteps)}</Text>
           </View>
 
           <Text style={styles.stepsLabel}>steps</Text>
@@ -478,10 +452,10 @@ const StepCounterScreen = ({ navigation }) => {
           ) : (
             <View style={styles.weeklyCard}>
               {weeklyData.map((day, index) => (
-                <View key={day.date}>
+                <View key={day.fullDate}>
                   <View style={styles.dayRow}>
                     <View style={styles.dayInfo}>
-                      <Text style={styles.dayLabel}>{getDayLabel(day.date)}</Text>
+                      <Text style={styles.dayLabel}>{getDayLabel(day.fullDate)}</Text>
                       <Text style={styles.dayDate}>{day.date}</Text>
                     </View>
                     <View style={styles.daySteps}>

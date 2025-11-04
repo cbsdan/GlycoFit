@@ -10,6 +10,7 @@ import {
 class HealthConnectService {
   constructor() {
     this.isInitialized = false;
+    this.permissionsInitialized = false;
   }
 
   /**
@@ -49,6 +50,13 @@ class HealthConnectService {
       const isInitialized = await initialize();
       this.isInitialized = isInitialized;
       console.log('Health Connect initialized:', isInitialized);
+      
+      // Add a small delay to ensure the activity is ready
+      if (isInitialized) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        this.permissionsInitialized = true;
+      }
+      
       return isInitialized;
     } catch (error) {
       console.error('Error initializing Health Connect:', error);
@@ -61,16 +69,29 @@ class HealthConnectService {
    */
   async requestStepsPermissions() {
     try {
+      // Ensure initialization is complete
+      if (!this.isInitialized || !this.permissionsInitialized) {
+        console.log('Initializing before requesting permissions...');
+        const initialized = await this.initialize();
+        if (!initialized) {
+          console.error('Failed to initialize Health Connect');
+          return false;
+        }
+      }
+
       const permissions = [
         { accessType: 'read', recordType: 'Steps' },
         { accessType: 'write', recordType: 'Steps' },
       ];
 
+      console.log('Requesting permissions...');
       const granted = await requestPermission(permissions);
       console.log('Steps permissions granted:', granted);
       return granted;
     } catch (error) {
       console.error('Error requesting steps permissions:', error);
+      // Reset initialization flags on error
+      this.permissionsInitialized = false;
       return false;
     }
   }

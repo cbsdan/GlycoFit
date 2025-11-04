@@ -14,3 +14,4 @@ venv/
 
 backend/logs/
 mobile/google-services.json
+mobile/android/*
