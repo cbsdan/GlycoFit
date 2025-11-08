@@ -44,10 +44,10 @@ const HealthDataScreen = ({ navigation }) => {
 
   // Fetch data when period changes
   useEffect(() => {
-    if (isInitialized && hasPermissions && healthData) {
+    if (isInitialized && hasPermissions) {
       fetchHealthData();
     }
-  }, [selectedPeriod]);
+  }, [selectedPeriod, isInitialized, hasPermissions]);
 
   const initializeHealthConnect = async () => {
     try {
@@ -60,6 +60,16 @@ const HealthDataScreen = ({ navigation }) => {
       
       if (healthConnectManager.isSdkAvailable()) {
         toast.success('Health Connect initialized successfully!');
+        
+        // After initialization, try to fetch data (this will work if permissions already granted)
+        try {
+          await fetchHealthData();
+          // If fetch succeeds, permissions were already granted
+          setHasPermissions(true);
+        } catch (fetchError) {
+          console.log('No permissions yet or data fetch failed:', fetchError.message);
+          // Permissions not granted yet, user needs to grant them
+        }
       } else {
         toast.error(`Health Connect not available: ${healthConnectManager.getSdkStatusDescription()}`);
       }
@@ -268,7 +278,7 @@ const HealthDataScreen = ({ navigation }) => {
     );
   };
 
-  const renderSummaryCard = (title, value, unit, icon, iconColor) => {
+  const renderSummaryCard = (title, value, unit, icon, iconColor, timestamp) => {
     return (
       <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.summaryHeader}>
@@ -279,6 +289,11 @@ const HealthDataScreen = ({ navigation }) => {
           <Text style={[styles.summaryValue, { color: colors.primary }]}>{value}</Text>
           <Text style={[styles.summaryUnit, { color: colors.secondary }]}>{unit}</Text>
         </View>
+        {timestamp && (
+          <Text style={[styles.summaryTimestamp, { color: colors.secondary }]}>
+            {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        )}
       </View>
     );
   };
@@ -300,7 +315,7 @@ const HealthDataScreen = ({ navigation }) => {
     if (!healthData?.vitals?.heartRate || 
         !Array.isArray(healthData.vitals.heartRate) ||
         healthData.vitals.heartRate.length === 0) 
-      return '--';
+      return { bpm: '--', time: null };
     
     // Get the most recent heart rate record
     const latest = healthData.vitals.heartRate[healthData.vitals.heartRate.length - 1];
@@ -309,10 +324,13 @@ const HealthDataScreen = ({ navigation }) => {
     // Heart rate data is in samples array
     if (latest.samples && Array.isArray(latest.samples) && latest.samples.length > 0) {
       const latestSample = latest.samples[latest.samples.length - 1];
-      return latestSample.beatsPerMinute || '--';
+      return {
+        bpm: latestSample.beatsPerMinute || '--',
+        time: latestSample.time || null
+      };
     }
     
-    return '--';
+    return { bpm: '--', time: null };
   };
 
   const getAverageHeartRate = () => {
@@ -356,7 +374,8 @@ const HealthDataScreen = ({ navigation }) => {
       });
     } else if (title === 'Heart Rate') {
       const avgBpm = getAverageHeartRate();
-      const latestBpm = getLatestHeartRate();
+      const latestHR = getLatestHeartRate();
+      const latestBpm = latestHR.bpm;
       
       // Count total samples
       let totalSamples = 0;
@@ -507,6 +526,10 @@ const HealthDataScreen = ({ navigation }) => {
     },
     summaryUnit: {
       fontSize: 14,
+    },
+    summaryTimestamp: {
+      fontSize: 11,
+      marginTop: 4,
     },
     dataGrid: {
       flexDirection: 'row',
@@ -684,40 +707,40 @@ const HealthDataScreen = ({ navigation }) => {
             >
               Today
             </Text>
-            {/* Summary Section */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Quick Summary</Text>
-              <View style={styles.summaryGrid}>
-                {renderSummaryCard(
-                  'Steps',
-                  calculateStepsTotal().toLocaleString(),
-                  'steps',
-                  'walk',
-                  '#4CAF50'
-                )}
-                {renderSummaryCard(
-                  'Calories',
-                  calculateCaloriesTotal(),
-                  'kcal',
-                  'fire',
-                  '#FF5722'
-                )}
-                {renderSummaryCard(
-                  'Latest HR',
-                  getLatestHeartRate(),
-                  'bpm',
-                  'heart-pulse',
-                  '#E91E63'
-                )}
-                {renderSummaryCard(
-                  'Avg HR',
-                  getAverageHeartRate(),
-                  'bpm',
-                  'heart',
-                  '#E91E63'
-                )}
-              </View>
-            </View>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.periodButton,
+              selectedPeriod === 'week' && styles.periodButtonActive,
+            ]}
+            onPress={() => setSelectedPeriod('week')}
+          >
+            <Text
+              style={[
+                styles.periodButtonText,
+                selectedPeriod === 'week' && styles.periodButtonTextActive,
+              ]}
+            >
+              Week
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.periodButton,
+              selectedPeriod === 'month' && styles.periodButtonActive,
+            ]}
+            onPress={() => setSelectedPeriod('month')}
+          >
+            <Text
+              style={[
+                styles.periodButtonText,
+                selectedPeriod === 'month' && styles.periodButtonTextActive,
+              ]}
+            >
+              Month
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -760,13 +783,17 @@ const HealthDataScreen = ({ navigation }) => {
                   'fire',
                   '#FF5722'
                 )}
-                {renderSummaryCard(
-                  'Latest HR',
-                  getLatestHeartRate(),
-                  'bpm',
-                  'heart-pulse',
-                  '#E91E63'
-                )}
+                {(() => {
+                  const latestHR = getLatestHeartRate();
+                  return renderSummaryCard(
+                    'Latest HR',
+                    latestHR.bpm,
+                    'bpm',
+                    'heart-pulse',
+                    '#E91E63',
+                    latestHR.time
+                  );
+                })()}
                 {renderSummaryCard(
                   'Avg HR',
                   getAverageHeartRate(),
