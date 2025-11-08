@@ -1,0 +1,23 @@
+# Exclude local and build artifacts to keep EAS upload small
+android/.gradle
+android/app/build
+android/build
+.gradle
+
+# Local IDE files
+.idea/
+.vscode/
+
+# Keystores and local sensitive files
+*.jks
+*.keystore
+android/local.properties
+**/local.properties
+
+# Expo/Metro
+.expo
+.expo-shared
+
+# Misc
+*.log
+dist

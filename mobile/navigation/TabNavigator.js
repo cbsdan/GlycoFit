@@ -8,6 +8,7 @@ import { useTheme } from '../context/ThemeContext';
 import HomeScreen from '../screens/HomeScreen';
 import MeasureScreen from '../screens/MeasureScreen';
 import PredictionScreen from '../screens/PredictionScreen';
+import HealthDataScreen from '../screens/HealthDataScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 
 const Tab = createBottomTabNavigator();
@@ -26,6 +27,8 @@ const TabNavigator = () => {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'Measure') {
             iconName = focused ? 'heart-pulse' : 'heart-pulse';
+          } else if (route.name === 'HealthData') {
+            iconName = focused ? 'chart-box' : 'chart-box-outline';
           } else if (route.name === 'Prediction') {
             iconName = focused ? 'chart-line' : 'chart-line';
           } else if (route.name === 'Settings') {
@@ -64,6 +67,13 @@ const TabNavigator = () => {
         component={MeasureScreen}
         options={{
           title: 'Measure',
+        }}
+      />
+      <Tab.Screen 
+        name="HealthData" 
+        component={HealthDataScreen}
+        options={{
+          title: 'Health Data',
         }}
       />
       <Tab.Screen 
