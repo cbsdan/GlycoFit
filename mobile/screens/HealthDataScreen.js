@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Linking,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
@@ -64,7 +65,36 @@ const HealthDataScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Failed to initialize Health Connect:', error);
-      toast.error('Failed to initialize Health Connect: ' + error.message);
+      
+      // Show user-friendly error with action buttons
+      let message = error.message || 'Failed to initialize Health Connect';
+      let buttons = [{ text: 'OK' }];
+      
+      if (error.code === 'NOT_INSTALLED' || error.code === 'UPDATE_REQUIRED' || error.code === 'SERVICE_UNAVAILABLE') {
+        message = error.suggestion || message;
+        buttons = [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Open Play Store', 
+            onPress: () => {
+              if (error.playStoreUrl) {
+                Linking.openURL(error.playStoreUrl).catch(err => {
+                  console.error('Failed to open Play Store:', err);
+                  toast.error('Could not open Play Store');
+                });
+              }
+            }
+          }
+        ];
+      }
+      
+      Alert.alert(
+        'Health Connect Required',
+        message,
+        buttons
+      );
+      
+      toast.error(error.message);
     } finally {
       setIsLoading(false);
     }
@@ -149,13 +179,11 @@ const HealthDataScreen = ({ navigation }) => {
 
       console.log('📅 Fetching health data from', startDate.toISOString(), 'to', endDate.toISOString());
 
-      // Fetch all categories of health data
-      const [activity, vitals, bodyMeasurements, sleep, nutrition] = await Promise.all([
+      // Fetch all categories of health data (removed bodyMeasurements and nutrition)
+      const [activity, vitals, sleep] = await Promise.all([
         getActivityData(startDate, endDate),
         getVitalsData(startDate, endDate),
-        getBodyMeasurementsData(startDate, endDate),
         getSleepData(startDate, endDate),
-        getNutritionData(startDate, endDate),
       ]);
 
       console.log('📊 Activity Data:', {
@@ -164,12 +192,19 @@ const HealthDataScreen = ({ navigation }) => {
         activeCalories: Array.isArray(activity?.activeCalories) ? activity.activeCalories.length : 0,
       });
 
+      console.log('❤️ Vitals Data:', {
+        heartRate: Array.isArray(vitals?.heartRate) ? vitals.heartRate.length : 0,
+        bloodPressure: Array.isArray(vitals?.bloodPressure) ? vitals.bloodPressure.length : 0,
+      });
+
+      console.log('😴 Sleep Data:', {
+        sleepSessions: Array.isArray(sleep) ? sleep.length : 0,
+      });
+
       const allData = {
         activity,
         vitals,
-        bodyMeasurements,
         sleep,
-        nutrition,
         fetchedAt: new Date().toISOString(),
       };
 
@@ -189,22 +224,36 @@ const HealthDataScreen = ({ navigation }) => {
     setIsRefreshing(false);
   };
 
-  const renderDataCard = (title, icon, iconColor, data, dataKey) => {
+  const renderDataCard = (title, icon, iconColor, data, dataKey, onPress) => {
     // Handle both direct array and nested object structures
     let value = 0;
+    let records = [];
     
     if (data && dataKey) {
-      const records = data[dataKey];
-      if (Array.isArray(records)) {
-        value = records.length;
-      } else if (records && typeof records === 'object' && Array.isArray(records.records)) {
+      const recordData = data[dataKey];
+      if (Array.isArray(recordData)) {
+        records = recordData;
+        value = recordData.length;
+      } else if (recordData && typeof recordData === 'object' && Array.isArray(recordData.records)) {
         // Handle case where data might be { records: [...] }
-        value = records.records.length;
+        records = recordData.records;
+        value = recordData.records.length;
       }
     }
     
+    const handlePress = () => {
+      if (onPress && value > 0) {
+        onPress(title, records);
+      }
+    };
+    
     return (
-      <View style={[styles.dataCard, { borderColor: colors.border }]}>
+      <TouchableOpacity
+        style={[styles.dataCard, { borderColor: colors.border }]}
+        onPress={handlePress}
+        disabled={value === 0}
+        activeOpacity={value > 0 ? 0.7 : 1}
+      >
         <View style={[styles.iconContainer, { backgroundColor: `${iconColor}20` }]}>
           <Icon name={icon} size={24} color={iconColor} />
         </View>
@@ -212,7 +261,10 @@ const HealthDataScreen = ({ navigation }) => {
         <Text style={[styles.dataValue, { color: colors.primary }]}>
           {value} records
         </Text>
-      </View>
+        {value > 0 && (
+          <Icon name="chevron-right" size={20} color={colors.secondary} style={styles.chevron} />
+        )}
+      </TouchableOpacity>
     );
   };
 
@@ -244,22 +296,121 @@ const HealthDataScreen = ({ navigation }) => {
     ).toFixed(0);
   };
 
-  const getLatestWeight = () => {
-    if (!healthData?.bodyMeasurements?.weight || 
-        !Array.isArray(healthData.bodyMeasurements.weight) ||
-        healthData.bodyMeasurements.weight.length === 0) 
-      return '--';
-    const latest = healthData.bodyMeasurements.weight[0];
-    return latest.weight?.inKilograms?.toFixed(1) || '--';
-  };
-
   const getLatestHeartRate = () => {
     if (!healthData?.vitals?.heartRate || 
         !Array.isArray(healthData.vitals.heartRate) ||
         healthData.vitals.heartRate.length === 0) 
       return '--';
-    const latest = healthData.vitals.heartRate[0];
-    return latest.beatsPerMinute || '--';
+    
+    // Get the most recent heart rate record
+    const latest = healthData.vitals.heartRate[healthData.vitals.heartRate.length - 1];
+    console.log('💓 Latest Heart Rate Record:', latest);
+    
+    // Heart rate data is in samples array
+    if (latest.samples && Array.isArray(latest.samples) && latest.samples.length > 0) {
+      const latestSample = latest.samples[latest.samples.length - 1];
+      return latestSample.beatsPerMinute || '--';
+    }
+    
+    return '--';
+  };
+
+  const getAverageHeartRate = () => {
+    if (!healthData?.vitals?.heartRate || 
+        !Array.isArray(healthData.vitals.heartRate) ||
+        healthData.vitals.heartRate.length === 0) 
+      return '--';
+    
+    let totalBpm = 0;
+    let sampleCount = 0;
+    
+    healthData.vitals.heartRate.forEach(record => {
+      if (record.samples && Array.isArray(record.samples)) {
+        record.samples.forEach(sample => {
+          if (sample.beatsPerMinute) {
+            totalBpm += sample.beatsPerMinute;
+            sampleCount++;
+          }
+        });
+      }
+    });
+    
+    if (sampleCount === 0) return '--';
+    return Math.round(totalBpm / sampleCount);
+  };
+
+  const showRecordDetails = (title, records) => {
+    console.log(`📋 Showing ${title} details:`, records);
+    
+    let message = `${title}\n\n`;
+    
+    if (title === 'Sleep Sessions') {
+      records.forEach((record, index) => {
+        const startTime = new Date(record.startTime).toLocaleString();
+        const endTime = new Date(record.endTime).toLocaleString();
+        const duration = ((new Date(record.endTime) - new Date(record.startTime)) / (1000 * 60 * 60)).toFixed(1);
+        message += `Session ${index + 1}:\n`;
+        message += `  Start: ${startTime}\n`;
+        message += `  End: ${endTime}\n`;
+        message += `  Duration: ${duration} hours\n\n`;
+      });
+    } else if (title === 'Heart Rate') {
+      const avgBpm = getAverageHeartRate();
+      const latestBpm = getLatestHeartRate();
+      
+      // Count total samples
+      let totalSamples = 0;
+      records.forEach(record => {
+        if (record.samples && Array.isArray(record.samples)) {
+          totalSamples += record.samples.length;
+        }
+      });
+      
+      message += `Total readings: ${totalSamples}\n`;
+      message += `Latest: ${latestBpm} bpm\n`;
+      message += `Average: ${avgBpm} bpm\n\n`;
+      message += `Recent readings:\n`;
+      
+      // Get recent samples from the last few records
+      const recentSamples = [];
+      records.slice(-5).forEach(record => {
+        if (record.samples && Array.isArray(record.samples)) {
+          record.samples.forEach(sample => {
+            recentSamples.push({
+              time: sample.time,
+              bpm: sample.beatsPerMinute
+            });
+          });
+        }
+      });
+      
+      recentSamples.slice(-10).reverse().forEach(sample => {
+        const time = new Date(sample.time).toLocaleTimeString();
+        message += `  ${time}: ${sample.bpm} bpm\n`;
+      });
+    } else if (title === 'Steps') {
+      const total = calculateStepsTotal();
+      message += `Total steps: ${total.toLocaleString()}\n\n`;
+      records.forEach((record, index) => {
+        const time = new Date(record.startTime).toLocaleString();
+        message += `${time}: ${record.count} steps\n`;
+      });
+    } else if (title === 'Active Calories') {
+      const total = calculateCaloriesTotal();
+      message += `Total: ${total} kcal\n\n`;
+      records.forEach((record, index) => {
+        const time = new Date(record.startTime).toLocaleString();
+        const kcal = record.energy?.inKilocalories || 0;
+        message += `${time}: ${kcal.toFixed(0)} kcal\n`;
+      });
+    } else {
+      message += `Total records: ${records.length}\n\n`;
+      records.forEach((record, index) => {
+        message += `Record ${index + 1}:\n${JSON.stringify(record, null, 2)}\n\n`;
+      });
+    }
+    
+    Alert.alert(title, message, [{ text: 'Close' }]);
   };
 
   const styles = StyleSheet.create({
@@ -387,6 +538,11 @@ const HealthDataScreen = ({ navigation }) => {
     dataValue: {
       fontSize: 18,
       fontWeight: 'bold',
+    },
+    chevron: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
     },
     loadingContainer: {
       flex: 1,
@@ -528,40 +684,40 @@ const HealthDataScreen = ({ navigation }) => {
             >
               Today
             </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[
-              styles.periodButton,
-              selectedPeriod === 'week' && styles.periodButtonActive,
-            ]}
-            onPress={() => setSelectedPeriod('week')}
-          >
-            <Text
-              style={[
-                styles.periodButtonText,
-                selectedPeriod === 'week' && styles.periodButtonTextActive,
-              ]}
-            >
-              Week
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[
-              styles.periodButton,
-              selectedPeriod === 'month' && styles.periodButtonActive,
-            ]}
-            onPress={() => setSelectedPeriod('month')}
-          >
-            <Text
-              style={[
-                styles.periodButtonText,
-                selectedPeriod === 'month' && styles.periodButtonTextActive,
-              ]}
-            >
-              Month
-            </Text>
+            {/* Summary Section */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Quick Summary</Text>
+              <View style={styles.summaryGrid}>
+                {renderSummaryCard(
+                  'Steps',
+                  calculateStepsTotal().toLocaleString(),
+                  'steps',
+                  'walk',
+                  '#4CAF50'
+                )}
+                {renderSummaryCard(
+                  'Calories',
+                  calculateCaloriesTotal(),
+                  'kcal',
+                  'fire',
+                  '#FF5722'
+                )}
+                {renderSummaryCard(
+                  'Latest HR',
+                  getLatestHeartRate(),
+                  'bpm',
+                  'heart-pulse',
+                  '#E91E63'
+                )}
+                {renderSummaryCard(
+                  'Avg HR',
+                  getAverageHeartRate(),
+                  'bpm',
+                  'heart',
+                  '#E91E63'
+                )}
+              </View>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -605,17 +761,17 @@ const HealthDataScreen = ({ navigation }) => {
                   '#FF5722'
                 )}
                 {renderSummaryCard(
-                  'Weight',
-                  getLatestWeight(),
-                  'kg',
-                  'weight-kilogram',
-                  '#2196F3'
-                )}
-                {renderSummaryCard(
-                  'Heart Rate',
+                  'Latest HR',
                   getLatestHeartRate(),
                   'bpm',
                   'heart-pulse',
+                  '#E91E63'
+                )}
+                {renderSummaryCard(
+                  'Avg HR',
+                  getAverageHeartRate(),
+                  'bpm',
+                  'heart',
                   '#E91E63'
                 )}
               </View>
@@ -625,10 +781,10 @@ const HealthDataScreen = ({ navigation }) => {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Activity</Text>
               <View style={styles.dataGrid}>
-                {renderDataCard('Steps', 'walk', '#4CAF50', healthData.activity, 'steps')}
-                {renderDataCard('Distance', 'map-marker-distance', '#2196F3', healthData.activity, 'distance')}
-                {renderDataCard('Active Calories', 'fire', '#FF5722', healthData.activity, 'activeCalories')}
-                {renderDataCard('Exercise', 'dumbbell', '#9C27B0', healthData.activity, 'exerciseSessions')}
+                {renderDataCard('Steps', 'walk', '#4CAF50', healthData.activity, 'steps', showRecordDetails)}
+                {renderDataCard('Distance', 'map-marker-distance', '#2196F3', healthData.activity, 'distance', showRecordDetails)}
+                {renderDataCard('Active Calories', 'fire', '#FF5722', healthData.activity, 'activeCalories', showRecordDetails)}
+                {renderDataCard('Exercise', 'dumbbell', '#9C27B0', healthData.activity, 'exerciseSessions', showRecordDetails)}
               </View>
             </View>
 
@@ -636,20 +792,10 @@ const HealthDataScreen = ({ navigation }) => {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Vitals</Text>
               <View style={styles.dataGrid}>
-                {renderDataCard('Heart Rate', 'heart-pulse', '#E91E63', healthData.vitals, 'heartRate')}
-                {renderDataCard('Blood Pressure', 'blood-bag', '#F44336', healthData.vitals, 'bloodPressure')}
-                {renderDataCard('Blood Glucose', 'water', '#00BCD4', healthData.vitals, 'bloodGlucose')}
-                {renderDataCard('Oxygen', 'air-filter', '#03A9F4', healthData.vitals, 'oxygenSaturation')}
-              </View>
-            </View>
-
-            {/* Body Measurements Section */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Body Measurements</Text>
-              <View style={styles.dataGrid}>
-                {renderDataCard('Weight', 'weight-kilogram', '#2196F3', healthData.bodyMeasurements, 'weight')}
-                {renderDataCard('Height', 'human-male-height', '#607D8B', healthData.bodyMeasurements, 'height')}
-                {renderDataCard('Body Fat', 'gauge', '#FF9800', healthData.bodyMeasurements, 'bodyFat')}
+                {renderDataCard('Heart Rate', 'heart-pulse', '#E91E63', healthData.vitals, 'heartRate', showRecordDetails)}
+                {renderDataCard('Blood Pressure', 'blood-bag', '#F44336', healthData.vitals, 'bloodPressure', showRecordDetails)}
+                {renderDataCard('Blood Glucose', 'water', '#00BCD4', healthData.vitals, 'bloodGlucose', showRecordDetails)}
+                {renderDataCard('Oxygen', 'air-filter', '#03A9F4', healthData.vitals, 'oxygenSaturation', showRecordDetails)}
               </View>
             </View>
 
@@ -657,16 +803,7 @@ const HealthDataScreen = ({ navigation }) => {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Sleep</Text>
               <View style={styles.dataGrid}>
-                {renderDataCard('Sleep Sessions', 'sleep', '#673AB7', { sleep: healthData.sleep }, 'sleep')}
-              </View>
-            </View>
-
-            {/* Nutrition Section */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Nutrition</Text>
-              <View style={styles.dataGrid}>
-                {renderDataCard('Meals', 'food-apple', '#8BC34A', healthData.nutrition, 'nutrition')}
-                {renderDataCard('Hydration', 'water', '#00BCD4', healthData.nutrition, 'hydration')}
+                {renderDataCard('Sleep Sessions', 'sleep', '#673AB7', { sleep: healthData.sleep }, 'sleep', showRecordDetails)}
               </View>
             </View>
           </>

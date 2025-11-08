@@ -51,20 +51,42 @@ class HealthConnectManager {
     console.log('🔧 Initializing Health Connect Manager...');
     
     if (!this.isAndroid) {
-      throw new Error('Health Connect is only available on Android');
+      const error = new Error('Health Connect is only available on Android');
+      error.code = 'PLATFORM_NOT_SUPPORTED';
+      throw error;
     }
 
     try {
       // Check if device meets minimum requirements (API 28+)
       if (Platform.Version < 28) {
-        throw new Error('Health Connect requires Android 9.0 (API 28) or higher');
+        const error = new Error('Health Connect requires Android 9.0 (API 28) or higher. Your device is running Android API ' + Platform.Version);
+        error.code = 'MIN_API_NOT_MET';
+        throw error;
+      }
+
+      // Check SDK status first
+      this.sdkStatus = await getSdkStatus();
+      console.log('📊 SDK Status before initialization:', this.sdkStatus);
+      
+      // Handle different SDK statuses
+      if (this.sdkStatus === SdkAvailabilityStatus.SDK_UNAVAILABLE) {
+        const error = new Error('Health Connect is not installed on this device');
+        error.code = 'NOT_INSTALLED';
+        error.suggestion = 'Please install Health Connect from the Google Play Store';
+        error.playStoreUrl = 'https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata';
+        throw error;
+      }
+      
+      if (this.sdkStatus === SdkAvailabilityStatus.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
+        const error = new Error('Health Connect needs to be updated');
+        error.code = 'UPDATE_REQUIRED';
+        error.suggestion = 'Please update Health Connect from the Google Play Store';
+        error.playStoreUrl = 'https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata';
+        throw error;
       }
 
       const isInitialized = await initialize();
       this.isInitialized = isInitialized;
-      
-      // Check SDK status
-      this.sdkStatus = await getSdkStatus();
       
       console.log('✅ Health Connect Manager initialized');
       console.log('📊 SDK Status:', this.sdkStatus);
@@ -72,6 +94,14 @@ class HealthConnectManager {
       return isInitialized;
     } catch (error) {
       console.error('❌ Failed to initialize Health Connect:', error);
+      
+      // Add helpful information to service unavailable errors
+      if (error.message.includes('Service not available') || error.message.includes('not available')) {
+        error.code = error.code || 'SERVICE_UNAVAILABLE';
+        error.suggestion = error.suggestion || 'Health Connect may not be installed. Please install it from the Google Play Store';
+        error.playStoreUrl = error.playStoreUrl || 'https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata';
+      }
+      
       throw error;
     }
   }
