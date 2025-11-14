@@ -12,4 +12,10 @@ venv/
 .env.*
 !.env.example
 
+<<<<<<< HEAD
 backend/logs/
+=======
+backend/logs/
+mobile/google-services.json
+mobile/android/*
+>>>>>>> d887b08fb34af347205fb0f968018844c9191691

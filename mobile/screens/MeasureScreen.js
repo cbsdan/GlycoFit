@@ -154,7 +154,7 @@ const MeasureScreen = ({ navigation }) => {
       subtitle: 'Track daily steps and activity',
       icon: 'walk',
       color: '#F39C12',
-      action: () => handleMeasurement('Step Counter'),
+      action: () => navigation.navigate('StepCounter'), // Updated
     },
   ];
 
