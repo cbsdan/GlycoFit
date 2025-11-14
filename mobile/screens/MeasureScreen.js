@@ -393,9 +393,13 @@ const MeasureScreen = ({ navigation }) => {
   };
 
   const handleMeasurement = (measurementType) => {
-    toast.info(`${measurementType} feature coming soon!`);
-    // TODO: Navigate to specific measurement screen
-    // navigation.navigate(`${measurementType}Screen`);
+    if (measurementType === 'Step Counter') {
+      navigation.navigate('StepCounter');
+    } else {
+      toast.info(`${measurementType} feature coming soon!`);
+      // TODO: Navigate to specific measurement screen
+      // navigation.navigate(`${measurementType}Screen`);
+    }
   };
 
   // Handle nutrient value changes

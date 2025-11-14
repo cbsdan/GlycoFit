@@ -475,6 +475,92 @@ const getNutritionSummary = async (startDate = null, endDate = null) => {
   }
 };
 
+// Activity/Step Counter APIs
+const saveDailyActivity = async (activityData) => {
+  try {
+    const data = {
+      date: activityData.date,
+      steps: activityData.steps,
+      distance: activityData.distance,
+      active_calories: activityData.activeCalories,
+      total_calories: activityData.totalCalories
+    };
+
+    const response = await api.post('/activity/daily', data);  // Remove /v1/ prefix
+    return response.data;
+  } catch (error) {
+    console.error('Error saving daily activity:', error);
+    throw error;
+  }
+};
+
+const saveExerciseSession = async (sessionData) => {
+  try {
+    const data = {
+      exercise_type: sessionData.exerciseType,
+      start_time: sessionData.startTime,
+      end_time: sessionData.endTime,
+      duration: sessionData.duration,
+      calories: sessionData.calories,
+      distance: sessionData.distance
+    };
+
+    const response = await api.post('/activity/exercise', data);  // Remove /v1/ prefix
+    return response.data;
+  } catch (error) {
+    console.error('Error saving exercise session:', error);
+    throw error;
+  }
+};
+
+const getActivities = async (startDate = null, endDate = null) => {
+  try {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+
+    const queryString = params.toString();
+    const url = `/activity/list${queryString ? `?${queryString}` : ''}`;  // Remove /v1/ prefix
+
+    const response = await api.get(url);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting activities:', error);
+    throw error;
+  }
+};
+
+const getActivitySummary = async (startDate = null, endDate = null) => {
+  try {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+
+    const queryString = params.toString();
+    const url = `/activity/summary${queryString ? `?${queryString}` : ''}`;  // Remove /v1/ prefix
+
+    const response = await api.get(url);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting activity summary:', error);
+    throw error;
+  }
+};
+
+const getExerciseSessions = async (startTime = null, endTime = null, limit = 50) => {
+  try {
+    const params = new URLSearchParams({ limit: limit.toString() });
+    if (startTime) params.append('start_time', startTime);
+    if (endTime) params.append('end_time', endTime);
+
+    const response = await api.get(`/activity/exercise/list?${params.toString()}`);  // Remove /v1/ prefix
+    return response.data;
+  } catch (error) {
+    console.error('Error getting exercise sessions:', error);
+    throw error;
+  }
+};
+
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
 api.saveMeal = saveMeal;
@@ -483,5 +569,10 @@ api.getMealById = getMealById;
 api.updateMeal = updateMeal;
 api.deleteMeal = deleteMeal;
 api.getNutritionSummary = getNutritionSummary;
+api.saveDailyActivity = saveDailyActivity;
+api.saveExerciseSession = saveExerciseSession;
+api.getActivities = getActivities;
+api.getActivitySummary = getActivitySummary;
+api.getExerciseSessions = getExerciseSessions;
 
 export default api;

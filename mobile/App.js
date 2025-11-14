@@ -19,6 +19,7 @@ import MealDetailScreen from './screens/MealDetailScreen';
 import MealHistoryScreen from './screens/MealHistoryScreen';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingScreen from './components/LoadingScreen';
+import StepCounterScreen from './screens/StepCounterScreen';
 
 const Stack = createStackNavigator();
 
@@ -101,6 +102,18 @@ function AppNavigator() {
               {(props) => (
                 <UniversalScreenWrapper>
                   <TabNavigator {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="StepCounter" 
+              options={{ 
+                headerShown: false
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <StepCounterScreen {...props} />
                 </UniversalScreenWrapper>
               )}
             </Stack.Screen>

@@ -14,6 +14,7 @@ from routes.auth_routes import auth_bp
 from routes.user_routes import user_bp
 from routes.nutrient_routes import nutrient_bp
 from routes.gemini_routes import gemini_bp
+from routes.activity_routes import activity_bp  # Add this import
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
 from services.ml_service import init_ml_service
@@ -28,24 +29,23 @@ def create_app():
     # Configuration
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET', 'jwt-secret-change-this')
-    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)  # Changed to 7 days like your .env
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
     app.config['DB_URI'] = os.getenv('DB_URI', 'mongodb://localhost:27017/glycofit')
     
     # File upload configuration
     app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max file size
     app.config['UPLOAD_FOLDER'] = 'uploads'
     
-    # CORS Configuration - Allow your mobile app and any localhost for development
+    # CORS Configuration
     CORS(app, origins=[
-        "exp://192.168.*.*:*",  # Expo development
-        "http://localhost:*",   # Local development
-        "https://localhost:*",  # Local HTTPS
-        "capacitor://localhost", # Capacitor apps
-        "ionic://localhost",    # Ionic apps
-        "http://192.168.*.*:*", # Local network
-        "https://192.168.*.*:*" # Local network HTTPS
+        "exp://192.168.*.*:*",
+        "http://localhost:*",
+        "https://localhost:*",
+        "capacitor://localhost",
+        "ionic://localhost",
+        "http://192.168.*.*:*",
+        "https://192.168.*.*:*"
     ], supports_credentials=True)
-    
     
     # Setup logging
     setup_logging()
@@ -98,7 +98,6 @@ def create_app():
     
     @app.after_request
     def after_request(response):
-        # Log response details
         logging.info(f"Response Status: {response.status_code}")
         if response.status_code >= 400:
             logging.error(f"Error Response: {response.get_data(as_text=True)}")
@@ -109,6 +108,7 @@ def create_app():
     app.register_blueprint(user_bp, url_prefix='/api/v1/users')
     app.register_blueprint(nutrient_bp, url_prefix='/api/v1/nutrients')
     app.register_blueprint(gemini_bp, url_prefix='/api/v1/gemini')
+    app.register_blueprint(activity_bp, url_prefix='/api/v1/activity')  # Add this line
 
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])
