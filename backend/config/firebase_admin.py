@@ -3,6 +3,9 @@ from firebase_admin import credentials, auth, messaging
 import os
 import logging
 import json
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Global Firebase app instance
 firebase_app = None
@@ -10,6 +13,17 @@ firebase_app = None
 def init_firebase():
     """Initialize Firebase Admin SDK"""
     global firebase_app
+    
+    # Check if already initialized
+    if firebase_app is not None:
+        logging.info("Firebase already initialized, skipping...")
+        return firebase_app
+    
+    # Check if firebase_admin already has apps
+    if len(firebase_admin._apps) > 0:
+        logging.info("Firebase already initialized by firebase_admin, reusing...")
+        firebase_app = firebase_admin.get_app()
+        return firebase_app
     
     try:
         # Construct service account from environment variables
@@ -48,7 +62,7 @@ def init_firebase():
         raise e
 
 def get_firebase_app():
-    """Get Firebase app instance"""
+    """Get Firebase app instance, initialize if needed"""
     global firebase_app
     if firebase_app is None:
         firebase_app = init_firebase()

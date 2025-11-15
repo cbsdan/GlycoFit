@@ -16,12 +16,17 @@ from routes.nutrient_routes import nutrient_bp
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
 from services.ml_service import init_ml_service
+from routes.admin import admin_bp
+from routes.users import users_bp
 
 # Load environment variables
 load_dotenv()
 
 def create_app():
     app = Flask(__name__)
+    
+    # Enable CORS for all routes
+    CORS(app, resources={r"/*": {"origins": "*"}})
     
     # Configuration
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
@@ -34,15 +39,14 @@ def create_app():
     app.config['UPLOAD_FOLDER'] = 'uploads'
     
     # CORS Configuration - Allow your mobile app and any localhost for development
-    CORS(app, origins=[
-        "exp://192.168.*.*:*",  # Expo development
-        "http://localhost:*",   # Local development
-        "https://localhost:*",  # Local HTTPS
-        "capacitor://localhost", # Capacitor apps
-        "ionic://localhost",    # Ionic apps
-        "http://192.168.*.*:*", # Local network
-        "https://192.168.*.*:*" # Local network HTTPS
-    ], supports_credentials=True)
+    CORS(app, resources={
+        r"/api/*": {
+            "origins": ["http://localhost:3000", "http://localhost:3001"],
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"],
+            "supports_credentials": True
+        }
+    })
     
     
     # Setup logging
@@ -94,10 +98,12 @@ def create_app():
             logging.error(f"Error Response: {response.get_data(as_text=True)}")
         return response
     
-    # Register blueprints
+    # Register blueprints with unique names
     app.register_blueprint(auth_bp, url_prefix='/api/v1/auth')
     app.register_blueprint(user_bp, url_prefix='/api/v1/users')
     app.register_blueprint(nutrient_bp, url_prefix='/api/v1/nutrients')
+    app.register_blueprint(users_bp, name='users_routes')
+    app.register_blueprint(admin_bp, name='admin_routes')
     
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])

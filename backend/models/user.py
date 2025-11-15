@@ -84,7 +84,6 @@ class User:
 
         now = datetime.utcnow()
 
-        # Check if any active disable record is currently in effect
         for record in self.disable_history:
             if not record.get('is_active', False):
                 continue
@@ -95,8 +94,12 @@ class User:
 
             # If not permanent, check if current date is before end date
             end_date = record.get('end_date')
-            if end_date and end_date > now:
-                return True
+            if end_date:
+                # Convert to datetime if it's a string
+                if isinstance(end_date, str):
+                    end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                if end_date > now:
+                    return True
 
         return False
 
@@ -107,7 +110,6 @@ class User:
 
         now = datetime.utcnow()
 
-        # Find the active disable record
         for record in self.disable_history:
             if not record.get('is_active', False):
                 continue
@@ -116,14 +118,17 @@ class User:
                 return record
 
             end_date = record.get('end_date')
-            if end_date and end_date > now:
-                return record
+            if end_date:
+                if isinstance(end_date, str):
+                    end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                if end_date > now:
+                    return record
 
         return None
 
     def add_disable_record(self, reason, end_date=None, is_permanent=False):
         """Add a new disable record and deactivate previous ones"""
-        # First deactivate any current active records
+        # Deactivate any current active records
         for record in self.disable_history:
             if record.get('is_active', False):
                 record['is_active'] = False
@@ -135,12 +140,12 @@ class User:
 
         return new_record
 
-    def enable_user(self, reason="User enabled"):
+    def enable_user(self, reason="User enabled by admin"):
         """Enable user by deactivating all disable records"""
         for record in self.disable_history:
             if record.get('is_active', False):
                 record['is_active'] = False
-                record['end_date'] = datetime.utcnow()  # Set end date to now
+                record['end_date'] = datetime.utcnow()
 
         # Add an enable record for audit trail
         enable_record = {
@@ -148,7 +153,7 @@ class User:
             'end_date': None,
             'reason': reason,
             'is_permanent': False,
-            'is_active': False,  # Enable records are not "active" disable records
+            'is_active': False,
             'action': 'enabled',
             'created_at': datetime.utcnow()
         }
