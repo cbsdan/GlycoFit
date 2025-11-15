@@ -14,7 +14,8 @@ import {
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import healthConnectManager, {
+import {
+  healthConnectManager,
   initializeHealthConnect as initHealthConnect,
   requestAllHealthPermissions,
   getTodayData,
@@ -60,16 +61,8 @@ const HealthDataScreen = ({ navigation }) => {
       
       if (healthConnectManager.isSdkAvailable()) {
         toast.success('Health Connect initialized successfully!');
-        
-        // After initialization, try to fetch data (this will work if permissions already granted)
-        try {
-          await fetchHealthData();
-          // If fetch succeeds, permissions were already granted
-          setHasPermissions(true);
-        } catch (fetchError) {
-          console.log('No permissions yet or data fetch failed:', fetchError.message);
-          // Permissions not granted yet, user needs to grant them
-        }
+        // Don't try to fetch data yet - always show permission screen first
+        // This ensures user explicitly grants all needed permissions
       } else {
         toast.error(`Health Connect not available: ${healthConnectManager.getSdkStatusDescription()}`);
       }
@@ -189,12 +182,29 @@ const HealthDataScreen = ({ navigation }) => {
 
       console.log('📅 Fetching health data from', startDate.toISOString(), 'to', endDate.toISOString());
 
-      // Fetch all categories of health data (removed bodyMeasurements and nutrition)
-      const [activity, vitals, sleep] = await Promise.all([
-        getActivityData(startDate, endDate),
-        getVitalsData(startDate, endDate),
-        getSleepData(startDate, endDate),
-      ]);
+      // Fetch all categories of health data with individual error handling
+      // This prevents one permission error from breaking the entire fetch
+      let activity = { steps: [], distance: [], activeCalories: [], totalCalories: [], exerciseSessions: [] };
+      let vitals = { heartRate: [], bloodPressure: [], bloodGlucose: [], oxygenSaturation: [], restingHeartRate: [] };
+      let sleep = [];
+
+      try {
+        activity = await getActivityData(startDate, endDate);
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch activity data:', error.message);
+      }
+
+      try {
+        vitals = await getVitalsData(startDate, endDate);
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch vitals data:', error.message);
+      }
+
+      try {
+        sleep = await getSleepData(startDate, endDate);
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch sleep data:', error.message);
+      }
 
       console.log('📊 Activity Data:', {
         steps: Array.isArray(activity?.steps) ? activity.steps.length : 0,
@@ -219,7 +229,18 @@ const HealthDataScreen = ({ navigation }) => {
       };
 
       setHealthData(allData);
-      toast.success('Health data loaded successfully!');
+      
+      // Count successful data categories
+      const hasActivityData = activity.steps?.length > 0 || activity.distance?.length > 0;
+      const hasVitalsData = vitals.heartRate?.length > 0 || vitals.bloodPressure?.length > 0;
+      const hasSleepData = sleep?.length > 0;
+      const successCount = [hasActivityData, hasVitalsData, hasSleepData].filter(Boolean).length;
+      
+      if (successCount > 0) {
+        toast.success(`Health data loaded (${successCount}/3 categories available)`);
+      } else {
+        toast.info('No health data available. Try granting more permissions or add data in Health Connect.');
+      }
     } catch (error) {
       console.error('Failed to fetch health data:', error);
       toast.error('Failed to fetch health data: ' + error.message);

@@ -1,5 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createStackNavigator } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../context/ThemeContext';
@@ -10,8 +11,20 @@ import MeasureScreen from '../screens/MeasureScreen';
 import PredictionScreen from '../screens/PredictionScreen';
 import HealthDataScreen from '../screens/HealthDataScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import StepCounterScreen from '../screens/StepCounterScreen';
 
 const Tab = createBottomTabNavigator();
+const Stack = createStackNavigator();
+
+// Measure Stack Navigator - handles navigation within Measure tab
+const MeasureStack = () => {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="MeasureMain" component={MeasureScreen} />
+      <Stack.Screen name="StepCounter" component={StepCounterScreen} />
+    </Stack.Navigator>
+  );
+};
 
 const TabNavigator = () => {
   const { colors } = useTheme();
@@ -64,7 +77,7 @@ const TabNavigator = () => {
       />
       <Tab.Screen 
         name="Measure" 
-        component={MeasureScreen}
+        component={MeasureStack}
         options={{
           title: 'Measure',
         }}
