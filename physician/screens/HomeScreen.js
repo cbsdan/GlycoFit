@@ -301,7 +301,12 @@ export default function HomeScreen() {
             </Text>
           </View>
         ) : (
-          patientRequests.map((request) => (
+          patientRequests.map((request) => {
+            const patientName = request.patient ? `${request.patient.first_name} ${request.patient.last_name}` : 'Unknown';
+            const patientInitial = request.patient?.first_name?.charAt(0) || '?';
+            const requestDate = request.request_date ? new Date(request.request_date).toLocaleDateString() : 'Unknown';
+            
+            return (
           <TouchableOpacity
             key={request.id}
             style={[
@@ -322,38 +327,38 @@ export default function HomeScreen() {
                   ]}
                 >
                   <Text style={[styles.avatarText, { color: theme.primary }]}>
-                    {request.patientName.charAt(0)}
+                    {patientInitial}
                   </Text>
                 </View>
                 <View style={styles.patientDetails}>
                   <Text style={[styles.patientName, { color: theme.text }]}>
-                    {request.patientName}
+                    {patientName}
                   </Text>
                   <Text
                     style={[styles.patientMetadata, { color: theme.secondary }]}
                   >
-                    {request.age} years • {request.condition}
+                    {request.patient?.email || 'No email'}
                   </Text>
                 </View>
               </View>
               <View
                 style={[
                   styles.urgencyBadge,
-                  { backgroundColor: getUrgencyColor(request.urgency) + '20' },
+                  { backgroundColor: getUrgencyColor(request.urgency || 'low') + '20' },
                 ]}
               >
                 <Text
                   style={[
                     styles.urgencyText,
-                    { color: getUrgencyColor(request.urgency) },
+                    { color: getUrgencyColor(request.urgency || 'low') },
                   ]}
                 >
-                  {request.urgency.toUpperCase()}
+                  {(request.urgency || 'low').toUpperCase()}
                 </Text>
               </View>
             </View>
             <Text style={[styles.requestTime, { color: theme.secondary }]}>
-              Requested {request.requestDate}
+              Requested {requestDate}
             </Text>
             <View style={styles.actionButtons}>
               <TouchableOpacity
@@ -374,7 +379,8 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
-        ))
+            );
+          })
         )}
       </View>
 
@@ -400,7 +406,13 @@ export default function HomeScreen() {
             </Text>
           </View>
         ) : (
-          activePatients.map((patient) => (
+          activePatients.map((patient) => {
+            const patientName = `${patient.first_name || ''} ${patient.last_name || ''}`.trim() || 'Unknown';
+            const patientInitial = patient.first_name?.charAt(0) || '?';
+            const lastVisit = patient.health_info?.last_visit ? new Date(patient.health_info.last_visit).toLocaleDateString() : 'Never';
+            const glucoseLevel = patient.health_info?.glucose_level || 0;
+            
+            return (
           <TouchableOpacity
             key={patient.id}
             style={[
@@ -420,30 +432,30 @@ export default function HomeScreen() {
                 ]}
               >
                 <Text style={[styles.avatarText, { color: theme.primary }]}>
-                  {patient.name.charAt(0)}
+                  {patientInitial}
                 </Text>
               </View>
               <View style={styles.patientCardInfo}>
                 <View style={styles.patientCardHeader}>
                   <Text style={[styles.patientName, { color: theme.text }]}>
-                    {patient.name}
+                    {patientName}
                   </Text>
                   <View
                     style={[
                       styles.statusDot,
-                      { backgroundColor: getStatusColor(patient.status) },
+                      { backgroundColor: glucoseLevel < 140 ? theme.success : theme.warning },
                     ]}
                   />
                 </View>
                 <Text
                   style={[styles.patientMetadata, { color: theme.secondary }]}
                 >
-                  {patient.age} years • {patient.condition}
+                  {patient.email || 'No email'}
                 </Text>
                 <Text
                   style={[styles.lastVisitText, { color: theme.secondary }]}
                 >
-                  Last visit: {patient.lastVisit}
+                  Last visit: {lastVisit}
                 </Text>
               </View>
               <Ionicons
@@ -453,7 +465,8 @@ export default function HomeScreen() {
               />
             </View>
           </TouchableOpacity>
-        ))
+            );
+          })
         )}
       </View>
       </ScrollView>

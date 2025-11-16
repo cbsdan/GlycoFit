@@ -297,7 +297,7 @@ export const patientAPI = {
 
   acceptRequest: async (requestId) => {
     try {
-      const response = await api.post(`/physician/patients/requests/${requestId}/accept`);
+      const response = await api.post(`/physician/patients/requests/${requestId}/accept`, {});
       return response.data;
     } catch (error) {
       console.error('Accept patient request error:', error);

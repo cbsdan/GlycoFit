@@ -87,7 +87,15 @@ export default function PatientsScreen() {
   const allPatients = [...activePatients.map(p => ({ ...p, status: 'active' })), ...patientRequests.map(r => ({ ...r, status: 'request' }))];
 
   const filteredPatients = allPatients.filter((patient) => {
-    const patientName = patient.name || patient.patient?.name || patient.patient?.first_name + ' ' + patient.patient?.last_name || '';
+    // For requests: patient.patient has the user data
+    // For active: patient has the user data directly
+    let patientName = '';
+    if (patient.status === 'request' && patient.patient) {
+      patientName = `${patient.patient.first_name || ''} ${patient.patient.last_name || ''}`.trim();
+    } else {
+      patientName = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
+    }
+    
     const matchesSearch = patientName.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesTab =
       selectedTab === 'all' ||
@@ -257,22 +265,22 @@ export default function PatientsScreen() {
                   ]}
                 >
                   <Text style={[styles.avatarText, { color: theme.primary }]}>
-                    {patient.name.charAt(0)}
+                    {patient.patient?.first_name?.charAt(0) || '?'}
                   </Text>
                 </View>
                 <View style={styles.patientInfo}>
                   <Text style={[styles.patientName, { color: theme.text }]}>
-                    {patient.name}
+                    {patient.patient ? `${patient.patient.first_name} ${patient.patient.last_name}` : 'Unknown'}
                   </Text>
                   <Text
                     style={[styles.patientDetails, { color: theme.secondary }]}
                   >
-                    {patient.age} years • {patient.condition}
+                    {patient.patient?.email || 'No email'}
                   </Text>
                   <Text
                     style={[styles.requestTime, { color: theme.secondary }]}
                   >
-                    Requested {patient.requestDate}
+                    Requested {patient.request_date ? new Date(patient.request_date).toLocaleDateString() : 'Unknown'}
                   </Text>
                 </View>
               </View>
@@ -316,17 +324,17 @@ export default function PatientsScreen() {
                   ]}
                 >
                   <Text style={[styles.avatarText, { color: theme.primary }]}>
-                    {patient.name.charAt(0)}
+                    {patient.first_name?.charAt(0) || '?'}
                   </Text>
                 </View>
                 <View style={styles.patientInfo}>
                   <Text style={[styles.patientName, { color: theme.text }]}>
-                    {patient.name}
+                    {`${patient.first_name || ''} ${patient.last_name || ''}`.trim() || 'Unknown'}
                   </Text>
                   <Text
                     style={[styles.patientDetails, { color: theme.secondary }]}
                   >
-                    {patient.age} years • {patient.condition}
+                    {patient.email || 'No email'}
                   </Text>
                 </View>
                 <Ionicons
@@ -345,10 +353,10 @@ export default function PatientsScreen() {
                   <Text
                     style={[
                       styles.metricValue,
-                      { color: getGlucoseColor(patient.glucoseLevel) },
+                      { color: getGlucoseColor(patient.health_info?.glucose_level || 0) },
                     ]}
                   >
-                    {patient.glucoseLevel} mg/dL
+                    {patient.health_info?.glucose_level || 0} mg/dL
                   </Text>
                 </View>
 
@@ -358,7 +366,7 @@ export default function PatientsScreen() {
                     Medications
                   </Text>
                   <Text style={[styles.metricValue, { color: theme.text }]}>
-                    {patient.medications} active
+                    {patient.health_info?.medications || 0} active
                   </Text>
                 </View>
 
@@ -368,7 +376,7 @@ export default function PatientsScreen() {
                     Last Visit
                   </Text>
                   <Text style={[styles.metricValue, { color: theme.text }]}>
-                    {patient.lastVisit}
+                    {patient.health_info?.last_visit ? new Date(patient.health_info.last_visit).toLocaleDateString() : 'Never'}
                   </Text>
                 </View>
               </View>

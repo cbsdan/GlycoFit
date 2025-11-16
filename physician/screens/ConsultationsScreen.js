@@ -223,7 +223,7 @@ export default function ConsultationsScreen() {
               <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, ...theme.shadow }]}>
                 <Ionicons name="calendar-outline" size={64} color={theme.secondary} />
                 <Text style={[styles.emptyStateText, { color: theme.text }]}>
-                  No upcoming consultations
+                  No consultations
                 </Text>
                 <Text style={[styles.emptyStateSubtext, { color: theme.secondary }]}>
                   Scheduled consultations will appear here
@@ -323,7 +323,7 @@ export default function ConsultationsScreen() {
               <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, ...theme.shadow }]}>
                 <Ionicons name="checkmark-done-outline" size={64} color={theme.secondary} />
                 <Text style={[styles.emptyStateText, { color: theme.text }]}>
-                  No completed consultations
+                  No consultations
                 </Text>
                 <Text style={[styles.emptyStateSubtext, { color: theme.secondary }]}>
                   Completed consultations will appear here

@@ -182,7 +182,7 @@ const PredictionScreen = ({ navigation }) => {
       marginBottom: 32,
     },
     predictionCard: {
-      width: '48%',
+      width: '100%',
       backgroundColor: colors.card,
       borderRadius: 16,
       padding: 16,

@@ -51,6 +51,14 @@ const SettingsScreen = ({ navigation }) => {
       title: 'Health Data',
       items: [
         {
+          id: 'health-data',
+          title: 'View Health Data',
+          subtitle: 'See your health metrics and history',
+          icon: 'chart-box',
+          action: () => navigation.navigate('HealthData'),
+          showArrow: true,
+        },
+        {
           id: 'data-export',
           title: 'Export Data',
           subtitle: 'Download your health records',

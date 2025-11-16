@@ -9,8 +9,9 @@ import { useTheme } from '../context/ThemeContext';
 import HomeScreen from '../screens/HomeScreen';
 import MeasureScreen from '../screens/MeasureScreen';
 import PredictionScreen from '../screens/PredictionScreen';
-import HealthDataScreen from '../screens/HealthDataScreen';
+import FindPhysicianScreen from '../screens/FindPhysicianScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import HealthDataScreen from '../screens/HealthDataScreen';
 import StepCounterScreen from '../screens/StepCounterScreen';
 
 const Tab = createBottomTabNavigator();
@@ -22,6 +23,16 @@ const MeasureStack = () => {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MeasureMain" component={MeasureScreen} />
       <Stack.Screen name="StepCounter" component={StepCounterScreen} />
+    </Stack.Navigator>
+  );
+};
+
+// Settings Stack Navigator - handles navigation to HealthData from Settings
+const SettingsStack = () => {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="SettingsMain" component={SettingsScreen} />
+      <Stack.Screen name="HealthData" component={HealthDataScreen} />
     </Stack.Navigator>
   );
 };
@@ -40,8 +51,8 @@ const TabNavigator = () => {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'Measure') {
             iconName = focused ? 'heart-pulse' : 'heart-pulse';
-          } else if (route.name === 'HealthData') {
-            iconName = focused ? 'chart-box' : 'chart-box-outline';
+          } else if (route.name === 'FindPhysician') {
+            iconName = focused ? 'doctor' : 'doctor';
           } else if (route.name === 'Prediction') {
             iconName = focused ? 'chart-line' : 'chart-line';
           } else if (route.name === 'Settings') {
@@ -83,10 +94,10 @@ const TabNavigator = () => {
         }}
       />
       <Tab.Screen 
-        name="HealthData" 
-        component={HealthDataScreen}
+        name="FindPhysician" 
+        component={FindPhysicianScreen}
         options={{
-          title: 'Health Data',
+          title: 'Physician',
         }}
       />
       <Tab.Screen 
@@ -98,7 +109,7 @@ const TabNavigator = () => {
       />
       <Tab.Screen 
         name="Settings" 
-        component={SettingsScreen}
+        component={SettingsStack}
         options={{
           title: 'Settings',
         }}
