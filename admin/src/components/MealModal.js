@@ -14,6 +14,7 @@ import {
   CircularProgress,
   Alert,
 } from '@mui/material';
+import RestaurantIcon from '@mui/icons-material/Restaurant';
 import mealService from '../services/mealService';
 
 function MealModal({ open, onClose, userId, userName }) {
@@ -71,9 +72,30 @@ function MealModal({ open, onClose, userId, userName }) {
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
-      <DialogTitle sx={{ bgcolor: '#1976d2', color: 'white' }}>
-        Meals for {userName}
+    <Dialog 
+      open={open} 
+      onClose={handleClose} 
+      maxWidth="lg" 
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: 3,
+        }
+      }}
+    >
+      <DialogTitle 
+        sx={{ 
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          color: 'white',
+          py: 2.5,
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <RestaurantIcon />
+          <Typography variant="h6" fontWeight={600}>
+            Meals for {userName}
+          </Typography>
+        </Box>
       </DialogTitle>
       <DialogContent sx={{ pt: 3 }}>
         {loading ? (
@@ -92,7 +114,20 @@ function MealModal({ open, onClose, userId, userName }) {
           <Grid container spacing={3}>
             {meals.map((meal) => (
               <Grid item xs={12} sm={6} md={4} key={meal._id}>
-                <Card sx={{ boxShadow: 3, borderRadius: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <Card 
+                  sx={{ 
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    borderRadius: 3,
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                    },
+                  }}
+                >
                   {meal.image_url ? (
                     <CardMedia
                       component="img"
