@@ -300,7 +300,8 @@ class AuthController:
             logging.info(f"User retrieved successfully: {user.email}")
             return jsonify({
                 'success': True,
-                'user': user.to_safe_dict()
+                'data': user.to_safe_dict(),
+                'user': user.to_safe_dict()  # Keep for backward compatibility
             }), 200
             
         except Exception as e:

@@ -1,31 +1,45 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Button, CircularProgress, Alert, Snackbar } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
+import { Box, Typography, CircularProgress, Alert, Snackbar } from '@mui/material';
 import UsersTable from '../components/users/UsersTable';
-import AddUserDialog from '../components/users/AddUserDialog';
+import { useAuth } from '../contexts/AuthContext';
+import { auth } from '../config/firebase';
 
-const API_BASE_URL = 'http://localhost:4000/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:4000/api/v1';
 
 function UsersPage() {
-  const [openDialog, setOpenDialog] = useState(false);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const { currentUser } = useAuth();
 
   useEffect(() => {
     fetchUsers();
   }, []);
 
+  const getAuthHeaders = async () => {
+    if (!currentUser) return {};
+    
+    try {
+      const token = await currentUser.getIdToken();
+      return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      };
+    } catch (err) {
+      console.error('Error getting auth token:', err);
+      return { 'Content-Type': 'application/json' };
+    }
+  };
+
   const fetchUsers = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`${API_BASE_URL}/users?skip=0&limit=50`, {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_BASE_URL}/admin/users?skip=0&limit=50`, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers
       });
 
       if (!response.ok) {
@@ -36,71 +50,44 @@ function UsersPage() {
       setUsers(data.users || []);
     } catch (err) {
       console.error('Error fetching users:', err);
-      setError('Failed to fetch users. Make sure the backend is running on port 4000.');
+      setError('Failed to fetch users. Make sure the backend is running.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddUser = () => {
-    setOpenDialog(true);
-  };
-
-  const handleCloseDialog = () => {
-    setOpenDialog(false);
-  };
-
-  const handleSaveUser = async (userData) => {
+  const handleDisableUser = async (uid, reason, days, isPermanent) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/users`, {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_BASE_URL}/admin/users/${uid}/disable`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(userData)
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to create user');
-      }
-
-      const result = await response.json();
-      setUsers([...users, result.user]);
-      handleCloseDialog();
-      setSuccessMessage('User created successfully!');
-    } catch (err) {
-      console.error('Error saving user:', err);
-      setError(err.message || 'Failed to save user. Please try again.');
-    }
-  };
-
-  const handleDisableUser = async (userId, reason) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/users/${userId}/disable`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ reason })
+        headers,
+        body: JSON.stringify({ 
+          reason, 
+          is_permanent: isPermanent, 
+          days: isPermanent ? 0 : days 
+        })
       });
 
       if (!response.ok) throw new Error('Failed to disable user');
       
       fetchUsers();
-      setSuccessMessage('User disabled successfully!');
+      const message = isPermanent 
+        ? 'User disabled permanently!' 
+        : `User disabled for ${days} days!`;
+      setSuccessMessage(message);
     } catch (err) {
       setError('Failed to disable user');
     }
   };
 
-  const handleEnableUser = async (userId) => {
+  const handleEnableUser = async (uid) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/users/${userId}/enable`, {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_BASE_URL}/admin/users/${uid}/enable`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers,
+        body: JSON.stringify({ reason: 'User enabled by admin' })
       });
 
       if (!response.ok) throw new Error('Failed to enable user');
@@ -109,26 +96,6 @@ function UsersPage() {
       setSuccessMessage('User enabled successfully!');
     } catch (err) {
       setError('Failed to enable user');
-    }
-  };
-
-  const handleDeleteUser = async (userId) => {
-    if (window.confirm('Are you sure you want to delete this user?')) {
-      try {
-        const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (!response.ok) throw new Error('Failed to delete user');
-        
-        fetchUsers();
-        setSuccessMessage('User deleted successfully!');
-      } catch (err) {
-        setError('Failed to delete user');
-      }
     }
   };
 
@@ -142,13 +109,23 @@ function UsersPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+      <Box sx={{ mb: 4 }}>
+        <Typography 
+          variant="h4" 
+          sx={{ 
+            fontWeight: 700,
+            mb: 1,
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}
+        >
           Users Management
         </Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddUser}>
-          Add User
-        </Button>
+        <Typography variant="body2" color="text.secondary">
+          View and manage all registered users
+        </Typography>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -158,10 +135,7 @@ function UsersPage() {
         onRefresh={fetchUsers}
         onDisable={handleDisableUser}
         onEnable={handleEnableUser}
-        onDelete={handleDeleteUser}
       />
-      
-      <AddUserDialog open={openDialog} onClose={handleCloseDialog} onSave={handleSaveUser} />
       
       <Snackbar
         open={!!successMessage}
