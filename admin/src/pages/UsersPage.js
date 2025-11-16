@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Typography, CircularProgress, Alert, Snackbar } from '@mui/material';
 import UsersTable from '../components/users/UsersTable';
 import { useAuth } from '../contexts/AuthContext';
-import { auth } from '../config/firebase';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:4000/api/v1';
 
@@ -13,11 +12,7 @@ function UsersPage() {
   const [successMessage, setSuccessMessage] = useState(null);
   const { currentUser } = useAuth();
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const getAuthHeaders = async () => {
+  const getAuthHeaders = useCallback(async () => {
     if (!currentUser) return {};
     
     try {
@@ -30,9 +25,9 @@ function UsersPage() {
       console.error('Error getting auth token:', err);
       return { 'Content-Type': 'application/json' };
     }
-  };
+  }, [currentUser]);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -54,7 +49,11 @@ function UsersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [getAuthHeaders]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
 
   const handleDisableUser = async (uid, reason, days, isPermanent) => {
     try {

@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import {
-  Box,
   Button,
   TextField,
-  Typography,
   Paper,
   Alert,
   CircularProgress,
@@ -39,7 +37,7 @@ function AdminCreatePhysician({ onSuccess }) {
     
     setLoading(true);
     try {
-      const res = await apiClient.post('/admin/users/create', form);
+      await apiClient.post('/admin/users/create', form);
       setSuccessMsg(`Physician account created successfully! Email: ${form.email}`);
       setForm({
         first_name: '',

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Grid, Card, CardContent, Typography, Box, CircularProgress, Paper } from '@mui/material';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Grid, Typography, Box, CircularProgress, Paper } from '@mui/material';
 import PeopleIcon from '@mui/icons-material/People';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
@@ -15,11 +15,7 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
   const { currentUser } = useAuth();
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
-
-  const getAuthHeaders = async () => {
+  const getAuthHeaders = useCallback(async () => {
     if (!currentUser) return {};
     try {
       const token = await currentUser.getIdToken();
@@ -30,9 +26,9 @@ function Dashboard() {
     } catch (err) {
       return { 'Content-Type': 'application/json' };
     }
-  };
+  }, [currentUser]);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(`${API_BASE_URL}/admin/users/stats`, {
@@ -49,7 +45,11 @@ function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [getAuthHeaders]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
   if (loading) {
     return (
