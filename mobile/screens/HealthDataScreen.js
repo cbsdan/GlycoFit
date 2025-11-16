@@ -14,7 +14,8 @@ import {
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import healthConnectManager, {
+import {
+  healthConnectManager,
   initializeHealthConnect as initHealthConnect,
   requestAllHealthPermissions,
   getTodayData,
@@ -60,16 +61,8 @@ const HealthDataScreen = ({ navigation }) => {
       
       if (healthConnectManager.isSdkAvailable()) {
         toast.success('Health Connect initialized successfully!');
-        
-        // After initialization, try to fetch data (this will work if permissions already granted)
-        try {
-          await fetchHealthData();
-          // If fetch succeeds, permissions were already granted
-          setHasPermissions(true);
-        } catch (fetchError) {
-          console.log('No permissions yet or data fetch failed:', fetchError.message);
-          // Permissions not granted yet, user needs to grant them
-        }
+        // Don't try to fetch data yet - always show permission screen first
+        // This ensures user explicitly grants all needed permissions
       } else {
         toast.error(`Health Connect not available: ${healthConnectManager.getSdkStatusDescription()}`);
       }
@@ -113,22 +106,100 @@ const HealthDataScreen = ({ navigation }) => {
   const requestPermissions = async () => {
     try {
       setIsLoading(true);
+      
+      // Ensure Health Connect is initialized before requesting permissions
+      if (!isInitialized || !healthConnectManager.isInitialized) {
+        console.log('⚠️ Health Connect not initialized, initializing now...');
+        try {
+          await initHealthConnect();
+          setIsInitialized(true);
+        } catch (initError) {
+          console.error('❌ Initialization failed:', initError);
+          
+          // Show error dialog
+          let message = initError.message || 'Failed to initialize Health Connect';
+          let buttons = [{ text: 'OK' }];
+          
+          if (initError.code === 'NOT_INSTALLED' || initError.code === 'UPDATE_REQUIRED' || initError.code === 'SERVICE_UNAVAILABLE') {
+            message = initError.suggestion || message;
+            buttons = [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Open Play Store', 
+                onPress: () => {
+                  if (initError.playStoreUrl) {
+                    Linking.openURL(initError.playStoreUrl).catch(err => {
+                      console.error('Failed to open Play Store:', err);
+                      toast.error('Could not open Play Store');
+                    });
+                  }
+                }
+              }
+            ];
+          }
+          
+          Alert.alert('Initialization Failed', message, buttons);
+          toast.error(initError.message);
+          return;
+        }
+        
+        // Verify initialization succeeded
+        if (!healthConnectManager.isInitialized) {
+          toast.error('Health Connect initialization failed');
+          return;
+        }
+      }
+      
+      // Refresh SDK status to ensure we have the latest
+      const currentStatus = await healthConnectManager.getSdkStatus();
+      console.log('📊 Current SDK Status before permission request:', currentStatus);
+      console.log('📊 SDK is available?', healthConnectManager.isSdkAvailable());
+      
+      console.log('🔐 Requesting all health permissions...');
       const permissions = await requestAllHealthPermissions();
       
       console.log('📋 Permission Results:', permissions);
+      console.log('📋 Result type:', typeof permissions);
+      console.log('📋 Is array?', Array.isArray(permissions));
       
-      // Check if permissions is an array (granted permissions) or object
+      // react-native-health-connect may return an empty array even when permissions are granted
+      // If the dialog was shown and no error was thrown, assume at least some permissions were granted
       let grantedCount = 0;
-      let totalCount = 16; // We requested 16 permissions
+      let totalCount = 20; // Total: 16 read + 4 write permissions
       
       if (Array.isArray(permissions)) {
         grantedCount = permissions.length;
-        console.log('✅ Granted Permissions:', permissions.map(p => p.recordType).join(', '));
-      } else if (typeof permissions === 'object') {
+        if (grantedCount > 0) {
+          console.log('✅ Granted Permissions:', permissions.map(p => `${p.accessType}:${p.recordType}`).join(', '));
+        }
+      } else if (typeof permissions === 'object' && permissions !== null) {
         grantedCount = Object.values(permissions).filter(Boolean).length;
       }
       
-      if (grantedCount > 0) {
+      // If dialog was shown and completed without error, assume success even if return is empty
+      // This is a known behavior with react-native-health-connect
+      if (grantedCount === 0 && Array.isArray(permissions)) {
+        console.log('⚠️ Empty array returned, but dialog was shown. Assuming permissions granted.');
+        // Try to fetch data - if it works, permissions were granted
+        setHasPermissions(true);
+        toast.success('Permissions processed - checking data access...');
+        
+        try {
+          await fetchHealthData();
+          toast.success('Health Connect permissions granted!');
+        } catch (error) {
+          console.error('Failed to fetch after permission grant:', error);
+          setHasPermissions(false);
+          Alert.alert(
+            'Permission Issue',
+            'Could not access health data. Please try granting permissions again or check Health Connect settings.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Try Again', onPress: () => requestPermissions() }
+            ]
+          );
+        }
+      } else if (grantedCount > 0) {
         setHasPermissions(true);
         toast.success(`Granted ${grantedCount}/${totalCount} permissions`);
         
@@ -155,8 +226,37 @@ const HealthDataScreen = ({ navigation }) => {
         );
       }
     } catch (error) {
-      console.error('Failed to request permissions:', error);
-      toast.error('Failed to request permissions: ' + error.message);
+      console.error('❌ Initialization error:', error);
+      
+      // Show user-friendly error with action buttons
+      let message = error.message || 'Failed to request permissions';
+      let buttons = [{ text: 'OK' }];
+      
+      if (error.code === 'NOT_INSTALLED' || error.code === 'UPDATE_REQUIRED' || error.code === 'SERVICE_UNAVAILABLE') {
+        message = error.suggestion || message;
+        buttons = [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Open Play Store', 
+            onPress: () => {
+              if (error.playStoreUrl) {
+                Linking.openURL(error.playStoreUrl).catch(err => {
+                  console.error('Failed to open Play Store:', err);
+                  toast.error('Could not open Play Store');
+                });
+              }
+            }
+          }
+        ];
+      }
+      
+      Alert.alert(
+        'Cannot Request Permissions',
+        message,
+        buttons
+      );
+      
+      toast.error(error.message);
     } finally {
       setIsLoading(false);
     }
@@ -189,12 +289,29 @@ const HealthDataScreen = ({ navigation }) => {
 
       console.log('📅 Fetching health data from', startDate.toISOString(), 'to', endDate.toISOString());
 
-      // Fetch all categories of health data (removed bodyMeasurements and nutrition)
-      const [activity, vitals, sleep] = await Promise.all([
-        getActivityData(startDate, endDate),
-        getVitalsData(startDate, endDate),
-        getSleepData(startDate, endDate),
-      ]);
+      // Fetch all categories of health data with individual error handling
+      // This prevents one permission error from breaking the entire fetch
+      let activity = { steps: [], distance: [], activeCalories: [], totalCalories: [], exerciseSessions: [] };
+      let vitals = { heartRate: [], bloodPressure: [], bloodGlucose: [], oxygenSaturation: [], restingHeartRate: [] };
+      let sleep = [];
+
+      try {
+        activity = await getActivityData(startDate, endDate);
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch activity data:', error.message);
+      }
+
+      try {
+        vitals = await getVitalsData(startDate, endDate);
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch vitals data:', error.message);
+      }
+
+      try {
+        sleep = await getSleepData(startDate, endDate);
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch sleep data:', error.message);
+      }
 
       console.log('📊 Activity Data:', {
         steps: Array.isArray(activity?.steps) ? activity.steps.length : 0,
@@ -219,7 +336,18 @@ const HealthDataScreen = ({ navigation }) => {
       };
 
       setHealthData(allData);
-      toast.success('Health data loaded successfully!');
+      
+      // Count successful data categories
+      const hasActivityData = activity.steps?.length > 0 || activity.distance?.length > 0;
+      const hasVitalsData = vitals.heartRate?.length > 0 || vitals.bloodPressure?.length > 0;
+      const hasSleepData = sleep?.length > 0;
+      const successCount = [hasActivityData, hasVitalsData, hasSleepData].filter(Boolean).length;
+      
+      if (successCount > 0) {
+        toast.success(`Health data loaded (${successCount}/3 categories available)`);
+      } else {
+        toast.info('No health data available. Try granting more permissions or add data in Health Connect.');
+      }
     } catch (error) {
       console.error('Failed to fetch health data:', error);
       toast.error('Failed to fetch health data: ' + error.message);

@@ -14,7 +14,7 @@ from routes.auth_routes import auth_bp
 from routes.user_routes import user_bp
 from routes.nutrient_routes import nutrient_bp
 from routes.gemini_routes import gemini_bp
-from routes.activity_routes import activity_bp  # Add this import
+from routes.admin_routes import admin_bp
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
 from services.ml_service import init_ml_service
@@ -38,13 +38,14 @@ def create_app():
     
     # CORS Configuration
     CORS(app, origins=[
-        "exp://192.168.*.*:*",
-        "http://localhost:*",
-        "https://localhost:*",
-        "capacitor://localhost",
-        "ionic://localhost",
-        "http://192.168.*.*:*",
-        "https://192.168.*.*:*"
+        "exp://192.168.*.*:*",  # Expo development
+        "http://localhost:*",   # Local development
+        "https://localhost:*",  # Local HTTPS
+        "https://localhost:3000",  # Local HTTPS
+        "capacitor://localhost", # Capacitor apps
+        "ionic://localhost",    # Ionic apps
+        "http://192.168.*.*:*", # Local network
+        "https://192.168.*.*:*" # Local network HTTPS
     ], supports_credentials=True)
     
     # Setup logging
@@ -108,7 +109,7 @@ def create_app():
     app.register_blueprint(user_bp, url_prefix='/api/v1/users')
     app.register_blueprint(nutrient_bp, url_prefix='/api/v1/nutrients')
     app.register_blueprint(gemini_bp, url_prefix='/api/v1/gemini')
-    app.register_blueprint(activity_bp, url_prefix='/api/v1/activity')  # Add this line
+    app.register_blueprint(admin_bp, url_prefix='/api/v1/admin')
 
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])

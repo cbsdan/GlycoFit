@@ -1,13 +1,237 @@
 import { Platform } from 'react-native';
 import {
   initialize,
-  getSdkStatus,
   requestPermission,
   readRecords,
+  insertRecords,
+  getSdkStatus,
   SdkAvailabilityStatus,
   openHealthConnectSettings,
-  insertRecords,
 } from 'react-native-health-connect';
+
+class HealthConnectService {
+  constructor() {
+    this.isInitialized = false;
+  }
+
+  /**
+   * Check if Health Connect is available on the device
+   */
+  async checkAvailability() {
+    try {
+      const status = await getSdkStatus();
+      console.log('Health Connect SDK Status:', status);
+      
+      if (status === SdkAvailabilityStatus.SDK_AVAILABLE) {
+        return { available: true, message: 'Health Connect is available' };
+      } else if (status === SdkAvailabilityStatus.SDK_UNAVAILABLE) {
+        return { 
+          available: false, 
+          message: 'Health Connect is not installed. Please install it from the Play Store.' 
+        };
+      } else if (status === SdkAvailabilityStatus.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
+        return { 
+          available: false, 
+          message: 'Health Connect needs to be updated.' 
+        };
+      }
+      
+      return { available: false, message: 'Health Connect status unknown' };
+    } catch (error) {
+      console.error('Error checking Health Connect availability:', error);
+      return { available: false, message: error.message };
+    }
+  }
+
+  /**
+   * Initialize Health Connect
+   */
+  async initialize() {
+    try {
+      const isInitialized = await initialize();
+      this.isInitialized = isInitialized;
+      console.log('Health Connect initialized:', isInitialized);
+      return isInitialized;
+    } catch (error) {
+      console.error('Error initializing Health Connect:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Request permissions for steps
+   */
+  async requestStepsPermissions() {
+    try {
+      const permissions = [
+        { accessType: 'read', recordType: 'Steps' },
+        { accessType: 'write', recordType: 'Steps' },
+      ];
+
+      const granted = await requestPermission(permissions);
+      console.log('Steps permissions granted:', granted);
+      return granted;
+    } catch (error) {
+      console.error('Error requesting steps permissions:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Read steps data for a date range
+   * @param {Date} startDate - Start date
+   * @param {Date} endDate - End date
+   */
+  async readSteps(startDate, endDate) {
+    try {
+      if (!this.isInitialized) {
+        await this.initialize();
+      }
+
+      const timeRangeFilter = {
+        operator: 'between',
+        startTime: startDate.toISOString(),
+        endTime: endDate.toISOString(),
+      };
+
+      // Pass timeRangeFilter inside an options object
+      const result = await readRecords('Steps', { timeRangeFilter });
+      console.log('Steps records read:', result);
+      
+      // Calculate total steps
+      const totalSteps = result.records.reduce((sum, record) => {
+        return sum + (record.count || 0);
+      }, 0);
+
+      return {
+        success: true,
+        totalSteps,
+        records: result.records,
+      };
+    } catch (error) {
+      console.error('Error reading steps:', error);
+      return {
+        success: false,
+        error: error.message,
+        totalSteps: 0,
+        records: [],
+      };
+    }
+  }
+
+  /**
+   * Get today's steps
+   */
+  async getTodaySteps() {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    
+    return await this.readSteps(startOfDay, endOfDay);
+  }
+
+  /**
+   * Get steps for the last 7 days
+   */
+  async getWeekSteps() {
+    const now = new Date();
+    const startOfWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    startOfWeek.setHours(0, 0, 0, 0);
+    
+    return await this.readSteps(startOfWeek, now);
+  }
+
+  /**
+   * Write steps data (for manual entry)
+   * @param {number} stepCount - Number of steps
+   * @param {Date} startTime - Start time of the activity
+   * @param {Date} endTime - End time of the activity
+   */
+  async writeSteps(stepCount, startTime, endTime) {
+    try {
+      if (!this.isInitialized) {
+        await this.initialize();
+      }
+
+      const record = {
+        recordType: 'Steps',
+        count: stepCount,
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+      };
+
+      const result = await insertRecords([record]);
+      console.log('Steps written:', result);
+      
+      return {
+        success: true,
+        recordIds: result,
+      };
+    } catch (error) {
+      console.error('Error writing steps:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Get steps grouped by day
+   * @param {Date} startDate - Start date
+   * @param {Date} endDate - End date
+   */
+  async getStepsByDay(startDate, endDate) {
+    try {
+      const result = await this.readSteps(startDate, endDate);
+      
+      if (!result.success) {
+        return result;
+      }
+
+      // Group records by day
+      const stepsByDay = {};
+      
+      result.records.forEach(record => {
+        const date = new Date(record.startTime);
+        const dayKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
+        
+        if (!stepsByDay[dayKey]) {
+          stepsByDay[dayKey] = {
+            date: dayKey,
+            totalSteps: 0,
+            records: [],
+          };
+        }
+        
+        stepsByDay[dayKey].totalSteps += record.count || 0;
+        stepsByDay[dayKey].records.push(record);
+      });
+
+      // Convert to array and sort by date (newest first)
+      const dailyData = Object.values(stepsByDay).sort((a, b) => 
+        new Date(b.date) - new Date(a.date)
+      );
+
+      return {
+        success: true,
+        dailyData,
+        totalSteps: result.totalSteps,
+      };
+    } catch (error) {
+      console.error('Error getting steps by day:', error);
+      return {
+        success: false,
+        error: error.message,
+        dailyData: [],
+        totalSteps: 0,
+      };
+    }
+  }
+}
+
+// Create singleton instance for backward compatibility with StepCounterScreen
+const legacyHealthConnectService = new HealthConnectService();
 
 // Define all available Health Connect record types
 export const HealthRecordTypes = {
@@ -171,7 +395,7 @@ class HealthConnectManager {
       { accessType: 'read', recordType: HealthRecordTypes.TOTAL_CALORIES_BURNED },
       { accessType: 'read', recordType: HealthRecordTypes.EXERCISE_SESSION },
       
-      // Activity - WRITE (ADD THESE)
+      // Activity - WRITE (for writing step data from phone sensor)
       { accessType: 'write', recordType: HealthRecordTypes.STEPS },
       { accessType: 'write', recordType: HealthRecordTypes.DISTANCE },
       { accessType: 'write', recordType: HealthRecordTypes.ACTIVE_CALORIES_BURNED },
@@ -515,26 +739,9 @@ export const openHealthConnectSettingsPage = () => openHealthConnectSettings();
 // Re-export from library
 export { SdkAvailabilityStatus };
 
-// Export manager instance
-export default healthConnectManager;
+// Export both instances for compatibility
+// Default export is the legacy service for StepCounterScreen
+export default legacyHealthConnectService;
 
-// Add this function to your existing healthConnectService.js
-
-export const insertSteps = async ({ count, startTime, endTime }) => {
-  try {
-    const result = await insertRecords([
-      {
-        recordType: 'Steps',
-        count: count,
-        startTime: startTime,
-        endTime: endTime,
-      }
-    ]);
-    
-    console.log('✅ Steps inserted to Health Connect:', result);
-    return { success: true, result };
-  } catch (error) {
-    console.error('❌ Failed to insert steps:', error);
-    return { success: false, error: error.message };
-  }
-};
+// Named export for the new manager used by HealthDataScreen
+export { healthConnectManager };
