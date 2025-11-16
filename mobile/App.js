@@ -20,6 +20,7 @@ import MealHistoryScreen from './screens/MealHistoryScreen';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingScreen from './components/LoadingScreen';
 import StepCounterScreen from './screens/StepCounterScreen';
+import WelcomeScreen from './screens/WelcomeScreen';
 
 const Stack = createStackNavigator();
 
@@ -145,6 +146,11 @@ function AppNavigator() {
           </>
         ) : (
           <>
+            <Stack.Screen 
+              name="Welcome" 
+              component={WelcomeScreen} 
+              options={{ headerShown: false }}
+            />
             <Stack.Screen 
               name="Login" 
               options={{ headerShown: false }} 
