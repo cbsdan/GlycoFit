@@ -119,7 +119,9 @@ export const authService = {
       console.error('Login error:', error);
       let errorMessage = 'Login failed. Please try again.';
       
-      if (error.code === 'auth/user-not-found') {
+      if (error.code === 'auth/invalid-credential') {
+        errorMessage = 'Invalid email or password. Please check your credentials.';
+      } else if (error.code === 'auth/user-not-found') {
         errorMessage = 'No account found with this email.';
       } else if (error.code === 'auth/wrong-password') {
         errorMessage = 'Incorrect password.';
@@ -129,6 +131,8 @@ export const authService = {
         errorMessage = 'This account has been disabled.';
       } else if (error.code === 'auth/too-many-requests') {
         errorMessage = 'Too many failed attempts. Please try again later.';
+      } else if (error.code === 'auth/network-request-failed') {
+        errorMessage = 'Network error. Please check your connection.';
       }
       
       return {
@@ -200,6 +204,350 @@ export const authService = {
         success: false,
         error: 'Failed to send password reset email',
       };
+    }
+  },
+};
+
+// ============================================
+// PHYSICIAN PROFILE API
+// ============================================
+export const physicianAPI = {
+  getProfile: async () => {
+    try {
+      const response = await api.get('/physician/profile');
+      return response.data;
+    } catch (error) {
+      console.error('Get physician profile error:', error);
+      throw error;
+    }
+  },
+
+  updateProfile: async (data) => {
+    try {
+      const response = await api.put('/physician/profile', data);
+      return response.data;
+    } catch (error) {
+      console.error('Update physician profile error:', error);
+      throw error;
+    }
+  },
+
+  updateAvailability: async (data) => {
+    try {
+      const response = await api.put('/physician/availability', data);
+      return response.data;
+    } catch (error) {
+      console.error('Update availability error:', error);
+      throw error;
+    }
+  },
+
+  getStats: async () => {
+    try {
+      const response = await api.get('/physician/stats');
+      return response.data;
+    } catch (error) {
+      console.error('Get physician stats error:', error);
+      throw error;
+    }
+  },
+
+  uploadProfilePicture: async (imageUri) => {
+    try {
+      const formData = new FormData();
+      
+      // Extract filename from URI
+      const filename = imageUri.split('/').pop();
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+      
+      formData.append('file', {
+        uri: imageUri,
+        name: filename,
+        type: type,
+      });
+
+      const response = await api.post('/physician/profile/picture', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Upload profile picture error:', error);
+      throw error;
+    }
+  },
+};
+
+// ============================================
+// PATIENT MANAGEMENT API
+// ============================================
+export const patientAPI = {
+  getRequests: async (urgency) => {
+    try {
+      const params = urgency ? { urgency } : {};
+      const response = await api.get('/physician/patients/requests', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Get patient requests error:', error);
+      throw error;
+    }
+  },
+
+  acceptRequest: async (requestId) => {
+    try {
+      const response = await api.post(`/physician/patients/requests/${requestId}/accept`);
+      return response.data;
+    } catch (error) {
+      console.error('Accept patient request error:', error);
+      throw error;
+    }
+  },
+
+  declineRequest: async (requestId, reason) => {
+    try {
+      const response = await api.post(`/physician/patients/requests/${requestId}/decline`, { reason });
+      return response.data;
+    } catch (error) {
+      console.error('Decline patient request error:', error);
+      throw error;
+    }
+  },
+
+  getPatients: async (search) => {
+    try {
+      const params = search ? { search } : {};
+      const response = await api.get('/physician/patients', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Get patients error:', error);
+      throw error;
+    }
+  },
+
+  getPatientDetails: async (patientId) => {
+    try {
+      const response = await api.get(`/physician/patients/${patientId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Get patient details error:', error);
+      throw error;
+    }
+  },
+};
+
+// ============================================
+// CONSULTATION API
+// ============================================
+export const consultationAPI = {
+  create: async (data) => {
+    try {
+      const response = await api.post('/physician/consultations', data);
+      return response.data;
+    } catch (error) {
+      console.error('Create consultation error:', error);
+      throw error;
+    }
+  },
+
+  getAll: async (filters = {}) => {
+    try {
+      const response = await api.get('/physician/consultations', { params: filters });
+      return response.data;
+    } catch (error) {
+      console.error('Get consultations error:', error);
+      throw error;
+    }
+  },
+
+  getById: async (id) => {
+    try {
+      const response = await api.get(`/physician/consultations/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Get consultation error:', error);
+      throw error;
+    }
+  },
+
+  start: async (id) => {
+    try {
+      const response = await api.post(`/physician/consultations/${id}/start`);
+      return response.data;
+    } catch (error) {
+      console.error('Start consultation error:', error);
+      throw error;
+    }
+  },
+
+  complete: async (id, data) => {
+    try {
+      const response = await api.post(`/physician/consultations/${id}/complete`, data);
+      return response.data;
+    } catch (error) {
+      console.error('Complete consultation error:', error);
+      throw error;
+    }
+  },
+
+  cancel: async (id, reason) => {
+    try {
+      const response = await api.post(`/physician/consultations/${id}/cancel`, { reason });
+      return response.data;
+    } catch (error) {
+      console.error('Cancel consultation error:', error);
+      throw error;
+    }
+  },
+
+  reschedule: async (id, data) => {
+    try {
+      const response = await api.post(`/physician/consultations/${id}/reschedule`, data);
+      return response.data;
+    } catch (error) {
+      console.error('Reschedule consultation error:', error);
+      throw error;
+    }
+  },
+};
+
+// ============================================
+// PRESCRIPTION API
+// ============================================
+export const prescriptionAPI = {
+  create: async (data) => {
+    try {
+      const response = await api.post('/physician/prescriptions', data);
+      return response.data;
+    } catch (error) {
+      console.error('Create prescription error:', error);
+      throw error;
+    }
+  },
+
+  getAll: async (filters = {}) => {
+    try {
+      const response = await api.get('/physician/prescriptions', { params: filters });
+      return response.data;
+    } catch (error) {
+      console.error('Get prescriptions error:', error);
+      throw error;
+    }
+  },
+
+  getById: async (id) => {
+    try {
+      const response = await api.get(`/physician/prescriptions/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Get prescription error:', error);
+      throw error;
+    }
+  },
+
+  update: async (id, data) => {
+    try {
+      const response = await api.put(`/physician/prescriptions/${id}`, data);
+      return response.data;
+    } catch (error) {
+      console.error('Update prescription error:', error);
+      throw error;
+    }
+  },
+
+  refill: async (id) => {
+    try {
+      const response = await api.post(`/physician/prescriptions/${id}/refill`);
+      return response.data;
+    } catch (error) {
+      console.error('Refill prescription error:', error);
+      throw error;
+    }
+  },
+
+  cancel: async (id, reason) => {
+    try {
+      const response = await api.post(`/physician/prescriptions/${id}/cancel`, { reason });
+      return response.data;
+    } catch (error) {
+      console.error('Cancel prescription error:', error);
+      throw error;
+    }
+  },
+};
+
+// ============================================
+// APPOINTMENT API
+// ============================================
+export const appointmentAPI = {
+  create: async (data) => {
+    try {
+      const response = await api.post('/physician/appointments', data);
+      return response.data;
+    } catch (error) {
+      console.error('Create appointment error:', error);
+      throw error;
+    }
+  },
+
+  getAll: async (filters = {}) => {
+    try {
+      const response = await api.get('/physician/appointments', { params: filters });
+      return response.data;
+    } catch (error) {
+      console.error('Get appointments error:', error);
+      throw error;
+    }
+  },
+
+  getById: async (id) => {
+    try {
+      const response = await api.get(`/physician/appointments/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Get appointment error:', error);
+      throw error;
+    }
+  },
+
+  confirm: async (id) => {
+    try {
+      const response = await api.post(`/physician/appointments/${id}/confirm`);
+      return response.data;
+    } catch (error) {
+      console.error('Confirm appointment error:', error);
+      throw error;
+    }
+  },
+
+  cancel: async (id, reason) => {
+    try {
+      const response = await api.post(`/physician/appointments/${id}/cancel`, { reason });
+      return response.data;
+    } catch (error) {
+      console.error('Cancel appointment error:', error);
+      throw error;
+    }
+  },
+
+  reschedule: async (id, data) => {
+    try {
+      const response = await api.post(`/physician/appointments/${id}/reschedule`, data);
+      return response.data;
+    } catch (error) {
+      console.error('Reschedule appointment error:', error);
+      throw error;
+    }
+  },
+
+  complete: async (id, data) => {
+    try {
+      const response = await api.post(`/physician/appointments/${id}/complete`, data);
+      return response.data;
+    } catch (error) {
+      console.error('Complete appointment error:', error);
+      throw error;
     }
   },
 };

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -66,7 +66,6 @@ export default function TabNavigator() {
         component={PatientsScreen}
         options={{
           title: 'My Patients',
-          tabBarBadge: 3, // Placeholder for patient requests count
         }}
       />
       <Tab.Screen 

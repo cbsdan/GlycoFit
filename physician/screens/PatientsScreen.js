@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,72 +6,89 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { patientAPI } from '../services/api';
+import { useToast } from '../context/ToastContext';
 
 export default function PatientsScreen() {
   const { colors: theme } = useTheme();
+  const { showToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTab, setSelectedTab] = useState('all'); // all, active, requests
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [activePatients, setActivePatients] = useState([]);
+  const [patientRequests, setPatientRequests] = useState([]);
 
-  // Placeholder data
-  const patients = [
-    {
-      id: 1,
-      name: 'Sarah Williams',
-      age: 41,
-      condition: 'Type 2 Diabetes',
-      status: 'active',
-      lastVisit: '2 days ago',
-      glucoseLevel: 142,
-      medications: 3,
-    },
-    {
-      id: 2,
-      name: 'Robert Brown',
-      age: 55,
-      condition: 'Type 2 Diabetes',
-      status: 'active',
-      lastVisit: '1 week ago',
-      glucoseLevel: 168,
-      medications: 4,
-    },
-    {
-      id: 3,
-      name: 'Emily Davis',
-      age: 34,
-      condition: 'Pre-diabetic',
-      status: 'active',
-      lastVisit: '3 days ago',
-      glucoseLevel: 118,
-      medications: 1,
-    },
-    {
-      id: 4,
-      name: 'John Doe',
-      age: 45,
-      condition: 'Type 2 Diabetes',
-      status: 'request',
-      requestDate: '2 hours ago',
-      urgency: 'medium',
-    },
-    {
-      id: 5,
-      name: 'Jane Smith',
-      age: 38,
-      condition: 'Pre-diabetic',
-      status: 'request',
-      requestDate: '5 hours ago',
-      urgency: 'low',
-    },
-  ];
+  useEffect(() => {
+    fetchPatients();
+  }, []);
 
-  const filteredPatients = patients.filter((patient) => {
-    const matchesSearch = patient.name
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase());
+  const fetchPatients = async () => {
+    try {
+      setLoading(true);
+      const [patientsRes, requestsRes] = await Promise.all([
+        patientAPI.getPatients(),
+        patientAPI.getRequests(),
+      ]);
+
+      if (patientsRes.success) {
+        setActivePatients(patientsRes.data);
+      }
+
+      if (requestsRes.success) {
+        setPatientRequests(requestsRes.data);
+      }
+    } catch (error) {
+      console.error('Error fetching patients:', error);
+      showToast('Failed to load patients', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchPatients();
+    setRefreshing(false);
+  };
+
+  const handleAcceptRequest = async (requestId) => {
+    try {
+      const response = await patientAPI.acceptRequest(requestId);
+      if (response.success) {
+        showToast('Patient request accepted', 'success');
+        fetchPatients();
+      }
+    } catch (error) {
+      console.error('Error accepting request:', error);
+      showToast('Failed to accept request', 'error');
+    }
+  };
+
+  const handleDeclineRequest = async (requestId) => {
+    try {
+      const response = await patientAPI.declineRequest(requestId);
+      if (response.success) {
+        showToast('Patient request declined', 'success');
+        fetchPatients();
+      }
+    } catch (error) {
+      console.error('Error declining request:', error);
+      showToast('Failed to decline request', 'error');
+    }
+  };
+
+  const allPatients = [...activePatients.map(p => ({ ...p, status: 'active' })), ...patientRequests.map(r => ({ ...r, status: 'request' }))];
+
+  const filteredPatients = allPatients.filter((patient) => {
+    const patientName = patient.name || patient.patient?.name || patient.patient?.first_name + ' ' + patient.patient?.last_name || '';
+    const matchesSearch = patientName.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesTab =
       selectedTab === 'all' ||
       (selectedTab === 'active' && patient.status === 'active') ||
@@ -84,6 +101,17 @@ export default function PatientsScreen() {
     if (level < 140) return theme.warning;
     return theme.error;
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={{ color: theme.text, marginTop: 16 }}>Loading patients...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
@@ -175,18 +203,40 @@ export default function PatientsScreen() {
             >
               Requests
             </Text>
-            <View
-              style={[styles.badge, { backgroundColor: theme.error }]}
-            >
-              <Text style={styles.badgeText}>3</Text>
-            </View>
+            {patientRequests.length > 0 && (
+              <View
+                style={[styles.badge, { backgroundColor: theme.error }]}
+              >
+                <Text style={styles.badgeText}>{patientRequests.length}</Text>
+              </View>
+            )}
           </View>
         </TouchableOpacity>
       </View>
 
       {/* Patient List */}
-      <ScrollView style={styles.listContainer}>
-        {filteredPatients.map((patient) =>
+      <ScrollView 
+        style={styles.listContainer}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        {filteredPatients.length === 0 ? (
+          <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, ...theme.shadow }]}>
+            <Ionicons name="people-outline" size={64} color={theme.secondary} />
+            <Text style={[styles.emptyStateText, { color: theme.text }]}>
+              {selectedTab === 'all' ? 'No patients yet' : 
+               selectedTab === 'active' ? 'No active patients' : 
+               'No pending requests'}
+            </Text>
+            <Text style={[styles.emptyStateSubtext, { color: theme.secondary }]}>
+              {selectedTab === 'requests' 
+                ? 'Patient requests will appear here'
+                : 'Start connecting with patients to see them here'}
+            </Text>
+          </View>
+        ) : (
+          filteredPatients.map((patient) =>
           patient.status === 'request' ? (
             <TouchableOpacity
               key={patient.id}
@@ -232,11 +282,13 @@ export default function PatientsScreen() {
                     styles.acceptButton,
                     { backgroundColor: theme.success },
                   ]}
+                  onPress={() => handleAcceptRequest(patient._id || patient.id)}
                 >
                   <Text style={styles.actionButtonText}>Accept</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.declineButton, { borderColor: theme.error }]}
+                  onPress={() => handleDeclineRequest(patient._id || patient.id)}
                 >
                   <Text style={[styles.declineText, { color: theme.error }]}>
                     Decline
@@ -322,7 +374,7 @@ export default function PatientsScreen() {
               </View>
             </TouchableOpacity>
           )
-        )}
+        ))}
       </ScrollView>
       </View>
     </SafeAreaView>
@@ -469,5 +521,24 @@ const styles = StyleSheet.create({
   declineText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  emptyState: {
+    padding: 48,
+    marginTop: 32,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    marginHorizontal: 16,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

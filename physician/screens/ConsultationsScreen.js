@@ -1,21 +1,74 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { consultationAPI, prescriptionAPI } from '../services/api';
+import { useToast } from '../context/ToastContext';
 
 export default function ConsultationsScreen() {
   const { colors: theme } = useTheme();
-  const [selectedTab, setSelectedTab] = useState('upcoming'); // upcoming, completed, prescriptions
+  const { showToast } = useToast();
+  const [selectedTab, setSelectedTab] = useState('upcoming');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [consultations, setConsultations] = useState([]);
+  const [prescriptions, setPrescriptions] = useState([]);
 
-  // Placeholder data
-  const consultations = [
+  useEffect(() => {
+    fetchData();
+  }, [selectedTab]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      if (selectedTab === 'prescriptions') {
+        const response = await prescriptionAPI.getAll();
+        if (response.success) {
+          setPrescriptions(response.data);
+        }
+      } else {
+        const status = selectedTab === 'upcoming' ? 'scheduled' : 'completed';
+        const response = await consultationAPI.getAll({ status });
+        if (response.success) {
+          setConsultations(response.data);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      showToast('Failed to load data', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={{ color: theme.text, marginTop: 16 }}>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Placeholder kept for backward compatibility
+  const oldConsultations = [
     {
       id: 1,
       patientName: 'Sarah Williams',
@@ -59,38 +112,8 @@ export default function ConsultationsScreen() {
     },
   ];
 
-  const prescriptions = [
-    {
-      id: 1,
-      patientName: 'Sarah Williams',
-      medication: 'Metformin',
-      dosage: '500mg',
-      frequency: 'Twice daily',
-      date: '2 days ago',
-      status: 'active',
-    },
-    {
-      id: 2,
-      patientName: 'Robert Brown',
-      medication: 'Insulin Glargine',
-      dosage: '20 units',
-      frequency: 'Once daily',
-      date: '1 week ago',
-      status: 'active',
-    },
-    {
-      id: 3,
-      patientName: 'Emily Davis',
-      medication: 'Glipizide',
-      dosage: '5mg',
-      frequency: 'Before meals',
-      date: '3 days ago',
-      status: 'pending',
-    },
-  ];
-
   const upcomingConsultations = consultations.filter(
-    (c) => c.status === 'upcoming'
+    (c) => c.status === 'scheduled' || c.status === 'upcoming'
   );
   const completedConsultations = consultations.filter(
     (c) => c.status === 'completed'
@@ -188,10 +211,26 @@ export default function ConsultationsScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView 
+        style={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         {selectedTab === 'upcoming' && (
           <View style={styles.section}>
-            {upcomingConsultations.map((consultation) => (
+            {upcomingConsultations.length === 0 ? (
+              <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, ...theme.shadow }]}>
+                <Ionicons name="calendar-outline" size={64} color={theme.secondary} />
+                <Text style={[styles.emptyStateText, { color: theme.text }]}>
+                  No upcoming consultations
+                </Text>
+                <Text style={[styles.emptyStateSubtext, { color: theme.secondary }]}>
+                  Scheduled consultations will appear here
+                </Text>
+              </View>
+            ) : (
+              upcomingConsultations.map((consultation) => (
               <TouchableOpacity
                 key={consultation.id}
                 style={[
@@ -274,13 +313,24 @@ export default function ConsultationsScreen() {
                   </TouchableOpacity>
                 </View>
               </TouchableOpacity>
-            ))}
+            )))}
           </View>
         )}
 
         {selectedTab === 'completed' && (
           <View style={styles.section}>
-            {completedConsultations.map((consultation) => (
+            {completedConsultations.length === 0 ? (
+              <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, ...theme.shadow }]}>
+                <Ionicons name="checkmark-done-outline" size={64} color={theme.secondary} />
+                <Text style={[styles.emptyStateText, { color: theme.text }]}>
+                  No completed consultations
+                </Text>
+                <Text style={[styles.emptyStateSubtext, { color: theme.secondary }]}>
+                  Completed consultations will appear here
+                </Text>
+              </View>
+            ) : (
+              completedConsultations.map((consultation) => (
               <TouchableOpacity
                 key={consultation.id}
                 style={[
@@ -371,13 +421,24 @@ export default function ConsultationsScreen() {
                   </Text>
                 </TouchableOpacity>
               </TouchableOpacity>
-            ))}
+            )))}
           </View>
         )}
 
         {selectedTab === 'prescriptions' && (
           <View style={styles.section}>
-            {prescriptions.map((prescription) => (
+            {prescriptions.length === 0 ? (
+              <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, ...theme.shadow }]}>
+                <Ionicons name="medical-outline" size={64} color={theme.secondary} />
+                <Text style={[styles.emptyStateText, { color: theme.text }]}>
+                  No prescriptions
+                </Text>
+                <Text style={[styles.emptyStateSubtext, { color: theme.secondary }]}>
+                  Prescriptions will appear here
+                </Text>
+              </View>
+            ) : (
+              prescriptions.map((prescription) => (
               <View
                 key={prescription.id}
                 style={[
@@ -461,7 +522,7 @@ export default function ConsultationsScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
-            ))}
+            )))}
           </View>
         )}
       </ScrollView>
@@ -646,5 +707,23 @@ const styles = StyleSheet.create({
   editPrescriptionText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  emptyState: {
+    padding: 48,
+    marginTop: 32,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
