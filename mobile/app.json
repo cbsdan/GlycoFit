@@ -30,13 +30,7 @@
       "intentFilters": [
         {
           "action": "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE",
-<<<<<<< HEAD
           "category": ["android.intent.category.DEFAULT"]
-=======
-          "category": [
-            "android.intent.category.DEFAULT"
-          ]
->>>>>>> d887b08fb34af347205fb0f968018844c9191691
         }
       ]
     },

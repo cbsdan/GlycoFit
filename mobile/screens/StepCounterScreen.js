@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Dimensions,
+  AppState,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
@@ -18,6 +19,7 @@ import healthConnectManager, {
   requestAllHealthPermissions,
   openHealthConnectSettingsPage,
 } from '../services/healthConnectService';
+import stepDetectionService from '../services/stepDetectionService';
 import api from '../services/api';
 
 const { width } = Dimensions.get('window');
@@ -31,15 +33,23 @@ const StepCounterScreen = ({ navigation }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState('today');
+  const [phoneSensorSteps, setPhoneSensorSteps] = useState(0);
+  const [lastSyncedSteps, setLastSyncedSteps] = useState(0);
+  const [lastWrittenToHealthConnect, setLastWrittenToHealthConnect] = useState(0);
   const [activityData, setActivityData] = useState({
     steps: 0,
     distance: 0,
     activeCalories: 0,
     totalCalories: 0,
     exerciseSessions: [],
-    dailyData: [], // For week/month breakdown
+    dailyData: [],
   });
   const [hasPermissions, setHasPermissions] = useState(false);
+
+  // Refs for intervals and timers
+  const syncIntervalRef = useRef(null);
+  const appStateRef = useRef(AppState.currentState);
+  const lastAutoSyncRef = useRef(Date.now());
 
   const periods = [
     { id: 'today', label: 'Today', icon: 'calendar-today' },
@@ -47,42 +57,214 @@ const StepCounterScreen = ({ navigation }) => {
     { id: 'month', label: 'Month', icon: 'calendar-month' },
   ];
 
-  // Initialize Health Connect
+  // Initialize services
   useEffect(() => {
-    initializeHealthConnect();
+    initializeServices();
+    
+    return () => {
+      // Cleanup on unmount
+      stepDetectionService.stop();
+      
+      // Clear sync interval
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+      }
+    };
   }, []);
 
   // Reload data when period changes
   useEffect(() => {
-    if (hasPermissions) {
+    if (selectedPeriod === 'today') {
+      updateTodaySteps();
+    } else if (hasPermissions) {
       loadActivityData();
     }
-  }, [selectedPeriod, hasPermissions]);
+  }, [selectedPeriod, hasPermissions, phoneSensorSteps]);
 
-  // Initialize Health Connect
-  const initializeHealthConnect = useCallback(async () => {
-    try {
-      console.log('🔧 Initializing Health Connect...');
+  // Auto-sync based on step milestones (every 50 steps)
+  useEffect(() => {
+    if (selectedPeriod === 'today' && phoneSensorSteps > 0) {
+      const stepDifference = phoneSensorSteps - lastSyncedSteps;
       
+      // Sync every 50 steps
+      if (stepDifference >= 50) {
+        console.log(`🎯 Step milestone reached: ${phoneSensorSteps} steps (${stepDifference} new) - auto-syncing...`);
+        performAutoSync();
+      }
+    }
+  }, [phoneSensorSteps, selectedPeriod, lastSyncedSteps]);
+
+  // Periodic auto-sync (every 5 minutes)
+  useEffect(() => {
+    if (selectedPeriod === 'today') {
+      // Clear existing interval
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+      }
+
+      // Set up new interval for periodic sync
+      syncIntervalRef.current = setInterval(() => {
+        const now = Date.now();
+        const timeSinceLastSync = now - lastAutoSyncRef.current;
+        
+        // Only sync if it's been more than 5 minutes since last sync
+        if (timeSinceLastSync >= 5 * 60 * 1000) {
+          console.log('⏰ Periodic auto-sync (5 minutes)...');
+          performAutoSync();
+        }
+      }, 5 * 60 * 1000); // Check every 5 minutes
+
+      return () => {
+        if (syncIntervalRef.current) {
+          clearInterval(syncIntervalRef.current);
+        }
+      };
+    }
+  }, [selectedPeriod]);
+
+  // Handle app state changes (foreground/background)
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      // App is coming to foreground
+      if (
+        appStateRef.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        console.log('📱 App came to foreground - syncing data...');
+        updateTodaySteps();
+        performAutoSync();
+      }
+      
+      // App is going to background
+      if (
+        appStateRef.current === 'active' &&
+        nextAppState.match(/inactive|background/)
+      ) {
+        console.log('📱 App going to background - saving data...');
+        performAutoSync();
+      }
+
+      appStateRef.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  // Auto-sync when leaving the screen
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', () => {
+      console.log('👋 Leaving screen - performing final sync...');
+      performAutoSync();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
+  // Perform auto-sync
+  const performAutoSync = useCallback(async () => {
+    if (isSyncing || selectedPeriod !== 'today') {
+      return;
+    }
+
+    try {
+      await updateTodaySteps();
+      await syncActivityToBackend(true); // Pass true for silent sync
+      setLastSyncedSteps(phoneSensorSteps);
+      lastAutoSyncRef.current = Date.now();
+    } catch (error) {
+      console.error('❌ Auto-sync error:', error);
+    }
+  }, [isSyncing, selectedPeriod, phoneSensorSteps]);
+
+  // Initialize all services
+  const initializeServices = useCallback(async () => {
+    try {
+      console.log('🔧 Initializing services...');
+      
+      // Initialize step detection (always enabled)
+      await stepDetectionService.initialize();
+      stepDetectionService.start();
+      
+      // Listen for step updates
+      const unsubscribe = stepDetectionService.addListener((steps) => {
+        setPhoneSensorSteps(steps);
+      });
+      
+      // Load current count
+      const currentSteps = stepDetectionService.getStepCount();
+      setPhoneSensorSteps(currentSteps);
+      setLastSyncedSteps(currentSteps);
+      
+      console.log('✅ Phone sensor started with', currentSteps, 'steps');
+      
+      // Initialize Health Connect (ALWAYS initialize for reading/writing)
       await healthConnectManager.initialize();
       const permissionsGranted = await requestAllHealthPermissions();
       
+      setHasPermissions(permissionsGranted);
+      
       if (permissionsGranted) {
-        console.log('✅ Permissions granted');
-        setHasPermissions(true);
+        console.log('✅ Health Connect permissions granted');
+        // Load last written count
+        const lastWritten = await loadLastWrittenSteps();
+        setLastWrittenToHealthConnect(lastWritten);
       } else {
-        console.log('❌ Permissions denied');
-        setHasPermissions(false);
-        toast.error('Health Connect permissions required');
+        console.log('⚠️ Health Connect permissions denied, using phone sensor only');
       }
+
+      // Initial data load and sync
+      await updateTodaySteps();
+      await performAutoSync();
+      
     } catch (error) {
       console.error('❌ Initialization error:', error);
-      toast.error('Failed to connect to Health Connect');
-      setHasPermissions(false);
+      toast.error('Failed to initialize step tracking');
     } finally {
       setIsLoading(false);
     }
   }, [toast]);
+
+  // Update today's steps (READ from Health Connect for unified view)
+  const updateTodaySteps = useCallback(async () => {
+    try {
+      let totalSteps = 0;
+      let distance = 0;
+      let calories = 0;
+      
+      if (hasPermissions) {
+        // Read ALL steps from Health Connect (including our written steps)
+        const { startDate, endDate } = getDateRange('today');
+        const healthData = await getActivityData(startDate, endDate);
+        
+        totalSteps = calculateTotalSteps(healthData.steps);
+        distance = calculateTotalDistance(healthData.distance);
+        calories = calculateTotalCalories(healthData.totalCalories);
+        
+        console.log(`📊 Health Connect: ${totalSteps} steps (includes all sources)`);
+      } else {
+        // Fallback: Use phone sensor only if no Health Connect access
+        totalSteps = phoneSensorSteps;
+        distance = stepDetectionService.calculateDistance(phoneSensorSteps);
+        calories = stepDetectionService.calculateCalories(phoneSensorSteps);
+        
+        console.log(`📱 Phone sensor only: ${totalSteps} steps`);
+      }
+      
+      setActivityData({
+        steps: totalSteps,
+        distance: distance,
+        activeCalories: calories * 0.7,
+        totalCalories: calories,
+        exerciseSessions: [],
+        dailyData: [],
+      });
+      
+    } catch (error) {
+      console.error('❌ Update error:', error);
+    }
+  }, [phoneSensorSteps, hasPermissions]);
 
   // Group data by day for week/month view
   const groupDataByDay = (stepsData, distanceData, caloriesData) => {
@@ -120,10 +302,23 @@ const StepCounterScreen = ({ navigation }) => {
     );
   };
 
-  // Load activity data
+  // Load activity data (for week/month view)
   const loadActivityData = useCallback(async () => {
     try {
       console.log(`📊 Loading data for: ${selectedPeriod}`);
+      
+      if (!hasPermissions) {
+        // If no Health Connect permissions, show empty data
+        setActivityData({
+          steps: phoneSensorSteps,
+          distance: stepDetectionService.calculateDistance(phoneSensorSteps),
+          activeCalories: stepDetectionService.calculateCalories(phoneSensorSteps) * 0.7,
+          totalCalories: stepDetectionService.calculateCalories(phoneSensorSteps),
+          exerciseSessions: [],
+          dailyData: [],
+        });
+        return;
+      }
       
       const { startDate, endDate } = getDateRange(selectedPeriod);
       const data = await getActivityData(startDate, endDate);
@@ -157,10 +352,65 @@ const StepCounterScreen = ({ navigation }) => {
       console.error('❌ Load error:', error);
       toast.error('Failed to load activity data');
     }
-  }, [selectedPeriod, toast]);
+  }, [selectedPeriod, toast, phoneSensorSteps, hasPermissions]);
 
-  // Sync to backend
-  const syncActivityToBackend = useCallback(async () => {
+  // Write phone sensor steps to Health Connect
+  const writeStepsToHealthConnect = useCallback(async (stepCount) => {
+    if (!hasPermissions || stepCount <= 0) {
+      return;
+    }
+
+    try {
+      const { insertSteps } = require('../services/healthConnectService');
+      
+      const now = new Date();
+      const startTime = new Date(now.getTime() - (5 * 60 * 1000)); // 5 minutes ago
+      
+      const result = await insertSteps({
+        count: stepCount,
+        startTime: startTime.toISOString(),
+        endTime: now.toISOString(),
+      });
+      
+      if (result.success) {
+        setLastWrittenToHealthConnect(phoneSensorSteps);
+        await saveLastWrittenSteps(phoneSensorSteps);
+        console.log(`✅ Wrote ${stepCount} steps to Health Connect`);
+        
+        // Refresh to show combined data
+        await updateTodaySteps();
+      } else {
+        console.error('❌ Failed to write to Health Connect:', result);
+      }
+    } catch (error) {
+      console.error('❌ Write to Health Connect error:', error);
+    }
+  }, [hasPermissions, phoneSensorSteps]);
+
+  // Save last written steps count
+  const saveLastWrittenSteps = async (steps) => {
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      await AsyncStorage.setItem('last_written_steps', steps.toString());
+    } catch (error) {
+      console.error('❌ Failed to save last written steps:', error);
+    }
+  };
+
+  // Load last written steps count
+  const loadLastWrittenSteps = async () => {
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const value = await AsyncStorage.getItem('last_written_steps');
+      return value ? parseInt(value, 10) : 0;
+    } catch (error) {
+      console.error('❌ Failed to load last written steps:', error);
+      return 0;
+    }
+  };
+
+  // Sync to backend (use Health Connect data as source of truth)
+  const syncActivityToBackend = useCallback(async (silent = false) => {
     if (isSyncing || selectedPeriod !== 'today') {
       console.log('⏭️ Skipping sync:', { isSyncing, selectedPeriod });
       return;
@@ -168,50 +418,54 @@ const StepCounterScreen = ({ navigation }) => {
 
     try {
       setIsSyncing(true);
-      console.log('📤 Syncing to backend...');
+      if (!silent) {
+        console.log('📤 Syncing to backend...');
+      }
       
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
+      // Use Health Connect data if available (already deduplicated)
+      // Otherwise use phone sensor data
       const dataToSync = {
         date: today.toISOString(),
-        steps: activityData.steps,
+        steps: activityData.steps, // Health Connect total (deduplicated)
         distance: activityData.distance,
         activeCalories: activityData.activeCalories,
         totalCalories: activityData.totalCalories,
+        source: hasPermissions ? 'health_connect' : 'phone_sensor',
+        phoneSensorSteps: phoneSensorSteps,
+        healthConnectSteps: hasPermissions ? activityData.steps : 0,
       };
       
-      console.log('📤 Data to sync:', dataToSync);
+      if (!silent) {
+        console.log('📤 Data to sync:', dataToSync);
+      }
       
       const response = await api.saveDailyActivity(dataToSync);
       
       if (response.success) {
-        console.log('✅ Sync successful');
-        toast.success('Activity synced successfully');
+        if (!silent) {
+          console.log('✅ Sync successful');
+          toast.success('Activity synced successfully');
+        } else {
+          console.log('✅ Auto-sync successful');
+        }
       } else {
         console.error('❌ Sync failed:', response);
-        toast.error('Failed to sync activity data');
+        if (!silent) {
+          toast.error('Failed to sync activity data');
+        }
       }
     } catch (error) {
       console.error('❌ Sync error:', error);
-      toast.error('Sync failed: ' + error.message);
+      if (!silent) {
+        toast.error('Sync failed: ' + error.message);
+      }
     } finally {
       setIsSyncing(false);
     }
-  }, [activityData, isSyncing, selectedPeriod, toast]);
-
-  // Handle refresh
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    try {
-      await loadActivityData();
-      toast.success('Data refreshed');
-    } catch (error) {
-      console.error('Refresh error:', error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [loadActivityData, toast]);
+  }, [isSyncing, selectedPeriod, phoneSensorSteps, activityData, hasPermissions, toast]);
 
   // Get date range
   const getDateRange = (period) => {
@@ -264,6 +518,24 @@ const StepCounterScreen = ({ navigation }) => {
       return total + calories;
     }, 0);
   };
+
+  // Handle refresh
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      if (selectedPeriod === 'today') {
+        await updateTodaySteps();
+        await performAutoSync();
+      } else {
+        await loadActivityData();
+      }
+      toast.success('Data refreshed');
+    } catch (error) {
+      console.error('Refresh error:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [loadActivityData, updateTodaySteps, selectedPeriod, performAutoSync, toast]);
 
   // Format distance
   const formatDistance = (meters) => {
@@ -337,16 +609,53 @@ const StepCounterScreen = ({ navigation }) => {
     }
   }, [toast]);
 
-  // Manual sync handler
+  // Manual sync handler (keeping for manual refresh button)
   const handleManualSync = useCallback(async () => {
     if (selectedPeriod !== 'today') {
       toast.info('Switch to "Today" to sync data');
       return;
     }
     
-    await loadActivityData();
-    await syncActivityToBackend();
-  }, [selectedPeriod, loadActivityData, syncActivityToBackend, toast]);
+    await updateTodaySteps();
+    await syncActivityToBackend(false); // Manual sync with toast
+  }, [selectedPeriod, updateTodaySteps, syncActivityToBackend, toast]);
+
+  // Render steps badge showing breakdown
+  const renderStepsBadge = () => {
+    if (selectedPeriod !== 'today') return null;
+    
+    if (hasPermissions) {
+      const otherAppsSteps = activityData.steps - phoneSensorSteps;
+      
+      return (
+        <>
+          <View style={styles.sensorBadge}>
+            <Icon name="cellphone" size={14} color={colors.primary} />
+            <Text style={styles.sensorBadgeText}>
+              {phoneSensorSteps.toLocaleString()} from this app
+            </Text>
+          </View>
+          {otherAppsSteps > 0 && (
+            <View style={[styles.sensorBadge, { marginTop: 4, backgroundColor: '#4CAF5015' }]}>
+              <Icon name="google-fit" size={14} color="#4CAF50" />
+              <Text style={[styles.sensorBadgeText, { color: '#4CAF50' }]}>
+                {otherAppsSteps.toLocaleString()} from other apps
+              </Text>
+            </View>
+          )}
+        </>
+      );
+    }
+    
+    return (
+      <View style={styles.sensorBadge}>
+        <Icon name="cellphone" size={14} color={colors.primary} />
+        <Text style={styles.sensorBadgeText}>
+          {phoneSensorSteps.toLocaleString()} steps detected
+        </Text>
+      </View>
+    );
+  };
 
   const styles = StyleSheet.create({
     container: {
@@ -447,6 +756,21 @@ const StepCounterScreen = ({ navigation }) => {
       color: colors.secondary,
       fontWeight: '500',
     },
+    sensorBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.primary + '15',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 20,
+      marginTop: 8,
+    },
+    sensorBadgeText: {
+      fontSize: 12,
+      color: colors.primary,
+      marginLeft: 6,
+      fontWeight: '500',
+    },
     averageContainer: {
       marginTop: 16,
       paddingTop: 16,
@@ -487,6 +811,44 @@ const StepCounterScreen = ({ navigation }) => {
       fontSize: 14,
       color: colors.secondary,
       textAlign: 'center',
+    },
+    metricsGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      marginHorizontal: -8,
+    },
+    metricCard: {
+      width: (width - 48) / 2,
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      padding: 20,
+      margin: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      elevation: 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+    },
+    metricIconContainer: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
+    metricValue: {
+      fontSize: 28,
+      fontWeight: 'bold',
+      color: colors.text,
+      marginBottom: 4,
+    },
+    metricLabel: {
+      fontSize: 14,
+      color: colors.secondary,
+      fontWeight: '500',
     },
     chartCard: {
       backgroundColor: colors.card,
@@ -531,44 +893,6 @@ const StepCounterScreen = ({ navigation }) => {
       color: colors.secondary,
       flex: 1,
       textAlign: 'center',
-    },
-    metricsGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      marginHorizontal: -8,
-    },
-    metricCard: {
-      width: (width - 48) / 2,
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      padding: 20,
-      margin: 8,
-      borderWidth: 1,
-      borderColor: colors.border,
-      elevation: 2,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
-      shadowRadius: 2,
-    },
-    metricIconContainer: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: 12,
-    },
-    metricValue: {
-      fontSize: 28,
-      fontWeight: 'bold',
-      color: colors.text,
-      marginBottom: 4,
-    },
-    metricLabel: {
-      fontSize: 14,
-      color: colors.secondary,
-      fontWeight: '500',
     },
     dailyBreakdownSection: {
       marginTop: 16,
@@ -813,42 +1137,8 @@ const StepCounterScreen = ({ navigation }) => {
         </View>
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.emptyText}>Initializing Health Connect...</Text>
+          <Text style={styles.emptyText}>Initializing step tracking...</Text>
         </View>
-      </SafeAreaView>
-    );
-  }
-
-  // No permissions state
-  if (!hasPermissions) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <View style={styles.headerTop}>
-            <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-              <Icon name="arrow-left" size={24} color={colors.text} />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Step Counter</Text>
-            <View style={{ width: 40 }} />
-          </View>
-        </View>
-        <ScrollView contentContainerStyle={{ flex: 1 }}>
-          <View style={styles.permissionsContainer}>
-            <Icon name="shield-lock" size={64} color={colors.primary} />
-            <Text style={styles.permissionsTitle}>Permissions Required</Text>
-            <Text style={styles.permissionsText}>
-              To track your steps and activity, we need access to your Health Connect data.
-              {'\n\n'}
-              This allows us to read your steps, distance, and calories burned.
-            </Text>
-            <TouchableOpacity style={styles.permissionsButton} onPress={handleRequestPermissions}>
-              <Text style={styles.permissionsButtonText}>Grant Permissions</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.settingsLinkButton} onPress={handleOpenSettings}>
-              <Text style={styles.settingsLinkText}>Open Health Connect Settings</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -874,9 +1164,11 @@ const StepCounterScreen = ({ navigation }) => {
                 color={isSyncing ? colors.secondary : colors.text} 
               />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.settingsButton} onPress={handleOpenSettings}>
-              <Icon name="cog" size={24} color={colors.text} />
-            </TouchableOpacity>
+            {hasPermissions && (
+              <TouchableOpacity style={styles.settingsButton} onPress={handleOpenSettings}>
+                <Icon name="cog" size={24} color={colors.text} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -931,8 +1223,9 @@ const StepCounterScreen = ({ navigation }) => {
               {activityData.steps.toLocaleString()}
             </Text>
             <Text style={styles.stepsLabel}>
-              {selectedPeriod === 'today' ? 'Steps' : 'Total Steps'}
+              {selectedPeriod === 'today' ? 'Steps Today' : 'Total Steps'}
             </Text>
+            {renderStepsBadge()}
           </View>
 
           {/* Goal progress for today */}

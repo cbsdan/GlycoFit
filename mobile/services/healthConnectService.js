@@ -6,6 +6,7 @@ import {
   readRecords,
   SdkAvailabilityStatus,
   openHealthConnectSettings,
+  insertRecords,
 } from 'react-native-health-connect';
 
 // Define all available Health Connect record types
@@ -163,12 +164,18 @@ class HealthConnectManager {
     console.log('🔐 Requesting all health permissions...');
     
     const permissions = [
-      // Activity
+      // Activity - READ
       { accessType: 'read', recordType: HealthRecordTypes.STEPS },
       { accessType: 'read', recordType: HealthRecordTypes.DISTANCE },
       { accessType: 'read', recordType: HealthRecordTypes.ACTIVE_CALORIES_BURNED },
       { accessType: 'read', recordType: HealthRecordTypes.TOTAL_CALORIES_BURNED },
       { accessType: 'read', recordType: HealthRecordTypes.EXERCISE_SESSION },
+      
+      // Activity - WRITE (ADD THESE)
+      { accessType: 'write', recordType: HealthRecordTypes.STEPS },
+      { accessType: 'write', recordType: HealthRecordTypes.DISTANCE },
+      { accessType: 'write', recordType: HealthRecordTypes.ACTIVE_CALORIES_BURNED },
+      { accessType: 'write', recordType: HealthRecordTypes.TOTAL_CALORIES_BURNED },
       
       // Body Measurements
       { accessType: 'read', recordType: HealthRecordTypes.WEIGHT },
@@ -510,3 +517,24 @@ export { SdkAvailabilityStatus };
 
 // Export manager instance
 export default healthConnectManager;
+
+// Add this function to your existing healthConnectService.js
+
+export const insertSteps = async ({ count, startTime, endTime }) => {
+  try {
+    const result = await insertRecords([
+      {
+        recordType: 'Steps',
+        count: count,
+        startTime: startTime,
+        endTime: endTime,
+      }
+    ]);
+    
+    console.log('✅ Steps inserted to Health Connect:', result);
+    return { success: true, result };
+  } catch (error) {
+    console.error('❌ Failed to insert steps:', error);
+    return { success: false, error: error.message };
+  }
+};
