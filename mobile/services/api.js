@@ -475,6 +475,29 @@ const getNutritionSummary = async (startDate = null, endDate = null) => {
   }
 };
 
+// Activity Tracking API (placeholder - backend endpoint not yet implemented)
+const saveDailyActivity = async (activityData) => {
+  try {
+    // TODO: Implement backend endpoint for activity tracking
+    // For now, just log the data and return success
+    console.log('📊 Activity data to be saved:', activityData);
+    
+    // Uncomment when backend endpoint is ready:
+    // const response = await api.post('/users/activity', activityData);
+    // return response.data;
+    
+    // Return mock success for now
+    return {
+      success: true,
+      message: 'Activity data logged (backend endpoint not yet implemented)',
+      data: activityData,
+    };
+  } catch (error) {
+    console.error('Error saving daily activity:', error);
+    throw error;
+  }
+};
+
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
 api.saveMeal = saveMeal;
@@ -483,5 +506,6 @@ api.getMealById = getMealById;
 api.updateMeal = updateMeal;
 api.deleteMeal = deleteMeal;
 api.getNutritionSummary = getNutritionSummary;
+api.saveDailyActivity = saveDailyActivity;
 
 export default api;

@@ -388,12 +388,18 @@ class HealthConnectManager {
     console.log('🔐 Requesting all health permissions...');
     
     const permissions = [
-      // Activity
+      // Activity - READ
       { accessType: 'read', recordType: HealthRecordTypes.STEPS },
       { accessType: 'read', recordType: HealthRecordTypes.DISTANCE },
       { accessType: 'read', recordType: HealthRecordTypes.ACTIVE_CALORIES_BURNED },
       { accessType: 'read', recordType: HealthRecordTypes.TOTAL_CALORIES_BURNED },
       { accessType: 'read', recordType: HealthRecordTypes.EXERCISE_SESSION },
+      
+      // Activity - WRITE (for writing step data from phone sensor)
+      { accessType: 'write', recordType: HealthRecordTypes.STEPS },
+      { accessType: 'write', recordType: HealthRecordTypes.DISTANCE },
+      { accessType: 'write', recordType: HealthRecordTypes.ACTIVE_CALORIES_BURNED },
+      { accessType: 'write', recordType: HealthRecordTypes.TOTAL_CALORIES_BURNED },
       
       // Body Measurements
       { accessType: 'read', recordType: HealthRecordTypes.WEIGHT },
