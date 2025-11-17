@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import {
-  Box,
   Button,
   TextField,
-  Typography,
   Paper,
   Alert,
   CircularProgress,
@@ -39,7 +37,7 @@ function AdminCreatePhysician({ onSuccess }) {
     
     setLoading(true);
     try {
-      const res = await apiClient.post('/admin/users/create', form);
+      await apiClient.post('/admin/users/create', form);
       setSuccessMsg(`Physician account created successfully! Email: ${form.email}`);
       setForm({
         first_name: '',
@@ -61,10 +59,15 @@ function AdminCreatePhysician({ onSuccess }) {
   };
 
   return (
-    <Paper sx={{ p: 4, maxWidth: 500, mx: 'auto', mt: 4 }}>
-      <Typography variant="h5" gutterBottom sx={{ mb: 3 }}>
-        Create Physician Account
-      </Typography>
+    <Paper 
+      sx={{ 
+        p: 4, 
+        maxWidth: 600,
+        borderRadius: 3,
+        boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+        border: '1px solid #e0e0e0',
+      }}
+    >
       <form onSubmit={handleSubmit}>
         <TextField
           label="First Name"

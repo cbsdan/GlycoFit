@@ -498,6 +498,61 @@ const saveDailyActivity = async (activityData) => {
   }
 };
 
+// Physician Management APIs for Patients
+const getAvailablePhysicians = async () => {
+  try {
+    const response = await api.get('/users/physicians/available');
+    return response.data;
+  } catch (error) {
+    console.error('Error getting available physicians:', error);
+    throw error;
+  }
+};
+
+const sendPhysicianRequest = async (physicianId, reason = '', urgency = 'low') => {
+  try {
+    const response = await api.post('/users/physicians/request', {
+      physician_id: physicianId,
+      reason,
+      urgency
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error sending physician request:', error);
+    throw error;
+  }
+};
+
+const getMyPhysician = async () => {
+  try {
+    const response = await api.get('/users/physicians/my-physician');
+    return response.data;
+  } catch (error) {
+    console.error('Error getting my physician:', error);
+    throw error;
+  }
+};
+
+const cancelPhysicianRequest = async (requestId) => {
+  try {
+    const response = await api.post(`/users/physicians/requests/${requestId}/cancel`);
+    return response.data;
+  } catch (error) {
+    console.error('Error cancelling physician request:', error);
+    throw error;
+  }
+};
+
+const disconnectPhysician = async (relationshipId) => {
+  try {
+    const response = await api.post(`/users/physicians/relationship/${relationshipId}/disconnect`);
+    return response.data;
+  } catch (error) {
+    console.error('Error disconnecting from physician:', error);
+    throw error;
+  }
+};
+
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
 api.saveMeal = saveMeal;
@@ -507,5 +562,10 @@ api.updateMeal = updateMeal;
 api.deleteMeal = deleteMeal;
 api.getNutritionSummary = getNutritionSummary;
 api.saveDailyActivity = saveDailyActivity;
+api.getAvailablePhysicians = getAvailablePhysicians;
+api.sendPhysicianRequest = sendPhysicianRequest;
+api.getMyPhysician = getMyPhysician;
+api.cancelPhysicianRequest = cancelPhysicianRequest;
+api.disconnectPhysician = disconnectPhysician;
 
 export default api;

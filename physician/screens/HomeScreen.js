@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,87 +7,132 @@ import {
   TouchableOpacity,
   Switch,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { physicianAPI, patientAPI, appointmentAPI, physicianAPI as profileAPI } from '../services/api';
+import { useToast } from '../context/ToastContext';
 
 export default function HomeScreen() {
   const { colors: theme } = useTheme();
   const { user } = useAuth();
+  const toast = useToast();
   const [isActive, setIsActive] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  
+  const [patientRequests, setPatientRequests] = useState([]);
+  const [activePatients, setActivePatients] = useState([]);
+  const [stats, setStats] = useState({
+    totalPatients: 0,
+    activePatients: 0,
+    pendingRequests: 0,
+    todayAppointments: 0,
+  });
+  const [todayAppointments, setTodayAppointments] = useState([]);
 
-  // Placeholder data - will be replaced with API calls
-  const patientRequests = [
-    {
-      id: 1,
-      patientName: 'John Doe',
-      age: 45,
-      condition: 'Type 2 Diabetes',
-      requestDate: '2 hours ago',
-      urgency: 'medium',
-    },
-    {
-      id: 2,
-      patientName: 'Jane Smith',
-      age: 38,
-      condition: 'Pre-diabetic',
-      requestDate: '5 hours ago',
-      urgency: 'low',
-    },
-    {
-      id: 3,
-      patientName: 'Michael Johnson',
-      age: 52,
-      condition: 'Type 1 Diabetes',
-      requestDate: '1 day ago',
-      urgency: 'high',
-    },
-  ];
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
 
-  const activePatients = [
-    {
-      id: 1,
-      name: 'Sarah Williams',
-      age: 41,
-      lastVisit: '2 days ago',
-      condition: 'Type 2 Diabetes',
-      status: 'stable',
-    },
-    {
-      id: 2,
-      name: 'Robert Brown',
-      age: 55,
-      lastVisit: '1 week ago',
-      condition: 'Type 2 Diabetes',
-      status: 'needs_attention',
-    },
-    {
-      id: 3,
-      name: 'Emily Davis',
-      age: 34,
-      lastVisit: '3 days ago',
-      condition: 'Pre-diabetic',
-      status: 'stable',
-    },
-  ];
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch all data in parallel
+      const [statsRes, requestsRes, patientsRes, appointmentsRes] = await Promise.all([
+        physicianAPI.getStats(),
+        patientAPI.getRequests(),
+        patientAPI.getPatients(),
+        appointmentAPI.getAll({ date: new Date().toISOString() }),
+      ]);
 
-  const stats = {
-    totalPatients: 24,
-    activePatients: 18,
-    pendingRequests: 3,
-    todayAppointments: 5,
+      if (statsRes.success) {
+        setStats({
+          totalPatients: statsRes.data.total_patients || 0,
+          activePatients: statsRes.data.active_patients || 0,
+          pendingRequests: statsRes.data.pending_requests || 0,
+          todayAppointments: statsRes.data.today_appointments || 0,
+        });
+      }
+
+      if (requestsRes.success) {
+        setPatientRequests(requestsRes.data.slice(0, 3)); // Show only first 3
+      }
+
+      if (patientsRes.success) {
+        setActivePatients(patientsRes.data.slice(0, 3)); // Show only first 3
+      }
+
+      if (appointmentsRes.success) {
+        setTodayAppointments(appointmentsRes.data);
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      toast.error('Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const onRefresh = React.useCallback(() => {
+  const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
-    // TODO: Fetch latest data from backend
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 2000);
+    await fetchDashboardData();
+    setRefreshing(false);
   }, []);
+
+  const handleAcceptRequest = async (requestId) => {
+    try {
+      const response = await patientAPI.acceptRequest(requestId);
+      if (response.success) {
+        toast.success('Patient request accepted');
+        fetchDashboardData();
+      }
+    } catch (error) {
+      console.error('Error accepting request:', error);
+      toast.error('Failed to accept request');
+    }
+  };
+
+  const handleDeclineRequest = async (requestId) => {
+    try {
+      const response = await patientAPI.declineRequest(requestId);
+      if (response.success) {
+        toast.success('Patient request declined');
+        fetchDashboardData();
+      }
+    } catch (error) {
+      console.error('Error declining request:', error);
+      toast.error('Failed to decline request');
+    }
+  };
+
+  const handleToggleAvailability = async (value) => {
+    try {
+      const response = await profileAPI.updateAvailability({ is_active: value });
+      if (response.success) {
+        setIsActive(value);
+        toast.success(`You are now ${value ? 'available' : 'unavailable'}`);
+      }
+    } catch (error) {
+      console.error('Error updating availability:', error);
+      toast.error('Failed to update availability');
+    }
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={{ color: theme.text, marginTop: 16 }}>Loading dashboard...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const getUrgencyColor = (urgency) => {
     switch (urgency) {
@@ -159,7 +204,7 @@ export default function HomeScreen() {
           </View>
           <Switch
             value={isActive}
-            onValueChange={setIsActive}
+            onValueChange={handleToggleAvailability}
             trackColor={{ false: theme.border, true: theme.primary }}
             thumbColor="#FFFFFF"
           />
@@ -181,7 +226,7 @@ export default function HomeScreen() {
         >
           <Ionicons name="people" size={28} color={theme.primary} />
           <Text style={[styles.statNumber, { color: theme.text }]}>
-            {stats.totalPatients}
+            {stats?.totalPatients ?? 0}
           </Text>
           <Text style={[styles.statLabel, { color: theme.secondary }]}>
             Total Patients
@@ -196,7 +241,7 @@ export default function HomeScreen() {
         >
           <Ionicons name="heart" size={28} color={theme.success} />
           <Text style={[styles.statNumber, { color: theme.text }]}>
-            {stats.activePatients}
+            {stats?.activePatients ?? 0}
           </Text>
           <Text style={[styles.statLabel, { color: theme.secondary }]}>
             Active Patients
@@ -211,7 +256,7 @@ export default function HomeScreen() {
         >
           <Ionicons name="notifications" size={28} color={theme.warning} />
           <Text style={[styles.statNumber, { color: theme.text }]}>
-            {stats.pendingRequests}
+            {stats?.pendingRequests ?? 0}
           </Text>
           <Text style={[styles.statLabel, { color: theme.secondary }]}>
             Requests
@@ -226,7 +271,7 @@ export default function HomeScreen() {
         >
           <Ionicons name="calendar" size={28} color={theme.info} />
           <Text style={[styles.statNumber, { color: theme.text }]}>
-            {stats.todayAppointments}
+            {stats?.todayAppointments ?? 0}
           </Text>
           <Text style={[styles.statLabel, { color: theme.secondary }]}>
             Today
@@ -247,7 +292,21 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {patientRequests.map((request) => (
+        {patientRequests.length === 0 ? (
+          <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Ionicons name="people-outline" size={48} color={theme.secondary} />
+            <Text style={[styles.emptyStateText, { color: theme.text }]}>No pending requests</Text>
+            <Text style={[styles.emptyStateSubtext, { color: theme.secondary }]}>
+              Patient requests will appear here
+            </Text>
+          </View>
+        ) : (
+          patientRequests.map((request) => {
+            const patientName = request.patient ? `${request.patient.first_name} ${request.patient.last_name}` : 'Unknown';
+            const patientInitial = request.patient?.first_name?.charAt(0) || '?';
+            const requestDate = request.request_date ? new Date(request.request_date).toLocaleDateString() : 'Unknown';
+            
+            return (
           <TouchableOpacity
             key={request.id}
             style={[
@@ -268,48 +327,50 @@ export default function HomeScreen() {
                   ]}
                 >
                   <Text style={[styles.avatarText, { color: theme.primary }]}>
-                    {request.patientName.charAt(0)}
+                    {patientInitial}
                   </Text>
                 </View>
                 <View style={styles.patientDetails}>
                   <Text style={[styles.patientName, { color: theme.text }]}>
-                    {request.patientName}
+                    {patientName}
                   </Text>
                   <Text
                     style={[styles.patientMetadata, { color: theme.secondary }]}
                   >
-                    {request.age} years • {request.condition}
+                    {request.patient?.email || 'No email'}
                   </Text>
                 </View>
               </View>
               <View
                 style={[
                   styles.urgencyBadge,
-                  { backgroundColor: getUrgencyColor(request.urgency) + '20' },
+                  { backgroundColor: getUrgencyColor(request.urgency || 'low') + '20' },
                 ]}
               >
                 <Text
                   style={[
                     styles.urgencyText,
-                    { color: getUrgencyColor(request.urgency) },
+                    { color: getUrgencyColor(request.urgency || 'low') },
                   ]}
                 >
-                  {request.urgency.toUpperCase()}
+                  {(request.urgency || 'low').toUpperCase()}
                 </Text>
               </View>
             </View>
             <Text style={[styles.requestTime, { color: theme.secondary }]}>
-              Requested {request.requestDate}
+              Requested {requestDate}
             </Text>
             <View style={styles.actionButtons}>
               <TouchableOpacity
                 style={[styles.acceptButton, { backgroundColor: theme.success }]}
+                onPress={() => handleAcceptRequest(request._id || request.id)}
               >
                 <Ionicons name="checkmark" size={18} color="#FFFFFF" />
                 <Text style={styles.buttonText}>Accept</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.declineButton, { borderColor: theme.error }]}
+                onPress={() => handleDeclineRequest(request._id || request.id)}
               >
                 <Ionicons name="close" size={18} color={theme.error} />
                 <Text style={[styles.declineButtonText, { color: theme.error }]}>
@@ -318,7 +379,9 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
-        ))}
+            );
+          })
+        )}
       </View>
 
       {/* Active Patients Section */}
@@ -334,7 +397,22 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {activePatients.map((patient) => (
+        {activePatients.length === 0 ? (
+          <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Ionicons name="heart-outline" size={48} color={theme.secondary} />
+            <Text style={[styles.emptyStateText, { color: theme.text }]}>No active patients yet</Text>
+            <Text style={[styles.emptyStateSubtext, { color: theme.secondary }]}>
+              Your patients will appear here
+            </Text>
+          </View>
+        ) : (
+          activePatients.map((patient) => {
+            const patientName = `${patient.first_name || ''} ${patient.last_name || ''}`.trim() || 'Unknown';
+            const patientInitial = patient.first_name?.charAt(0) || '?';
+            const lastVisit = patient.health_info?.last_visit ? new Date(patient.health_info.last_visit).toLocaleDateString() : 'Never';
+            const glucoseLevel = patient.health_info?.glucose_level || 0;
+            
+            return (
           <TouchableOpacity
             key={patient.id}
             style={[
@@ -354,30 +432,30 @@ export default function HomeScreen() {
                 ]}
               >
                 <Text style={[styles.avatarText, { color: theme.primary }]}>
-                  {patient.name.charAt(0)}
+                  {patientInitial}
                 </Text>
               </View>
               <View style={styles.patientCardInfo}>
                 <View style={styles.patientCardHeader}>
                   <Text style={[styles.patientName, { color: theme.text }]}>
-                    {patient.name}
+                    {patientName}
                   </Text>
                   <View
                     style={[
                       styles.statusDot,
-                      { backgroundColor: getStatusColor(patient.status) },
+                      { backgroundColor: glucoseLevel < 140 ? theme.success : theme.warning },
                     ]}
                   />
                 </View>
                 <Text
                   style={[styles.patientMetadata, { color: theme.secondary }]}
                 >
-                  {patient.age} years • {patient.condition}
+                  {patient.email || 'No email'}
                 </Text>
                 <Text
                   style={[styles.lastVisitText, { color: theme.secondary }]}
                 >
-                  Last visit: {patient.lastVisit}
+                  Last visit: {lastVisit}
                 </Text>
               </View>
               <Ionicons
@@ -387,7 +465,9 @@ export default function HomeScreen() {
               />
             </View>
           </TouchableOpacity>
-        ))}
+            );
+          })
+        )}
       </View>
       </ScrollView>
     </SafeAreaView>
@@ -592,5 +672,22 @@ const styles = StyleSheet.create({
   lastVisitText: {
     fontSize: 12,
     marginTop: 4,
+  },
+  emptyState: {
+    marginHorizontal: 20,
+    padding: 32,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    textAlign: 'center',
   },
 });

@@ -6,6 +6,7 @@ function AddUserDialog({ open, onClose, onSave }) {
     first_name: '',
     last_name: '',
     email: '',
+    password: '',
     role: 'user',
   });
 
@@ -15,8 +16,12 @@ function AddUserDialog({ open, onClose, onSave }) {
   };
 
   const handleSave = () => {
+    if (!formData.password || formData.password.length < 6) {
+      alert('Password must be at least 6 characters');
+      return;
+    }
     onSave(formData);
-    setFormData({ first_name: '', last_name: '', email: '', role: 'user' });
+    setFormData({ first_name: '', last_name: '', email: '', password: '', role: 'user' });
   };
 
   return (
@@ -46,6 +51,15 @@ function AddUserDialog({ open, onClose, onSave }) {
             onChange={handleChange}
             fullWidth
           />
+          <TextField
+            label="Password"
+            name="password"
+            type="password"
+            value={formData.password}
+            onChange={handleChange}
+            fullWidth
+            helperText="Minimum 6 characters"
+          />
           <FormControl fullWidth>
             <InputLabel>Role</InputLabel>
             <Select
@@ -55,8 +69,8 @@ function AddUserDialog({ open, onClose, onSave }) {
               label="Role"
             >
               <MenuItem value="user">User</MenuItem>
+              <MenuItem value="physician">Physician</MenuItem>
               <MenuItem value="admin">Admin</MenuItem>
-              <MenuItem value="moderator">Moderator</MenuItem>
             </Select>
           </FormControl>
         </Box>

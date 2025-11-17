@@ -297,10 +297,26 @@ class AuthController:
                     }
                 }), 403
             
+            # Auto-create physician profile if user is a physician and profile doesn't exist
+            if user.role == 'physician':
+                from models.physician import Physician
+                physician = Physician.find_by_user_id(user._id)
+                if not physician:
+                    logging.info(f"Creating physician profile for user: {user.email}")
+                    physician = Physician(
+                        user_id=user._id,
+                        specialization='General Practice',  # Default value
+                        license_number='',  # Can be updated later
+                        years_of_experience=0
+                    )
+                    physician.save()
+                    logging.info(f"Physician profile created successfully for user: {user.email}")
+            
             logging.info(f"User retrieved successfully: {user.email}")
             return jsonify({
                 'success': True,
-                'user': user.to_safe_dict()
+                'data': user.to_safe_dict(),
+                'user': user.to_safe_dict()  # Keep for backward compatibility
             }), 200
             
         except Exception as e:

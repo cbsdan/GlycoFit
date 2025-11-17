@@ -2,8 +2,24 @@ from flask import Blueprint
 from controllers.auth_controller import AuthController
 from controllers.user_info_controller import UserInfoController
 from controllers.nutrient_controller import NutrientController
+from controllers.patient_physician_controller import (
+    get_available_physicians,
+    send_physician_request,
+    get_my_physician,
+    cancel_physician_request,
+    disconnect_physician
+)
+from middleware.firebase_auth import firebase_auth_required
+from flask import g
 
 user_bp = Blueprint('users', __name__)
+
+@user_bp.before_request
+@firebase_auth_required
+def before_user_request():
+    """Set up g.current_user for all user routes"""
+    from flask import request
+    g.current_user = getattr(request, 'current_user', None)
 
 # Profile Routes
 @user_bp.route('/profile', methods=['GET'])
@@ -62,3 +78,29 @@ def delete_meal(meal_id):
 def get_nutrition_summary():
     """Get nutrition summary for the user"""
     return NutrientController.get_nutrition_summary()
+
+# Physician Management Routes for Patients
+@user_bp.route('/physicians/available', methods=['GET'])
+def get_physicians():
+    """Get all available physicians that patient can request"""
+    return get_available_physicians()
+
+@user_bp.route('/physicians/request', methods=['POST'])
+def request_physician():
+    """Send request to a physician"""
+    return send_physician_request()
+
+@user_bp.route('/physicians/my-physician', methods=['GET'])
+def my_physician():
+    """Get patient's current physician(s)"""
+    return get_my_physician()
+
+@user_bp.route('/physicians/requests/<request_id>/cancel', methods=['POST'])
+def cancel_request(request_id):
+    """Cancel a pending physician request"""
+    return cancel_physician_request(request_id)
+
+@user_bp.route('/physicians/relationship/<relationship_id>/disconnect', methods=['POST'])
+def disconnect(relationship_id):
+    """Disconnect from a physician"""
+    return disconnect_physician(relationship_id)

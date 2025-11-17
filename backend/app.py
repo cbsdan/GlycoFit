@@ -15,6 +15,7 @@ from routes.user_routes import user_bp
 from routes.nutrient_routes import nutrient_bp
 from routes.gemini_routes import gemini_bp
 from routes.admin_routes import admin_bp
+from routes.physician_routes import physician_bp
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
 from services.ml_service import init_ml_service
@@ -110,6 +111,7 @@ def create_app():
     app.register_blueprint(nutrient_bp, url_prefix='/api/v1/nutrients')
     app.register_blueprint(gemini_bp, url_prefix='/api/v1/gemini')
     app.register_blueprint(admin_bp, url_prefix='/api/v1/admin')
+    app.register_blueprint(physician_bp, url_prefix='/api/v1/physician')
 
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])

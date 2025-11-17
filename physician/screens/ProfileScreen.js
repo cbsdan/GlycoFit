@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,17 +7,62 @@ import {
   TouchableOpacity,
   Switch,
   Image,
+  ActivityIndicator,
+  RefreshControl,
+  Modal,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { physicianAPI } from '../services/api';
+import EditProfileScreen from './EditProfileScreen';
 
 export default function ProfileScreen() {
   const { colors: theme, isDarkMode, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const toast = useToast();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [physicianProfile, setPhysicianProfile] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+
+  const fetchProfile = async () => {
+    try {
+      setLoading(true);
+      const [profileRes, statsRes] = await Promise.all([
+        physicianAPI.getProfile(),
+        physicianAPI.getStats(),
+      ]);
+
+      if (profileRes.success) {
+        setPhysicianProfile(profileRes.data.physician_info);
+      }
+
+      if (statsRes.success) {
+        setStats(statsRes.data);
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+      toast.error('Failed to load profile');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchProfile();
+    setRefreshing(false);
+  };
 
   const handleLogout = async () => {
     try {
@@ -28,11 +73,78 @@ export default function ProfileScreen() {
     }
   };
 
+  if (loading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={{ color: theme.text, marginTop: 16 }}>Loading profile...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const handleEditProfile = () => {
+    setShowEditModal(true);
+  };
+
+  const handleCloseEditModal = (updated = false) => {
+    setShowEditModal(false);
+    if (updated) {
+      fetchProfile();
+    }
+  };
+
+  const handleProfilePictureUpload = async () => {
+    try {
+      // Request permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'Sorry, we need camera roll permissions to upload a profile picture.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Pick image
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setLoading(true);
+        try {
+          const response = await physicianAPI.uploadProfilePicture(result.assets[0].uri);
+          if (response.success) {
+            toast.success('Profile picture updated successfully');
+            await fetchProfile();
+          } else {
+            toast.error(response.message || 'Failed to upload profile picture');
+          }
+        } catch (error) {
+          console.error('Upload error:', error);
+          toast.error('Failed to upload profile picture');
+        } finally {
+          setLoading(false);
+        }
+      }
+    } catch (error) {
+      console.error('Image picker error:', error);
+      toast.error('Failed to select image');
+    }
+  };
+
   const profileSections = [
     {
       title: 'Account',
       items: [
-        { icon: 'person-outline', label: 'Edit Profile', action: () => {} },
+        { icon: 'person-outline', label: 'Edit Profile', action: handleEditProfile },
         { icon: 'lock-closed-outline', label: 'Change Password', action: () => {} },
         { icon: 'notifications-outline', label: 'Notifications', action: () => {} },
       ],
@@ -59,6 +171,9 @@ export default function ProfileScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
       <ScrollView
         style={[styles.container, { backgroundColor: theme.background }]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
         {/* Profile Header */}
         <View
@@ -72,21 +187,29 @@ export default function ProfileScreen() {
         ]}
       >
         <View style={styles.profileImageContainer}>
-          <View
-            style={[
-              styles.profileImagePlaceholder,
-              { backgroundColor: theme.primary },
-            ]}
-          >
-            <Text style={styles.profileInitials}>
-              {user?.first_name?.charAt(0)}{user?.last_name?.charAt(0)}
-            </Text>
-          </View>
+          {user?.avatar?.url ? (
+            <Image
+              source={{ uri: user.avatar.url }}
+              style={styles.profileImage}
+            />
+          ) : (
+            <View
+              style={[
+                styles.profileImagePlaceholder,
+                { backgroundColor: theme.primary },
+              ]}
+            >
+              <Text style={styles.profileInitials}>
+                {user?.first_name?.charAt(0)}{user?.last_name?.charAt(0)}
+              </Text>
+            </View>
+          )}
           <TouchableOpacity
             style={[
               styles.editImageButton,
               { backgroundColor: theme.primary },
             ]}
+            onPress={handleProfilePictureUpload}
           >
             <Ionicons name="camera" size={16} color="#FFFFFF" />
           </TouchableOpacity>
@@ -102,7 +225,9 @@ export default function ProfileScreen() {
         {/* Stats */}
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
-            <Text style={[styles.statValue, { color: theme.text }]}>24</Text>
+            <Text style={[styles.statValue, { color: theme.text }]}>
+              {stats?.total_patients || 0}
+            </Text>
             <Text style={[styles.statLabel, { color: theme.secondary }]}>
               Patients
             </Text>
@@ -111,7 +236,9 @@ export default function ProfileScreen() {
             style={[styles.statDivider, { backgroundColor: theme.border }]}
           />
           <View style={styles.statItem}>
-            <Text style={[styles.statValue, { color: theme.text }]}>156</Text>
+            <Text style={[styles.statValue, { color: theme.text }]}>
+              {stats?.total_consultations || 0}
+            </Text>
             <Text style={[styles.statLabel, { color: theme.secondary }]}>
               Consultations
             </Text>
@@ -120,7 +247,9 @@ export default function ProfileScreen() {
             style={[styles.statDivider, { backgroundColor: theme.border }]}
           />
           <View style={styles.statItem}>
-            <Text style={[styles.statValue, { color: theme.text }]}>4.8</Text>
+            <Text style={[styles.statValue, { color: theme.text }]}>
+              {physicianProfile?.rating?.toFixed(1) || '0.0'}
+            </Text>
             <Text style={[styles.statLabel, { color: theme.secondary }]}>
               Rating
             </Text>
@@ -129,6 +258,32 @@ export default function ProfileScreen() {
       </View>
 
       {/* Professional Info */}
+      {!physicianProfile?.specialization || !physicianProfile?.license_number ? (
+        <View
+          style={[
+            styles.setupCard,
+            {
+              backgroundColor: theme.primary + '20',
+              borderColor: theme.primary,
+            },
+          ]}
+        >
+          <Ionicons name="alert-circle" size={32} color={theme.primary} />
+          <Text style={[styles.setupTitle, { color: theme.text }]}>
+            Complete Your Profile
+          </Text>
+          <Text style={[styles.setupMessage, { color: theme.secondary }]}>
+            Please complete your professional information to start accepting patients
+          </Text>
+          <TouchableOpacity
+            style={[styles.setupButton, { backgroundColor: theme.primary }]}
+            onPress={handleEditProfile}
+          >
+            <Text style={styles.setupButtonText}>Set Up Profile</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       <View
         style={[
           styles.infoCard,
@@ -149,7 +304,7 @@ export default function ProfileScreen() {
               Specialization
             </Text>
             <Text style={[styles.infoValue, { color: theme.text }]}>
-              Endocrinology • Diabetes Care
+              {physicianProfile?.specialization || 'Not set'}
             </Text>
           </View>
         </View>
@@ -160,7 +315,7 @@ export default function ProfileScreen() {
               License Number
             </Text>
             <Text style={[styles.infoValue, { color: theme.text }]}>
-              MD-12345-2020
+              {physicianProfile?.license_number || 'Not set'}
             </Text>
           </View>
         </View>
@@ -171,10 +326,36 @@ export default function ProfileScreen() {
               Experience
             </Text>
             <Text style={[styles.infoValue, { color: theme.text }]}>
-              12 years
+              {physicianProfile?.years_of_experience || 0} years
             </Text>
           </View>
         </View>
+        {physicianProfile?.languages && physicianProfile.languages.length > 0 && (
+          <View style={styles.infoItem}>
+            <Ionicons name="language" size={20} color={theme.secondary} />
+            <View style={styles.infoContent}>
+              <Text style={[styles.infoLabel, { color: theme.secondary }]}>
+                Languages
+              </Text>
+              <Text style={[styles.infoValue, { color: theme.text }]}>
+                {physicianProfile.languages.join(', ')}
+              </Text>
+            </View>
+          </View>
+        )}
+        {physicianProfile?.bio && (
+          <View style={styles.infoItem}>
+            <Ionicons name="document-text" size={20} color={theme.secondary} />
+            <View style={styles.infoContent}>
+              <Text style={[styles.infoLabel, { color: theme.secondary }]}>
+                Bio
+              </Text>
+              <Text style={[styles.infoValue, { color: theme.text }]}>
+                {physicianProfile.bio}
+              </Text>
+            </View>
+          </View>
+        )}
       </View>
 
       {/* Settings Sections */}
@@ -266,6 +447,19 @@ export default function ProfileScreen() {
         Version 1.0.0
       </Text>
       </ScrollView>
+
+      {/* Edit Profile Modal */}
+      <Modal
+        visible={showEditModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => handleCloseEditModal(false)}
+      >
+        <EditProfileScreen
+          physicianProfile={physicianProfile}
+          onClose={handleCloseEditModal}
+        />
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -282,6 +476,11 @@ const styles = StyleSheet.create({
   profileImageContainer: {
     position: 'relative',
     marginBottom: 16,
+  },
+  profileImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
   },
   profileImagePlaceholder: {
     width: 100,
@@ -422,5 +621,34 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 12,
     marginVertical: 20,
+  },
+  setupCard: {
+    margin: 16,
+    padding: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  setupTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  setupMessage: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  setupButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  setupButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
