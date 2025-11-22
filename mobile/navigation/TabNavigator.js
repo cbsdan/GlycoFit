@@ -12,6 +12,7 @@ import PredictionScreen from '../screens/PredictionScreen';
 import FindPhysicianScreen from '../screens/FindPhysicianScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import HealthDataScreen from '../screens/HealthDataScreen';
+import SyncedHealthDataScreen from '../screens/SyncedHealthDataScreen';
 import StepCounterScreen from '../screens/StepCounterScreen';
 
 const Tab = createBottomTabNavigator();
@@ -33,6 +34,7 @@ const SettingsStack = () => {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="SettingsMain" component={SettingsScreen} />
       <Stack.Screen name="HealthData" component={HealthDataScreen} />
+      <Stack.Screen name="SyncedHealthData" component={SyncedHealthDataScreen} />
     </Stack.Navigator>
   );
 };

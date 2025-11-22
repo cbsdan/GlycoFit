@@ -16,6 +16,7 @@ from routes.nutrient_routes import nutrient_bp
 from routes.gemini_routes import gemini_bp
 from routes.admin_routes import admin_bp
 from routes.physician_routes import physician_bp
+from routes.health_data_routes import health_data_bp
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
 from services.ml_service import init_ml_service
@@ -70,15 +71,15 @@ def create_app():
     except Exception as e:
         logging.error(f"Failed to initialize Cloudinary: {str(e)}")
     
-    # Initialize ML Service
+    # Initialize Firebase Admin (fast initialization)
     try:
-        init_ml_service()
-        logging.info("ML Service initialized successfully")
+        init_firebase()
+        logging.info("Firebase Admin SDK initialized successfully")
     except Exception as e:
-        logging.error(f"Failed to initialize ML Service: {str(e)}")
-        logging.warning("ML features will be disabled")
+        logging.error(f"Failed to initialize Firebase Admin SDK: {str(e)}")
+        logging.warning("Firebase features will be disabled")
     
-    # Initialize Gemini AI Service
+    # Initialize Gemini AI Service (fast initialization)
     try:
         init_gemini_service()
         logging.info("Gemini AI Service initialized successfully")
@@ -86,13 +87,9 @@ def create_app():
         logging.error(f"Failed to initialize Gemini AI Service: {str(e)}")
         logging.warning("Gemini AI features will be disabled")
     
-    # Initialize Firebase Admin
-    try:
-        init_firebase()
-        logging.info("Firebase Admin SDK initialized successfully")
-    except Exception as e:
-        logging.error(f"Failed to initialize Firebase Admin SDK: {str(e)}")
-        logging.warning("Firebase features will be disabled")
+    # Defer ML Service initialization to avoid blocking startup
+    # The ML service will initialize lazily on first use
+    logging.info("ML Service will initialize on first use (lazy loading)")
     
     # Middleware for request logging
     @app.before_request
@@ -114,21 +111,25 @@ def create_app():
     app.register_blueprint(gemini_bp, url_prefix='/api/v1/gemini')
     app.register_blueprint(admin_bp, url_prefix='/api/v1/admin')
     app.register_blueprint(physician_bp, url_prefix='/api/v1/physician')
+    app.register_blueprint(health_data_bp, url_prefix='/api/v1/health-data')
 
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])
     def health_check():
         logging.info("Health check endpoint accessed")
         
-        # Check ML service status
+        # Check ML service status (without triggering initialization)
         ml_status = 'disabled'
         try:
-            from services.ml_service import get_ml_service
-            ml_service = get_ml_service()
-            if ml_service and ml_service.is_model_ready():
+            from services.ml_service import ml_service, ml_service_initialized, ml_service_initializing
+            if ml_service_initializing:
+                ml_status = 'initializing'
+            elif ml_service_initialized and ml_service and ml_service.is_model_ready():
                 ml_status = 'ready'
+            elif ml_service_initialized:
+                ml_status = 'error'
             else:
-                ml_status = 'not_ready'
+                ml_status = 'lazy_load_pending'
         except Exception:
             ml_status = 'error'
         

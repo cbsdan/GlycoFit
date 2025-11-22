@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Alert,
   Linking,
+  Animated,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
@@ -27,20 +28,25 @@ import {
   getNutritionData,
   HealthRecordTypes,
 } from '../services/healthConnectService';
+import healthDataSyncService from '../services/healthDataSyncService';
 
 const HealthDataScreen = ({ navigation }) => {
   const { colors } = useTheme();
   const toast = useToast();
+  const spinValue = useRef(new Animated.Value(0)).current;
 
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [healthData, setHealthData] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState('today'); // today, week, month
   const [isInitialized, setIsInitialized] = useState(false);
   const [hasPermissions, setHasPermissions] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState(null);
 
   useEffect(() => {
     initializeHealthConnect();
+    loadLastSyncTime();
   }, []);
 
   // Fetch data when period changes
@@ -49,6 +55,15 @@ const HealthDataScreen = ({ navigation }) => {
       fetchHealthData();
     }
   }, [selectedPeriod, isInitialized, hasPermissions]);
+
+  const loadLastSyncTime = async () => {
+    try {
+      const syncTime = await healthDataSyncService.getLastSyncTime();
+      setLastSyncTime(syncTime);
+    } catch (error) {
+      console.error('Error loading last sync time:', error);
+    }
+  };
 
   const initializeHealthConnect = async () => {
     try {
@@ -353,6 +368,59 @@ const HealthDataScreen = ({ navigation }) => {
       toast.error('Failed to fetch health data: ' + error.message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isSyncing) {
+      // Start rotation animation
+      spinValue.setValue(0);
+      Animated.loop(
+        Animated.timing(spinValue, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        })
+      ).start();
+    } else {
+      // Stop rotation animation
+      spinValue.setValue(0);
+    }
+  }, [isSyncing]);
+
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  const handleSync = async () => {
+    if (!healthData) {
+      toast.info('Please load health data first');
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const result = await healthDataSyncService.syncData(healthData);
+      
+      if (result.success) {
+        const insertedCount = result.inserted_count || 0;
+        const skippedCount = result.skipped_count || 0;
+        
+        if (insertedCount > 0) {
+          toast.success(`Successfully synced ${insertedCount} new health records`);
+        } else {
+          toast.info(`All data already synced (${skippedCount} records)`);
+        }
+        await loadLastSyncTime();
+      } else {
+        toast.error(result.error || 'Sync failed');
+      }
+    } catch (error) {
+      console.error('Sync error:', error);
+      toast.error('Failed to sync health data: ' + error.message);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -695,6 +763,39 @@ const HealthDataScreen = ({ navigation }) => {
       top: 8,
       right: 8,
     },
+    syncContainer: {
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      backgroundColor: colors.card,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      alignItems: 'center',
+    },
+    syncButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+      paddingVertical: 12,
+      paddingHorizontal: 24,
+      borderRadius: 8,
+      gap: 8,
+      width: '100%',
+      maxWidth: 300,
+    },
+    syncButtonDisabled: {
+      opacity: 0.6,
+    },
+    syncButtonText: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    lastSyncText: {
+      marginTop: 8,
+      fontSize: 12,
+      color: colors.secondary,
+    },
     loadingContainer: {
       flex: 1,
       justifyContent: 'center',
@@ -756,6 +857,35 @@ const HealthDataScreen = ({ navigation }) => {
     },
   });
 
+  const formatLastSyncTime = () => {
+    if (!lastSyncTime) return 'Never synced';
+    
+    try {
+      const now = new Date();
+      // Handle both string timestamp and object with timestamp property
+      const timestampStr = typeof lastSyncTime === 'string' ? lastSyncTime : lastSyncTime.timestamp;
+      const syncDate = new Date(timestampStr);
+      
+      // Check if date is valid
+      if (isNaN(syncDate.getTime())) return 'Never synced';
+      
+      const diffMs = now - syncDate;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+      
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays === 1) return 'Yesterday';
+      if (diffDays < 30) return `${diffDays} days ago`;
+      return syncDate.toLocaleDateString();
+    } catch (error) {
+      console.error('Error formatting sync time:', error);
+      return 'Never synced';
+    }
+  };
+
   if (!isInitialized || !hasPermissions) {
     return (
       <SafeAreaView style={styles.container}>
@@ -803,6 +933,30 @@ const HealthDataScreen = ({ navigation }) => {
         <Text style={styles.headerTitle}>Health Data</Text>
         <Text style={styles.headerSubtitle}>
           {healthData ? `Last updated: ${new Date(healthData.fetchedAt).toLocaleTimeString()}` : 'No data loaded'}
+        </Text>
+      </View>
+
+      {/* Sync Button and Status */}
+      <View style={styles.syncContainer}>
+        <TouchableOpacity
+          style={[styles.syncButton, isSyncing && styles.syncButtonDisabled]}
+          onPress={handleSync}
+          disabled={isSyncing || !healthData}
+        >
+          {isSyncing ? (
+            <Animated.View style={{ transform: [{ rotate: spin }] }}>
+              <Icon name="sync" size={20} color="#fff" />
+            </Animated.View>
+          ) : (
+            <Icon name="cloud-upload" size={20} color="#fff" />
+          )}
+          <Text style={styles.syncButtonText}>
+            {isSyncing ? 'Syncing...' : 'Sync to Cloud'}
+          </Text>
+        </TouchableOpacity>
+        
+        <Text style={styles.lastSyncText}>
+          Last sync: {formatLastSyncTime()}
         </Text>
       </View>
 

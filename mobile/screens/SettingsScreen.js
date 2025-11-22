@@ -59,6 +59,14 @@ const SettingsScreen = ({ navigation }) => {
           showArrow: true,
         },
         {
+          id: 'synced-health-data',
+          title: 'Synced Health Data',
+          subtitle: 'View cloud-synced health records',
+          icon: 'cloud-check',
+          action: () => navigation.navigate('SyncedHealthData'),
+          showArrow: true,
+        },
+        {
           id: 'data-export',
           title: 'Export Data',
           subtitle: 'Download your health records',

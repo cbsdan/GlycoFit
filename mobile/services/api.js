@@ -553,6 +553,130 @@ const disconnectPhysician = async (relationshipId) => {
   }
 };
 
+// ==================== Health Data Sync ====================
+
+/**
+ * Sync health data to backend
+ * @param {Array} healthDataArray - Array of health data records
+ * @returns {Promise<Object>} Sync result with counts
+ */
+export const syncHealthData = async (healthDataArray) => {
+  try {
+    const response = await api.post('/health-data/sync', {
+      data: healthDataArray
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error syncing health data:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get latest sync timestamps for each data type
+ * @returns {Promise<Object>} Latest sync timestamps
+ */
+export const getLatestSyncTimestamps = async () => {
+  try {
+    const response = await api.get('/health-data/latest-sync');
+    return response.data;
+  } catch (error) {
+    console.error('Error getting latest sync timestamps:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get health data from backend
+ * @param {string} dataType - Type of data (heart_rate, exercise, active_calories)
+ * @param {number} limit - Number of records to retrieve (optional)
+ * @returns {Promise<Object>} Health data records
+ */
+export const getHealthData = async (dataType, limit = 10) => {
+  try {
+    const params = { data_type: dataType, limit };
+    const response = await api.get('/health-data/', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error getting health data:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get daily statistics for a data type
+ * @param {string} dataType - Type of data (heart_rate, exercise, active_calories)
+ * @param {string} date - ISO date string (optional, defaults to today)
+ * @returns {Promise<Object>} Daily statistics
+ */
+export const getDailyStatistics = async (dataType, date = null) => {
+  try {
+    const params = { data_type: dataType };
+    if (date) params.date = date;
+    const response = await api.get('/health-data/statistics/daily', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error getting daily statistics:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get weekly statistics for a data type
+ * @param {string} dataType - Type of data
+ * @param {string} startDate - Start date of week (optional)
+ * @returns {Promise<Object>} Weekly statistics
+ */
+export const getWeeklyStatistics = async (dataType, startDate = null) => {
+  try {
+    const params = { data_type: dataType };
+    if (startDate) params.start_date = startDate;
+    const response = await api.get('/health-data/statistics/weekly', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error getting weekly statistics:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get monthly statistics for a data type
+ * @param {string} dataType - Type of data
+ * @param {number} year - Year (optional)
+ * @param {number} month - Month 1-12 (optional)
+ * @returns {Promise<Object>} Monthly statistics
+ */
+export const getMonthlyStatistics = async (dataType, year = null, month = null) => {
+  try {
+    const params = { data_type: dataType };
+    if (year) params.year = year;
+    if (month) params.month = month;
+    const response = await api.get('/health-data/statistics/monthly', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error getting monthly statistics:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get statistics summary for all data types
+ * @param {string} period - Period type ('day', 'week', 'month')
+ * @param {string} date - Date for the period (optional)
+ * @returns {Promise<Object>} Statistics summary
+ */
+export const getStatisticsSummary = async (period = 'day', date = null) => {
+  try {
+    const params = { period };
+    if (date) params.date = date;
+    const response = await api.get('/health-data/statistics/summary', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error getting statistics summary:', error);
+    throw error;
+  }
+};
+
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
 api.saveMeal = saveMeal;
@@ -567,5 +691,12 @@ api.sendPhysicianRequest = sendPhysicianRequest;
 api.getMyPhysician = getMyPhysician;
 api.cancelPhysicianRequest = cancelPhysicianRequest;
 api.disconnectPhysician = disconnectPhysician;
+api.syncHealthData = syncHealthData;
+api.getLatestSyncTimestamps = getLatestSyncTimestamps;
+api.getHealthData = getHealthData;
+api.getDailyStatistics = getDailyStatistics;
+api.getWeeklyStatistics = getWeeklyStatistics;
+api.getMonthlyStatistics = getMonthlyStatistics;
+api.getStatisticsSummary = getStatisticsSummary;
 
 export default api;
