@@ -40,7 +40,13 @@
     "extra": {
       "eas": {
         "projectId": "74ce8e12-691f-4034-bb81-5c74d407f8a8"
-      }
+      },
+      "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyDcdJik9SmR2O_APNggZoV3EbCSrRxP3-c",
+      "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "glycofit-c3e87.firebaseapp.com",
+      "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "glycofit-c3e87",
+      "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "glycofit-c3e87.firebasestorage.app",
+      "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "528174172461",
+      "EXPO_PUBLIC_FIREBASE_APP_ID": "1:528174172461:web:a777eca8a61634c7296ba4"
     },
     "plugins": [
       "./androidManifestPlugin.js",
