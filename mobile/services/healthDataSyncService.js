@@ -173,6 +173,32 @@ class HealthDataSyncService {
       });
     }
 
+    // Transform sleep data (limit records)
+    if (healthData.sleep && Array.isArray(healthData.sleep)) {
+      const sleepRecords = healthData.sleep.slice(0, MAX_RECORDS_PER_TYPE);
+      sleepRecords.forEach(record => {
+        if (record.startTime && record.endTime) {
+          const durationMinutes = (new Date(record.endTime) - new Date(record.startTime)) / (1000 * 60);
+          
+          // Validate sleep duration (between 1 min and 24 hours)
+          if (!isNaN(durationMinutes) && durationMinutes > 0 && durationMinutes < 1440) {
+            dataToSync.push({
+              data_type: 'sleep',
+              value: Math.round(durationMinutes),
+              unit: 'minutes',
+              timestamp: record.startTime,
+              metadata: {
+                source: 'health_connect',
+                end_time: record.endTime,
+                title: record.title || null,
+                notes: record.notes || null,
+              },
+            });
+          }
+        }
+      });
+    }
+
     return dataToSync;
   }
 

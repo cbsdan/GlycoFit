@@ -51,7 +51,7 @@ class HealthDataController:
                 return jsonify({'error': 'Data must be an array'}), 400
 
             # Validate data types
-            valid_data_types = ['heart_rate', 'exercise', 'active_calories']
+            valid_data_types = ['heart_rate', 'exercise', 'active_calories', 'sleep']
             
             health_data_objects = []
             for idx, record in enumerate(health_records):
@@ -195,6 +195,8 @@ class HealthDataController:
             # Parse date or use today
             if date_str:
                 date = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                # Remove timezone to match database records
+                date = date.replace(tzinfo=None)
             else:
                 date = datetime.utcnow()
 
@@ -235,6 +237,8 @@ class HealthDataController:
             # Parse date or use start of current week
             if start_date_str:
                 start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
+                # Remove timezone to match database records
+                start_date = start_date.replace(tzinfo=None)
             else:
                 # Get start of current week (Monday)
                 today = datetime.utcnow()
@@ -314,7 +318,7 @@ class HealthDataController:
             if not current_user:
                 return jsonify({'error': 'User not authenticated'}), 401
 
-            data_types = ['heart_rate', 'exercise', 'active_calories']
+            data_types = ['heart_rate', 'exercise', 'active_calories', 'sleep']
             latest_syncs = {}
 
             for data_type in data_types:

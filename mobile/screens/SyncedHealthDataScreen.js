@@ -42,7 +42,12 @@ const SyncedHealthDataScreen = ({ navigation }) => {
     setIsLoading(true);
     try {
       // Fetch statistics and recent records in parallel for better performance
-      const today = new Date().toISOString().split('T')[0];
+      // Use local date format to avoid timezone conversion issues
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const today = `${year}-${month}-${day}`;
       
       const promises = [];
       
@@ -50,9 +55,34 @@ const SyncedHealthDataScreen = ({ navigation }) => {
       if (selectedPeriod === 'daily') {
         promises.push(getDailyStatistics(selectedDataType, today));
       } else if (selectedPeriod === 'weekly') {
-        const weekStart = new Date();
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Start of week
-        promises.push(getWeeklyStatistics(selectedDataType, weekStart.toISOString().split('T')[0]));
+        // Calculate week start (Sunday) using local date components to avoid timezone issues
+        const now = new Date();
+        const currentDay = now.getDay(); // 0 = Sunday, 6 = Saturday
+        
+        // If today is Sunday, Monday, or Tuesday (early in the week), show last week's stats
+        // This ensures users see complete week data rather than empty stats early in new week
+        const isEarlyWeek = currentDay <= 2; // Sunday(0), Monday(1), Tuesday(2)
+        const daysToSubtract = isEarlyWeek ? currentDay + 7 : currentDay;
+        
+        console.log('📅 Week calculation:', {
+          now: now.toString(),
+          currentDay,
+          isEarlyWeek,
+          daysToSubtract,
+          date: now.getDate(),
+          targetDate: now.getDate() - daysToSubtract
+        });
+        
+        // Create a new date for the week start
+        const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysToSubtract);
+        
+        // Use local date format to avoid timezone conversion issues
+        const year = weekStart.getFullYear();
+        const month = String(weekStart.getMonth() + 1).padStart(2, '0');
+        const day = String(weekStart.getDate()).padStart(2, '0');
+        const startDateStr = `${year}-${month}-${day}`;
+        console.log('📅 Week start calculated:', startDateStr);
+        promises.push(getWeeklyStatistics(selectedDataType, startDateStr));
       } else if (selectedPeriod === 'monthly') {
         const now = new Date();
         promises.push(getMonthlyStatistics(selectedDataType, now.getFullYear(), now.getMonth() + 1));
@@ -88,6 +118,8 @@ const SyncedHealthDataScreen = ({ navigation }) => {
         return 'run';
       case 'active_calories':
         return 'fire';
+      case 'sleep':
+        return 'sleep';
       default:
         return 'chart-line';
     }
@@ -101,6 +133,8 @@ const SyncedHealthDataScreen = ({ navigation }) => {
         return 'Exercise';
       case 'active_calories':
         return 'Active Calories';
+      case 'sleep':
+        return 'Sleep';
       default:
         return type;
     }
@@ -113,6 +147,12 @@ const SyncedHealthDataScreen = ({ navigation }) => {
       case 'heart_rate':
         return `${Math.round(value)} bpm`;
       case 'exercise':
+      case 'sleep':
+        // Show hours if over 60 minutes, otherwise show minutes
+        if (value >= 60) {
+          const hours = (value / 60).toFixed(1);
+          return `${hours} hrs`;
+        }
         return `${Math.round(value)} min`;
       case 'active_calories':
         return `${Math.round(value)} kcal`;
@@ -575,6 +615,28 @@ const SyncedHealthDataScreen = ({ navigation }) => {
               ]}
             >
               Calories
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.dataTypeButton,
+              selectedDataType === 'sleep' && styles.dataTypeButtonActive,
+            ]}
+            onPress={() => setSelectedDataType('sleep')}
+          >
+            <Icon
+              name="sleep"
+              size={18}
+              color={selectedDataType === 'sleep' ? '#fff' : colors.text}
+            />
+            <Text
+              style={[
+                styles.dataTypeButtonText,
+                selectedDataType === 'sleep' && styles.dataTypeButtonTextActive,
+              ]}
+            >
+              Sleep
             </Text>
           </TouchableOpacity>
         </View>

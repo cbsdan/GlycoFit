@@ -34,6 +34,7 @@ class HealthData:
         # Convert timestamp to datetime if it's a string with better error handling
         # Remove timezone info to match existing data in MongoDB
         try:
+            original_timestamp = timestamp
             if isinstance(timestamp, str):
                 # Handle various ISO formats
                 timestamp_clean = timestamp.replace('Z', '+00:00')
@@ -47,6 +48,8 @@ class HealthData:
                 # Try to parse as string
                 dt = datetime.fromisoformat(str(timestamp).replace('Z', '+00:00'))
                 self.timestamp = dt.replace(tzinfo=None)
+            
+            logging.debug(f"Timestamp conversion: '{original_timestamp}' -> {self.timestamp} (type: {data_type})")
         except (ValueError, AttributeError) as e:
             logging.error(f"Error parsing timestamp '{timestamp}': {str(e)}")
             # Use current time as fallback
@@ -165,8 +168,26 @@ class HealthData:
             # Bulk insert new records
             inserted_count = 0
             if new_records:
-                result = db.health_data.insert_many(new_records, ordered=False)
-                inserted_count = len(result.inserted_ids)
+                try:
+                    result = db.health_data.insert_many(new_records, ordered=False)
+                    inserted_count = len(result.inserted_ids)
+                except Exception as insert_error:
+                    # If there are duplicate key errors, some records may still have been inserted
+                    # Extract the number of successfully inserted records from the error
+                    error_str = str(insert_error)
+                    if 'nInserted' in error_str:
+                        # Parse the error to get nInserted count
+                        import re
+                        match = re.search(r"'nInserted': (\d+)", error_str)
+                        if match:
+                            inserted_count = int(match.group(1))
+                            logging.warning(f"Partial insert: {inserted_count} records inserted, some duplicates skipped")
+                        else:
+                            logging.error(f"Error in bulk insert but couldn't parse nInserted: {error_str}")
+                            raise insert_error
+                    else:
+                        logging.error(f"Error in bulk insert: {error_str}")
+                        raise insert_error
             
             logging.info(f"Bulk inserted {inserted_count}/{len(health_data_list)} health data records")
             return inserted_count
@@ -245,8 +266,25 @@ class HealthData:
             if isinstance(date, str):
                 date = datetime.fromisoformat(date.replace('Z', '+00:00'))
             
+            # Remove timezone to match database records (stored without timezone)
+            if isinstance(date, datetime) and date.tzinfo is not None:
+                date = date.replace(tzinfo=None)
+            
             start_of_day = date.replace(hour=0, minute=0, second=0, microsecond=0)
             end_of_day = start_of_day + timedelta(days=1)
+            
+            logging.info(f"Daily stats query: user={user_id}, type={data_type}, start={start_of_day}, end={end_of_day}")
+            
+            # Check what records exist for debugging
+            sample_records = list(db.health_data.find({
+                'user_id': user_id,
+                'data_type': data_type
+            }).sort('timestamp', -1).limit(3))
+            
+            if sample_records:
+                logging.info(f"Sample records in DB: {[(r['timestamp'], r['value']) for r in sample_records]}")
+            else:
+                logging.info(f"No records found for user={user_id}, type={data_type}")
             
             pipeline = [
                 {
@@ -273,10 +311,12 @@ class HealthData:
             
             result = list(db.health_data.aggregate(pipeline))
             
+            logging.info(f"📊 Daily Stats Result: {result}")
+            
             if result:
                 stats = result[0]
                 return {
-                    'date': start_of_day.isoformat(),
+                    'date': date.isoformat(),
                     'data_type': data_type,
                     'total': stats.get('total', 0),
                     'average': round(stats.get('average', 0), 2),
@@ -317,8 +357,25 @@ class HealthData:
             if isinstance(start_date, str):
                 start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
             
+            # Remove timezone to match database records (stored without timezone)
+            if isinstance(start_date, datetime) and start_date.tzinfo is not None:
+                start_date = start_date.replace(tzinfo=None)
+            
             start_of_week = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
             end_of_week = start_of_week + timedelta(days=7)
+            
+            logging.info(f"Weekly stats query: user={user_id}, type={data_type}, start={start_of_week}, end={end_of_week}")
+            
+            # Check what records exist for debugging
+            sample_records = list(db.health_data.find({
+                'user_id': user_id,
+                'data_type': data_type
+            }).sort('timestamp', -1).limit(5))
+            
+            if sample_records:
+                logging.info(f"Sample records in DB: {[(r['timestamp'], r['value']) for r in sample_records]}")
+            else:
+                logging.info(f"No records found for user={user_id}, type={data_type}")
             
             pipeline = [
                 {
@@ -344,6 +401,15 @@ class HealthData:
             ]
             
             result = list(db.health_data.aggregate(pipeline))
+            
+            # Check how many records match the query
+            matching_count = db.health_data.count_documents({
+                'user_id': user_id,
+                'data_type': data_type,
+                'timestamp': {'$gte': start_of_week, '$lt': end_of_week}
+            })
+            logging.info(f"📊 Weekly Stats - Matching records in range: {matching_count}")
+            logging.info(f"📊 Weekly Stats Result: {result}")
             
             if result:
                 stats = result[0]
