@@ -16,10 +16,12 @@ from routes.nutrient_routes import nutrient_bp
 from routes.gemini_routes import gemini_bp
 from routes.admin_routes import admin_bp
 from routes.physician_routes import physician_bp
+from routes.diabetes_assessment_routes import diabetes_assessment_bp
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
 from services.ml_service import init_ml_service
 from services.gemini_service import init_gemini_service
+from services.diabetes_service import init_diabetes_service
 
 # Load environment variables
 load_dotenv()
@@ -86,6 +88,14 @@ def create_app():
         logging.error(f"Failed to initialize Gemini AI Service: {str(e)}")
         logging.warning("Gemini AI features will be disabled")
     
+    # Initialize Diabetes Prediction Service
+    try:
+        init_diabetes_service()
+        logging.info("Diabetes Prediction Service initialized successfully")
+    except Exception as e:
+        logging.error(f"Failed to initialize Diabetes Prediction Service: {str(e)}")
+        logging.warning("Diabetes prediction features will be disabled")
+    
     # Initialize Firebase Admin
     try:
         init_firebase()
@@ -114,6 +124,7 @@ def create_app():
     app.register_blueprint(gemini_bp, url_prefix='/api/v1/gemini')
     app.register_blueprint(admin_bp, url_prefix='/api/v1/admin')
     app.register_blueprint(physician_bp, url_prefix='/api/v1/physician')
+    app.register_blueprint(diabetes_assessment_bp, url_prefix='/api/v1/diabetes-assessment')
 
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])

@@ -17,6 +17,8 @@ import RegisterScreen from './screens/auth/RegisterScreen';
 import OTPScreen from './screens/auth/OTPScreen';
 import MealDetailScreen from './screens/MealDetailScreen';
 import MealHistoryScreen from './screens/MealHistoryScreen';
+import DiabetesRiskAssessmentScreen from './screens/DiabetesRiskAssessmentScreen';
+import AssessmentResultsScreen from './screens/AssessmentResultsScreen';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingScreen from './components/LoadingScreen';
 import WelcomeScreen from './screens/WelcomeScreen';
@@ -127,6 +129,32 @@ function AppNavigator() {
               {(props) => (
                 <UniversalScreenWrapper>
                   <MealDetailScreen {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="DiabetesRiskAssessment" 
+              options={{ 
+                headerShown: false,
+                presentation: 'modal'
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <DiabetesRiskAssessmentScreen {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="AssessmentResults" 
+              options={{ 
+                headerShown: false,
+                presentation: 'modal'
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <AssessmentResultsScreen {...props} />
                 </UniversalScreenWrapper>
               )}
             </Stack.Screen>
