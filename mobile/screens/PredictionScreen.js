@@ -94,7 +94,11 @@ const PredictionScreen = ({ navigation }) => {
   ];
 
   const handlePredictionTap = (predictionId) => {
-    toast.info('Detailed prediction view coming soon!');
+    if (predictionId === 'lifestyle-impact') {
+      navigation.navigate('DiabetesRiskAssessment');
+    } else {
+      toast.info('Detailed prediction view coming soon!');
+    }
   };
 
   const getStatusColor = (status) => {

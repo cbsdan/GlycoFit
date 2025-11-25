@@ -677,6 +677,40 @@ export const getStatisticsSummary = async (period = 'day', date = null) => {
   }
 };
 
+// Diabetes Assessment API
+export const submitDiabetesAssessment = async (answers) => {
+  try {
+    const response = await api.post('/diabetes-assessment/submit', { answers });
+    return response.data;
+  } catch (error) {
+    console.error('Error submitting diabetes assessment:', error);
+    throw error;
+  }
+};
+
+export const getMyAssessment = async () => {
+  try {
+    const response = await api.get('/diabetes-assessment/my');
+    return response.data;
+  } catch (error) {
+    if (error.response?.status === 404) {
+      return null; // No assessment found
+    }
+    console.error('Error fetching diabetes assessment:', error);
+    throw error;
+  }
+};
+
+export const updateAssessmentAnswers = async (answers) => {
+  try {
+    const response = await api.put('/diabetes-assessment/update', { answers });
+    return response.data;
+  } catch (error) {
+    console.error('Error updating diabetes assessment:', error);
+    throw error;
+  }
+};
+
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
 api.saveMeal = saveMeal;
@@ -698,5 +732,8 @@ api.getDailyStatistics = getDailyStatistics;
 api.getWeeklyStatistics = getWeeklyStatistics;
 api.getMonthlyStatistics = getMonthlyStatistics;
 api.getStatisticsSummary = getStatisticsSummary;
+api.submitDiabetesAssessment = submitDiabetesAssessment;
+api.getMyAssessment = getMyAssessment;
+api.updateAssessmentAnswers = updateAssessmentAnswers;
 
 export default api;
