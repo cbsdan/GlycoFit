@@ -10,13 +10,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { getMyAssessment, submitDiabetesAssessment } from '../services/api';
 
-const DiabetesRiskAssessmentScreen = ({ navigation }) => {
+const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, onComplete }) => {
   const { colors } = useTheme();
   const toast = useToast();
   
@@ -25,6 +26,7 @@ const DiabetesRiskAssessmentScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [existingAssessment, setExistingAssessment] = useState(null);
+  const [showIntroModal, setShowIntroModal] = useState(isInitial);
 
   const questions = [
     {
@@ -260,6 +262,11 @@ const DiabetesRiskAssessmentScreen = ({ navigation }) => {
       if (result && result.assessment) {
         const { prediction } = result.assessment;
         
+        // Call onComplete if this is initial assessment
+        if (isInitial && onComplete) {
+          onComplete();
+        }
+        
         // Navigate to results screen with prediction data
         navigation.replace('AssessmentResults', {
           prediction,
@@ -433,6 +440,19 @@ const DiabetesRiskAssessmentScreen = ({ navigation }) => {
     closeButton: {
       padding: 8,
     },
+    skipButton: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      backgroundColor: colors.card,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    skipButtonText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+    },
     progressBarContainer: {
       height: 6,
       backgroundColor: colors.border,
@@ -451,8 +471,9 @@ const DiabetesRiskAssessmentScreen = ({ navigation }) => {
       marginTop: 8,
     },
     content: {
-      flex: 1,
+      flexGrow: 1,
       padding: 24,
+      paddingBottom: 40,
     },
     iconContainer: {
       width: 80,
@@ -473,7 +494,7 @@ const DiabetesRiskAssessmentScreen = ({ navigation }) => {
       lineHeight: 30,
     },
     optionsContainer: {
-      gap: 12,
+      gap: 8,
     },
     optionButton: {
       flexDirection: 'row',
@@ -483,8 +504,8 @@ const DiabetesRiskAssessmentScreen = ({ navigation }) => {
       borderWidth: 2,
       borderColor: colors.border,
       borderRadius: 12,
-      padding: 16,
-      gap: 12,
+      padding: 8,
+      gap: 8,
     },
     optionButtonSelected: {
       backgroundColor: colors.primary,
@@ -556,10 +577,183 @@ const DiabetesRiskAssessmentScreen = ({ navigation }) => {
       fontSize: 16,
       fontWeight: '600',
     },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 20,
+    },
+    modalContent: {
+      width: '100%',
+      maxWidth: 400,
+      borderRadius: 16,
+      padding: 20,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 4,
+      },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 8,
+    },
+    modalIconContainer: {
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: 'bold',
+      textAlign: 'center',
+      marginBottom: 8,
+    },
+    modalDescription: {
+      fontSize: 13,
+      textAlign: 'center',
+      lineHeight: 19,
+      marginBottom: 14,
+    },
+    modalFeatures: {
+      width: '100%',
+      marginBottom: 14,
+    },
+    modalFeatureItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 8,
+      paddingLeft: 4,
+    },
+    modalFeatureText: {
+      fontSize: 13,
+      marginLeft: 10,
+      flex: 1,
+    },
+    modalInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 16,
+      gap: 6,
+    },
+    modalInfoText: {
+      fontSize: 12,
+      fontStyle: 'italic',
+    },
+    modalButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: '100%',
+      paddingVertical: 12,
+      borderRadius: 10,
+      marginBottom: 8,
+      gap: 6,
+    },
+    modalButtonText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: '#FFFFFF',
+    },
+    modalSkipButton: {
+      paddingVertical: 8,
+    },
+    modalSkipText: {
+      fontSize: 13,
+      fontWeight: '500',
+    },
   });
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Introduction Modal */}
+      <Modal
+        visible={showIntroModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowIntroModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <View style={[styles.modalIconContainer, { backgroundColor: `${colors.primary}15` }]}>
+              <Icon name="clipboard-text" size={36} color={colors.primary} />
+            </View>
+            
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
+              Diabetes Risk Assessment
+            </Text>
+            
+            <Text style={[styles.modalDescription, { color: colors.secondary }]}>
+              This comprehensive assessment will help evaluate your risk factors for diabetes. It includes questions about:
+            </Text>
+            
+            <View style={styles.modalFeatures}>
+              <View style={styles.modalFeatureItem}>
+                <Icon name="heart-pulse" size={18} color={colors.primary} />
+                <Text style={[styles.modalFeatureText, { color: colors.text }]}>
+                  Health conditions & history
+                </Text>
+              </View>
+              <View style={styles.modalFeatureItem}>
+                <Icon name="food-apple" size={18} color={colors.primary} />
+                <Text style={[styles.modalFeatureText, { color: colors.text }]}>
+                  Lifestyle & dietary habits
+                </Text>
+              </View>
+              <View style={styles.modalFeatureItem}>
+                <Icon name="dumbbell" size={18} color={colors.primary} />
+                <Text style={[styles.modalFeatureText, { color: colors.text }]}>
+                  Physical activity levels
+                </Text>
+              </View>
+              <View style={styles.modalFeatureItem}>
+                <Icon name="account" size={18} color={colors.primary} />
+                <Text style={[styles.modalFeatureText, { color: colors.text }]}>
+                  Demographics & general health
+                </Text>
+              </View>
+            </View>
+            
+            <View style={styles.modalInfo}>
+              <Icon name="clock-outline" size={18} color={colors.secondary} />
+              <Text style={[styles.modalInfoText, { color: colors.secondary }]}>
+                Takes approximately 5-10 minutes
+              </Text>
+            </View>
+            
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: colors.primary }]}
+              onPress={() => setShowIntroModal(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalButtonText}>Start Assessment</Text>
+              <Icon name="arrow-right" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+            
+            {isInitial && onSkip && (
+              <TouchableOpacity
+                style={styles.modalSkipButton}
+                onPress={() => {
+                  setShowIntroModal(false);
+                  if (onSkip) {
+                    onSkip();
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.modalSkipText, { color: colors.secondary }]}>
+                  I'll do this later
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {loading ? (
         <View style={[styles.content, { justifyContent: 'center', alignItems: 'center' }]}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -577,9 +771,22 @@ const DiabetesRiskAssessmentScreen = ({ navigation }) => {
               <Text style={styles.headerTitle}>
                 {existingAssessment ? 'Update Assessment' : 'Diabetes Risk Assessment'}
               </Text>
-              <TouchableOpacity style={styles.closeButton} onPress={() => navigation.goBack()}>
-                <Icon name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
+              {isInitial ? (
+                <TouchableOpacity 
+                  style={styles.skipButton} 
+                  onPress={() => {
+                    if (onSkip) {
+                      onSkip();
+                    }
+                  }}
+                >
+                  <Text style={styles.skipButtonText}>Skip</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.closeButton} onPress={() => navigation.goBack()}>
+                  <Icon name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+              )}
             </View>
             
             <View style={styles.progressBarContainer}>

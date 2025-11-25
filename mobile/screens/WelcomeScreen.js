@@ -11,10 +11,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '../context/ThemeContext';
 
 const { width, height } = Dimensions.get('window');
 
-const WelcomeScreen = ({ navigation }) => {
+const WelcomeScreen = ({ navigation, onComplete }) => {
+  const { colors, isDarkMode, toggleTheme } = useTheme();
   const [currentPage, setCurrentPage] = useState(0);
   const scrollViewRef = useRef(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -113,26 +115,47 @@ const WelcomeScreen = ({ navigation }) => {
       duration: 300,
       useNativeDriver: true,
     }).start(() => {
+      if (onComplete) {
+        onComplete();
+      }
       navigation.navigate('Login');
     });
   };
 
   return (
-    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
+    <Animated.View style={[styles.container, { opacity: fadeAnim, backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
       
       {/* Modern Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <View style={styles.logoContainer}>
-          <Text style={styles.logoText}>GlycoFit</Text>
+          <Text style={[styles.logoText, { color: colors.primary }]}>GlycoFit</Text>
         </View>
-        <TouchableOpacity
-          style={styles.skipButton}
-          onPress={() => navigation.navigate('Login')}
-        >
-          <Text style={styles.skipText}>Skip</Text>
-          <Ionicons name="arrow-forward" size={16} color="#666" />
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={[styles.themeToggle, { backgroundColor: colors.card }]}
+            onPress={toggleTheme}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={isDarkMode ? 'sunny' : 'moon'}
+              size={18}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.skipButton, { backgroundColor: colors.card }]}
+          onPress={() => {
+            if (onComplete) {
+              onComplete();
+            }
+            navigation.navigate('Login');
+          }}
+          >
+            <Text style={[styles.skipText, { color: colors.text }]}>Skip</Text>
+            <Ionicons name="arrow-forward" size={16} color={colors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Scrollable Pages */}
@@ -154,23 +177,23 @@ const WelcomeScreen = ({ navigation }) => {
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                <Ionicons name={page.icon} size={70} color="#FFF" />
+                <Ionicons name={page.icon} size={50} color="#FFF" />
               </LinearGradient>
             </Animated.View>
 
             {/* Title & Description */}
-            <Text style={styles.title}>{page.title}</Text>
-            <Text style={styles.description}>{page.description}</Text>
+            <Text style={[styles.title, { color: colors.text }]}>{page.title}</Text>
+            <Text style={[styles.description, { color: colors.secondary }]}>{page.description}</Text>
 
             {/* Detailed Explanation */}
-            <View style={styles.detailsContainer}>
-              <Text style={styles.detailsText}>{page.details}</Text>
+            <View style={[styles.detailsContainer, { backgroundColor: colors.card }]}>
+              <Text style={[styles.detailsText, { color: colors.text }]}>{page.details}</Text>
             </View>
 
             {/* Feature Pills */}
             <View style={styles.featuresContainer}>
               {page.features.map((feature, idx) => (
-                <View key={idx} style={styles.featurePill}>
+                <View key={idx} style={[styles.featurePill, { backgroundColor: colors.card }]}>
                   <Ionicons name="checkmark-circle" size={16} color={page.gradientColors[0]} />
                   <Text style={[styles.featureText, { color: page.gradientColors[0] }]}>
                     {feature}
@@ -247,11 +270,16 @@ const WelcomeScreen = ({ navigation }) => {
 
       {/* Modern Footer */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>
+        <Text style={[styles.footerText, { color: colors.secondary }]}>
           Already have an account?{' '}
         </Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-          <Text style={styles.loginLink}>Sign In</Text>
+        <TouchableOpacity onPress={() => {
+          if (onComplete) {
+            onComplete();
+          }
+          navigation.navigate('Login');
+        }}>
+          <Text style={[styles.loginLink, { color: colors.primary }]}>Sign In</Text>
         </TouchableOpacity>
       </View>
     </Animated.View>
@@ -261,37 +289,46 @@ const WelcomeScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 50,
-    paddingBottom: 20,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
   },
   logoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   logoText: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#2196F3',
     letterSpacing: 0.5,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  themeToggle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   skipButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: '#F5F5F5',
-    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 16,
   },
   skipText: {
     fontSize: 14,
-    color: '#666',
     fontWeight: '600',
     marginRight: 4,
   },
@@ -299,169 +336,163 @@ const styles = StyleSheet.create({
     width: width,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingBottom: 80,
+    paddingHorizontal: 24,
+    paddingTop: 10,
+    paddingBottom: 40,
   },
   iconContainer: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 32,
+    marginBottom: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 12,
+    shadowRadius: 8,
+    elevation: 8,
   },
   title: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: '800',
-    color: '#1A1A1A',
-    marginBottom: 12,
+    marginBottom: 8,
     textAlign: 'center',
     letterSpacing: 0.3,
   },
   description: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 14,
     textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 20,
-    paddingHorizontal: 8,
+    lineHeight: 20,
+    marginBottom: 12,
+    paddingHorizontal: 4,
   },
   detailsContainer: {
-    backgroundColor: '#FFF',
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 24,
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowRadius: 6,
     elevation: 3,
   },
   detailsText: {
-    fontSize: 14,
-    color: '#555',
+    fontSize: 13,
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 19,
   },
   featuresContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 12,
+    gap: 8,
   },
   featurePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowRadius: 3,
     elevation: 2,
   },
   featureText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
-    marginLeft: 6,
+    marginLeft: 5,
   },
   indicatorContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 20,
+    paddingVertical: 12,
   },
   indicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: '#DDD',
-    marginHorizontal: 5,
+    marginHorizontal: 4,
   },
   activeIndicator: {
-    width: 32,
-    height: 8,
-    borderRadius: 4,
+    width: 24,
+    height: 7,
+    borderRadius: 3.5,
   },
   bottomContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingBottom: 16,
+    paddingHorizontal: 20,
+    paddingBottom: 10,
   },
   prevButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: '#FFF',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowRadius: 6,
+    elevation: 3,
   },
   nextButton: {
-    borderRadius: 28,
+    borderRadius: 22,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowRadius: 6,
+    elevation: 4,
   },
   nextButtonInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 32,
+    paddingVertical: 11,
+    paddingHorizontal: 24,
   },
   nextButtonText: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    marginRight: 8,
+    marginRight: 6,
   },
   getStartedButton: {
-    borderRadius: 28,
+    borderRadius: 22,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
   },
   getStartedButtonInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 40,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
   },
   getStartedButtonText: {
     color: '#FFF',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
   },
   footer: {
     flexDirection: 'row',
-    paddingVertical: 20,
+    paddingVertical: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
   footerText: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 13,
   },
   loginLink: {
-    fontSize: 14,
-    color: '#2196F3',
+    fontSize: 13,
     fontWeight: '700',
   },
 });

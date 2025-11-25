@@ -109,44 +109,12 @@ const MeasureScreen = ({ navigation }) => {
 
   const measurementOptions = [
     {
-      id: 'heart-rate',
-      title: 'Heart Rate',
-      subtitle: 'Monitor your heart rate',
-      icon: 'heart-pulse',
-      color: '#E74C3C',
-      action: () => handleMeasurement('Heart Rate'),
-    },
-    {
-      id: 'sleep-track',
-      title: 'Sleep Tracker',
-      subtitle: 'Track your sleep patterns',
-      icon: 'sleep',
-      color: '#3498DB',
-      action: () => handleMeasurement('Sleep Tracker'),
-    },
-    {
       id: 'food-scanner',
       title: 'Food Scanner',
       subtitle: 'Scan and log your meals',
       icon: 'camera',
       color: '#27AE60',
       action: () => openFoodScanner(),
-    },
-    {
-      id: 'alcohol-intake',
-      title: 'Alcohol Intake',
-      subtitle: 'Track alcohol consumption',
-      icon: 'glass-wine',
-      color: '#8E44AD',
-      action: () => handleMeasurement('Alcohol Intake'),
-    },
-    {
-      id: 'smoke-intake',
-      title: 'Smoke Intake',
-      subtitle: 'Monitor smoking habits',
-      icon: 'smoking',
-      color: '#95A5A6',
-      action: () => handleMeasurement('Smoke Intake'),
     },
     {
       id: 'step-counter',
@@ -434,12 +402,10 @@ const MeasureScreen = ({ navigation }) => {
       lineHeight: 22,
     },
     measurementGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      justifyContent: 'space-between',
+      flexDirection: 'column',
     },
     measurementCard: {
-      width: '48%',
+      width: '100%',
       backgroundColor: colors.card,
       borderRadius: 16,
       padding: 20,
@@ -454,6 +420,8 @@ const MeasureScreen = ({ navigation }) => {
       },
       shadowOpacity: 0.1,
       shadowRadius: 3.84,
+      flexDirection: 'row',
+      alignItems: 'center',
     },
     measurementIcon: {
       width: 48,
@@ -461,7 +429,10 @@ const MeasureScreen = ({ navigation }) => {
       borderRadius: 24,
       justifyContent: 'center',
       alignItems: 'center',
-      marginBottom: 12,
+      marginRight: 16,
+    },
+    measurementInfo: {
+      flex: 1,
     },
     measurementTitle: {
       fontSize: 16,
@@ -896,36 +867,12 @@ const MeasureScreen = ({ navigation }) => {
               <View style={[styles.measurementIcon, getIconBackgroundStyle(option.color)]}>
                 <Icon name={option.icon} size={24} color={option.color} />
               </View>
-              <Text style={styles.measurementTitle}>{option.title}</Text>
-              <Text style={styles.measurementSubtitle}>{option.subtitle}</Text>
+              <View style={styles.measurementInfo}>
+                <Text style={styles.measurementTitle}>{option.title}</Text>
+                <Text style={styles.measurementSubtitle}>{option.subtitle}</Text>
+              </View>
             </TouchableOpacity>
           ))}
-        </View>
-
-        <View style={styles.recentSection}>
-          <Text style={styles.sectionTitle}>Recent Measurements</Text>
-          
-          {/* Empty state for now */}
-          <View style={styles.emptyState}>
-            <Icon name="chart-line" size={48} color={colors.secondary} />
-            <Text style={styles.emptyText}>
-              No recent measurements.{'\n'}Start tracking your health metrics above!
-            </Text>
-          </View>
-
-          {/* Example of how recent measurements would look */}
-          {/* 
-          <View style={styles.recentCard}>
-            <View style={styles.recentHeader}>
-              <Text style={styles.recentTitle}>Heart Rate</Text>
-              <Text style={styles.recentTime}>2 hours ago</Text>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-              <Text style={styles.recentValue}>72</Text>
-              <Text style={styles.recentUnit}>bpm</Text>
-            </View>
-          </View>
-          */}
         </View>
       </ScrollView>
 

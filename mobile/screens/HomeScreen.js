@@ -347,26 +347,6 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Recent Readings */}
-        <View style={styles.recentSection}>
-          <Text style={styles.sectionTitle}>Recent Readings</Text>
-          <View style={styles.recentList}>
-            {recentReadings.map((reading) => (
-              <TouchableOpacity
-                key={reading.id}
-                style={styles.recentCard}
-                onPress={() => toast.info('Reading details coming soon!')}
-                activeOpacity={0.7}
-              >
-                <View style={styles.recentContent}>
-                  <Text style={styles.recentTitle}>{reading.type}</Text>
-                  <Text style={styles.recentTime}>{reading.time}</Text>
-                </View>
-                <Text style={styles.recentValue}>{reading.value}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
