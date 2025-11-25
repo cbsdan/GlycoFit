@@ -49,7 +49,8 @@ def create_app():
         "capacitor://localhost", # Capacitor apps
         "ionic://localhost",    # Ionic apps
         "http://192.168.*.*:*", # Local network
-        "https://192.168.*.*:*" # Local network HTTPS
+        "https://192.168.*.*:*", # Local network HTTPS
+        "https://glycofit.vercel.app"
     ], supports_credentials=True)
     
     

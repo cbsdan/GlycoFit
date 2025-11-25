@@ -1,5 +1,9 @@
 from flask import request, jsonify
 import logging
+import os
+import tempfile
+import time
+from datetime import datetime
 from services.gemini_service import get_gemini_service
 from services.cloudinary_service import CloudinaryService
 from models.user_meal import UserMeal
@@ -80,22 +84,32 @@ class GeminiController:
                 image_public_id = None
                 
                 try:
-                    cloudinary_service = CloudinaryService()
-                    
-                    # Reset file pointer to beginning
-                    image_file.seek(0)
+                    # Create temporary file for upload
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{image_file.filename.split('.')[-1]}") as temp_file:
+                        # Reset file pointer and write to temp file
+                        image_file.seek(0)
+                        temp_file.write(image_file.read())
+                        temp_file_path = temp_file.name
                     
                     logging.info("Uploading image to Cloudinary (temp folder)")
-                    upload_result = cloudinary_service.upload_image(
-                        image_file,
+                    upload_result = CloudinaryService.upload_image(
+                        file_path=temp_file_path,
                         folder='temp_meals',
-                        resource_type='image'
+                        public_id=f"temp_meal_{int(time.time())}_{os.urandom(4).hex()}"
                     )
                     
-                    image_url = upload_result.get('secure_url')
-                    image_public_id = upload_result.get('public_id')
+                    # Clean up temp file
+                    try:
+                        os.unlink(temp_file_path)
+                    except:
+                        pass
                     
-                    logging.info(f"Image uploaded successfully: {image_public_id}")
+                    if upload_result.get('success'):
+                        image_url = upload_result.get('secure_url')
+                        image_public_id = upload_result.get('public_id')
+                        logging.info(f"Image uploaded successfully: {image_public_id}")
+                    else:
+                        logging.error(f"Cloudinary upload failed: {upload_result.get('error')}")
                     
                 except Exception as upload_error:
                     logging.error(f"Failed to upload image to Cloudinary: {str(upload_error)}")
@@ -189,40 +203,55 @@ class GeminiController:
             serving_size = data.get('serving_size')
             confidence_rate = data.get('confidence_rate')
             
+            logging.info(f"Saving Gemini meal for user {user_id} - temp_image_public_id: {temp_image_public_id}")
+            
             # Move image from temp folder to permanent folder (if exists)
             image_url = None
             image_public_id = None
             
             if temp_image_public_id:
                 try:
-                    cloudinary_service = CloudinaryService()
+                    # Generate new public_id for permanent storage
+                    new_public_id = f"user_meals/meal_{user_id}_{int(time.time())}"
                     
-                    # Get the image from temp folder
-                    temp_url = cloudinary_service.get_image_url(temp_image_public_id)
+                    logging.info(f"Moving image from {temp_image_public_id} to {new_public_id}")
                     
-                    if temp_url:
-                        # Copy to permanent folder
-                        from cloudinary.uploader import rename
-                        
-                        # Generate new public_id for permanent storage
-                        new_public_id = f"meals/{user_id}_{int(datetime.utcnow().timestamp())}"
-                        
-                        # Rename/move the image
-                        result = rename(temp_image_public_id, new_public_id)
-                        
-                        image_url = result.get('secure_url')
-                        image_public_id = result.get('public_id')
-                        
+                    # Use CloudinaryService rename method
+                    rename_result = CloudinaryService.rename_image(
+                        from_public_id=temp_image_public_id,
+                        to_public_id=new_public_id
+                    )
+                    
+                    if rename_result.get('success'):
+                        image_url = rename_result.get('url')
+                        image_public_id = rename_result.get('public_id')
                         logging.info(f"Image moved to permanent storage: {image_public_id}")
+                    else:
+                        logging.error(f"Failed to rename image: {rename_result.get('error')}")
+                        # Try to get temp image info as fallback
+                        try:
+                            temp_info = CloudinaryService.get_image_info(temp_image_public_id)
+                            if temp_info.get('success'):
+                                image_url = temp_info.get('url')
+                                image_public_id = temp_image_public_id
+                                logging.info(f"Using temp image as fallback: {image_public_id}")
+                        except Exception as fallback_error:
+                            logging.error(f"Fallback failed: {str(fallback_error)}")
                     
                 except Exception as move_error:
                     logging.error(f"Failed to move image to permanent folder: {str(move_error)}")
-                    # Continue without image
+                    # Try to use temp image as fallback
+                    try:
+                        temp_info = CloudinaryService.get_image_info(temp_image_public_id)
+                        if temp_info.get('success'):
+                            image_url = temp_info.get('url')
+                            image_public_id = temp_image_public_id
+                            logging.info(f"Using temp image due to move error: {image_public_id}")
+                    except Exception as fallback_error:
+                        logging.error(f"Could not retrieve temp image: {str(fallback_error)}")
             
             # Save meal record to database
             try:
-                from datetime import datetime
-                
                 result = UserMeal.create_meal(
                     user_id=user_id,
                     nutrients=nutrients,

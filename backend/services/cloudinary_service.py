@@ -98,6 +98,28 @@ class CloudinaryService:
             raise e
     
     @staticmethod
+    def rename_image(from_public_id, to_public_id):
+        """Rename/move image within Cloudinary (more efficient than re-uploading)"""
+        try:
+            result = cloudinary.uploader.rename(from_public_id, to_public_id)
+            
+            logging.info(f"Image renamed successfully from {from_public_id} to {to_public_id}")
+            
+            return {
+                'success': True,
+                'public_id': result.get('public_id'),
+                'url': result.get('secure_url'),
+                'secure_url': result.get('secure_url')
+            }
+                
+        except Exception as e:
+            logging.error(f"Error renaming image from {from_public_id} to {to_public_id}: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    @staticmethod
     def delete_image(public_id):
         """Delete image from Cloudinary"""
         try:

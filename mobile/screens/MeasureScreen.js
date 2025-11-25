@@ -128,8 +128,7 @@ const MeasureScreen = ({ navigation }) => {
 
   // Food Scanner Functions
   const openFoodScanner = () => {
-    setShowFoodScanner(true);
-    resetFoodScannerState();
+    setShowImagePickerModal(true);
   };
 
   const closeFoodScanner = () => {
@@ -198,9 +197,14 @@ const MeasureScreen = ({ navigation }) => {
   // Handle image capture from camera
   const handleCameraCapture = async () => {
     setShowImagePickerModal(false);
+    setShowFoodScanner(true);
+    resetFoodScannerState();
     
     const hasPermission = await requestCameraPermission();
-    if (!hasPermission) return;
+    if (!hasPermission) {
+      setShowFoodScanner(false);
+      return;
+    }
 
     try {
       const result = await ImagePicker.launchCameraAsync({
@@ -213,19 +217,27 @@ const MeasureScreen = ({ navigation }) => {
       if (!result.canceled && result.assets[0]) {
         setCapturedImage(result.assets[0].uri);
         await processImage(result.assets[0].uri);
+      } else {
+        setShowFoodScanner(false);
       }
     } catch (error) {
       console.error('Error capturing image:', error);
       toast.error('Failed to capture image. Please try again.');
+      setShowFoodScanner(false);
     }
   };
 
   // Handle image selection from library
   const handleLibrarySelection = async () => {
     setShowImagePickerModal(false);
+    setShowFoodScanner(true);
+    resetFoodScannerState();
     
     const hasPermission = await requestMediaPermission();
-    if (!hasPermission) return;
+    if (!hasPermission) {
+      setShowFoodScanner(false);
+      return;
+    }
 
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -237,10 +249,13 @@ const MeasureScreen = ({ navigation }) => {
       if (!result.canceled && result.assets[0]) {
         setCapturedImage(result.assets[0].uri);
         await processImage(result.assets[0].uri);
+      } else {
+        setShowFoodScanner(false);
       }
     } catch (error) {
       console.error('Error selecting image:', error);
       toast.error('Failed to select image. Please try again.');
+      setShowFoodScanner(false);
     }
   };
 
@@ -257,6 +272,9 @@ const MeasureScreen = ({ navigation }) => {
       // Check if food was successfully detected
       if (response && response.success && response.data) {
         console.log('Setting prediction data:', response.data);
+        console.log('temp_image_public_id:', response.data.temp_image_public_id);
+        console.log('temp_image_url:', response.data.temp_image_url);
+        
         setPredictionData(response.data);
         setEditableNutrients(response.data.nutrients || {});
         setMealDetails(prev => ({
@@ -334,6 +352,8 @@ const MeasureScreen = ({ navigation }) => {
     setProcessingMessage('Saving your meal...');
     
     try {
+      console.log('Saving meal with temp_image_public_id:', predictionData.temp_image_public_id);
+      
       const response = await api.saveMeal(
         editableNutrients,
         mealDetails.mealName.trim(),
@@ -344,15 +364,20 @@ const MeasureScreen = ({ navigation }) => {
         mealDetails.confidenceRate
       );
 
+      console.log('Save meal response:', response);
+
       if (response.success) {
+        console.log('Meal saved with image_url:', response.data?.image_url);
         toast.success('Meal saved successfully!');
         setShowFoodScanner(false);
         resetFoodScannerState();
       } else {
+        console.error('Save meal failed:', response.error);
         toast.error(response.error || 'Failed to save meal');
       }
     } catch (error) {
       console.error('Error saving meal:', error);
+      console.error('Error details:', error.response?.data);
       toast.error('Failed to save meal. Please try again.');
     } finally {
       setIsProcessing(false);
@@ -1091,71 +1116,36 @@ const MeasureScreen = ({ navigation }) => {
         </SafeAreaView>
       </Modal>
 
-      {/* Image picker modal */}
-      {!showFoodScanner && (
-        <Modal
-          visible={showImagePickerModal}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setShowImagePickerModal(false)}
-        >
-          <View style={styles.imagePickerModalOverlay}>
-            <View style={styles.imagePickerModalContent}>
-              <Text style={styles.imagePickerModalTitle}>Select Image</Text>
-              
-              <TouchableOpacity style={styles.modalButton} onPress={handleCameraCapture}>
-                <Icon name="camera" size={24} color="white" />
-                <Text style={styles.modalButtonText}>Take Photo</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.modalButton} onPress={handleLibrarySelection}>
-                <Icon name="image" size={24} color="white" />
-                <Text style={styles.modalButtonText}>Choose from Gallery</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.modalCancelButton} 
-                onPress={() => setShowImagePickerModal(false)}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
+      {/* Image picker modal - shown directly when Food Scanner is clicked */}
+      <Modal
+        visible={showImagePickerModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowImagePickerModal(false)}
+      >
+        <View style={styles.imagePickerModalOverlay}>
+          <View style={styles.imagePickerModalContent}>
+            <Text style={styles.imagePickerModalTitle}>Select Image</Text>
+            
+            <TouchableOpacity style={styles.modalButton} onPress={handleCameraCapture}>
+              <Icon name="camera" size={24} color="white" />
+              <Text style={styles.modalButtonText}>Take Photo</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.modalButton} onPress={handleLibrarySelection}>
+              <Icon name="image" size={24} color="white" />
+              <Text style={styles.modalButtonText}>Choose from Gallery</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.modalCancelButton} 
+              onPress={() => setShowImagePickerModal(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
-        </Modal>
-      )}
-
-      {/* Image picker modal for food scanner */}
-      {showFoodScanner && (
-        <Modal
-          visible={showImagePickerModal}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setShowImagePickerModal(false)}
-        >
-          <View style={styles.imagePickerModalOverlay}>
-            <View style={styles.imagePickerModalContent}>
-              <Text style={styles.imagePickerModalTitle}>Select Image</Text>
-              
-              <TouchableOpacity style={styles.modalButton} onPress={handleCameraCapture}>
-                <Icon name="camera" size={24} color="white" />
-                <Text style={styles.modalButtonText}>Take Photo</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.modalButton} onPress={handleLibrarySelection}>
-                <Icon name="image" size={24} color="white" />
-                <Text style={styles.modalButtonText}>Choose from Gallery</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.modalCancelButton} 
-                onPress={() => setShowImagePickerModal(false)}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-      )}
+        </View>
+      </Modal>
 
       {/* Food Type Selection Modal */}
       <Modal
