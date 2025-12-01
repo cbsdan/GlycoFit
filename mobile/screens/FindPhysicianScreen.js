@@ -17,7 +17,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import api from '../services/api';
 
-const FindPhysicianScreen = () => {
+const FindPhysicianScreen = ({ navigation }) => {
   const { colors: theme } = useTheme();
   const toast = useToast();
 
@@ -260,7 +260,12 @@ const FindPhysicianScreen = () => {
     const relationship = item.relationship;
 
     return (
-      <View key={relationship.id} style={[styles.physicianCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+      <TouchableOpacity
+        key={relationship.id}
+        style={[styles.physicianCard, { backgroundColor: theme.card, borderColor: theme.border }]}
+        onPress={() => navigation.navigate('PhysicianCommunication', { relationship: item })}
+        activeOpacity={0.7}
+      >
         <View style={styles.physicianHeader}>
           <View style={styles.avatarContainer}>
             {physician.user.avatar?.url ? (
@@ -285,16 +290,21 @@ const FindPhysicianScreen = () => {
               Connected since {new Date(relationship.acceptance_date).toLocaleDateString()}
             </Text>
           </View>
+          
+          <Icon name="chevron-right" size={24} color={theme.secondary} />
         </View>
 
         <TouchableOpacity
           style={[styles.disconnectButton, { borderColor: '#E74C3C' }]}
-          onPress={() => handleDisconnect(relationship.id)}
+          onPress={(e) => {
+            e.stopPropagation();
+            handleDisconnect(relationship.id);
+          }}
         >
           <Icon name="link-off" size={18} color="#E74C3C" />
           <Text style={[styles.disconnectButtonText, { color: '#E74C3C' }]}>Disconnect</Text>
         </TouchableOpacity>
-      </View>
+      </TouchableOpacity>
     );
   };
 

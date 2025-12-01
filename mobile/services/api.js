@@ -533,6 +533,20 @@ const getMyPhysician = async () => {
   }
 };
 
+const getPhysicianAvailableSlots = async (physicianId, startDate = null, endDate = null) => {
+  try {
+    const params = {};
+    if (startDate) params.start_date = startDate;
+    if (endDate) params.end_date = endDate;
+    
+    const response = await api.get(`/users/physicians/${physicianId}/available-slots`, { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error getting physician available slots:', error);
+    throw error;
+  }
+};
+
 const cancelPhysicianRequest = async (requestId) => {
   try {
     const response = await api.post(`/users/physicians/requests/${requestId}/cancel`);
@@ -549,6 +563,278 @@ const disconnectPhysician = async (relationshipId) => {
     return response.data;
   } catch (error) {
     console.error('Error disconnecting from physician:', error);
+    throw error;
+  }
+};
+
+// ==================== Appointments Management ====================
+
+/**
+ * Create a new appointment with physician
+ * @param {string} physicianId - Physician ID
+ * @param {string} appointmentDate - ISO date string
+ * @param {string} appointmentType - Type of appointment
+ * @param {number} durationMinutes - Duration in minutes
+ * @param {string} reason - Reason for appointment
+ * @param {string} notes - Additional notes
+ * @returns {Promise<Object>} Created appointment
+ */
+export const createAppointment = async (physicianId, appointmentDate, appointmentType = 'Follow-up', durationMinutes = 30, reason = '', notes = '') => {
+  try {
+    const response = await api.post('/users/appointments', {
+      physician_id: physicianId,
+      appointment_date: appointmentDate,
+      appointment_type: appointmentType,
+      duration_minutes: durationMinutes,
+      reason,
+      notes
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error creating appointment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get patient's appointments
+ * @param {string} status - Filter by status (optional)
+ * @param {string} physicianId - Filter by physician (optional)
+ * @returns {Promise<Object>} List of appointments
+ */
+export const getAppointments = async (status = null, physicianId = null) => {
+  try {
+    const params = {};
+    if (status) params.status = status;
+    if (physicianId) params.physician_id = physicianId;
+    
+    const response = await api.get('/users/appointments', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error getting appointments:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get specific appointment
+ * @param {string} appointmentId - Appointment ID
+ * @returns {Promise<Object>} Appointment details
+ */
+export const getAppointment = async (appointmentId) => {
+  try {
+    const response = await api.get(`/users/appointments/${appointmentId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting appointment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Cancel an appointment
+ * @param {string} appointmentId - Appointment ID
+ * @param {string} reason - Cancellation reason
+ * @returns {Promise<Object>} Updated appointment
+ */
+export const cancelAppointment = async (appointmentId, reason = '') => {
+  try {
+    const response = await api.post(`/users/appointments/${appointmentId}/cancel`, { reason });
+    return response.data;
+  } catch (error) {
+    console.error('Error cancelling appointment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Reschedule an appointment
+ * @param {string} appointmentId - Appointment ID
+ * @param {string} newDate - New ISO date string
+ * @param {number} durationMinutes - New duration (optional)
+ * @returns {Promise<Object>} Updated appointment
+ */
+export const rescheduleAppointment = async (appointmentId, newDate, durationMinutes = null) => {
+  try {
+    const payload = { appointment_date: newDate };
+    if (durationMinutes) payload.duration_minutes = durationMinutes;
+    
+    const response = await api.post(`/users/appointments/${appointmentId}/reschedule`, payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error rescheduling appointment:', error);
+    throw error;
+  }
+};
+
+// ==================== Prescriptions Management ====================
+
+/**
+ * Get patient's prescriptions
+ * @param {string} status - Filter by status (optional)
+ * @param {string} physicianId - Filter by physician (optional)
+ * @returns {Promise<Object>} List of prescriptions
+ */
+export const getPrescriptions = async (status = null, physicianId = null) => {
+  try {
+    const params = {};
+    if (status) params.status = status;
+    if (physicianId) params.physician_id = physicianId;
+    
+    const response = await api.get('/users/prescriptions', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error getting prescriptions:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get specific prescription
+ * @param {string} prescriptionId - Prescription ID
+ * @returns {Promise<Object>} Prescription details
+ */
+export const getPrescription = async (prescriptionId) => {
+  try {
+    const response = await api.get(`/users/prescriptions/${prescriptionId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting prescription:', error);
+    throw error;
+  }
+};
+
+/**
+ * Request prescription refill
+ * @param {string} prescriptionId - Prescription ID
+ * @returns {Promise<Object>} Updated prescription
+ */
+export const requestPrescriptionRefill = async (prescriptionId) => {
+  try {
+    const response = await api.post(`/users/prescriptions/${prescriptionId}/refill`);
+    return response.data;
+  } catch (error) {
+    console.error('Error requesting refill:', error);
+    throw error;
+  }
+};
+
+// ==================== Consultations Management ====================
+
+/**
+ * Create a new consultation request
+ * @param {string} physicianId - Physician ID
+ * @param {string} scheduledDate - ISO date string
+ * @param {string} consultationType - video, chat, or in-person
+ * @param {number} durationMinutes - Duration in minutes
+ * @param {string} reason - Reason for consultation
+ * @param {string} notes - Additional notes
+ * @returns {Promise<Object>} Created consultation
+ */
+export const createConsultation = async (physicianId, scheduledDate, consultationType = 'video', durationMinutes = 30, reason = '', notes = '') => {
+  try {
+    const response = await api.post('/users/consultations', {
+      physician_id: physicianId,
+      scheduled_date: scheduledDate,
+      consultation_type: consultationType,
+      duration_minutes: durationMinutes,
+      reason,
+      notes
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error creating consultation:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get patient's consultations
+ * @param {string} status - Filter by status (optional)
+ * @param {string} physicianId - Filter by physician (optional)
+ * @returns {Promise<Object>} List of consultations
+ */
+export const getConsultations = async (status = null, physicianId = null) => {
+  try {
+    const params = {};
+    if (status) params.status = status;
+    if (physicianId) params.physician_id = physicianId;
+    
+    const response = await api.get('/users/consultations', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error getting consultations:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get specific consultation
+ * @param {string} consultationId - Consultation ID
+ * @returns {Promise<Object>} Consultation details
+ */
+export const getConsultation = async (consultationId) => {
+  try {
+    const response = await api.get(`/users/consultations/${consultationId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting consultation:', error);
+    throw error;
+  }
+};
+
+/**
+ * Cancel a consultation
+ * @param {string} consultationId - Consultation ID
+ * @param {string} reason - Cancellation reason
+ * @returns {Promise<Object>} Updated consultation
+ */
+export const cancelConsultation = async (consultationId, reason = '') => {
+  try {
+    const response = await api.post(`/users/consultations/${consultationId}/cancel`, { reason });
+    return response.data;
+  } catch (error) {
+    console.error('Error cancelling consultation:', error);
+    throw error;
+  }
+};
+
+/**
+ * Reschedule a consultation
+ * @param {string} consultationId - Consultation ID
+ * @param {string} newDate - New ISO date string
+ * @param {number} durationMinutes - New duration (optional)
+ * @returns {Promise<Object>} Updated consultation
+ */
+export const rescheduleConsultation = async (consultationId, newDate, durationMinutes = null) => {
+  try {
+    const payload = { scheduled_date: newDate };
+    if (durationMinutes) payload.duration_minutes = durationMinutes;
+    
+    const response = await api.post(`/users/consultations/${consultationId}/reschedule`, payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error rescheduling consultation:', error);
+    throw error;
+  }
+};
+
+/**
+ * Rate a completed consultation
+ * @param {string} consultationId - Consultation ID
+ * @param {number} rating - Rating (1-5)
+ * @param {string} feedback - Optional feedback
+ * @returns {Promise<Object>} Updated consultation
+ */
+export const rateConsultation = async (consultationId, rating, feedback = '') => {
+  try {
+    const response = await api.post(`/users/consultations/${consultationId}/rate`, {
+      rating,
+      feedback
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error rating consultation:', error);
     throw error;
   }
 };
@@ -723,8 +1009,23 @@ api.saveDailyActivity = saveDailyActivity;
 api.getAvailablePhysicians = getAvailablePhysicians;
 api.sendPhysicianRequest = sendPhysicianRequest;
 api.getMyPhysician = getMyPhysician;
+api.getPhysicianAvailableSlots = getPhysicianAvailableSlots;
 api.cancelPhysicianRequest = cancelPhysicianRequest;
 api.disconnectPhysician = disconnectPhysician;
+api.createAppointment = createAppointment;
+api.getAppointments = getAppointments;
+api.getAppointment = getAppointment;
+api.cancelAppointment = cancelAppointment;
+api.rescheduleAppointment = rescheduleAppointment;
+api.getPrescriptions = getPrescriptions;
+api.getPrescription = getPrescription;
+api.requestPrescriptionRefill = requestPrescriptionRefill;
+api.createConsultation = createConsultation;
+api.getConsultations = getConsultations;
+api.getConsultation = getConsultation;
+api.cancelConsultation = cancelConsultation;
+api.rescheduleConsultation = rescheduleConsultation;
+api.rateConsultation = rateConsultation;
 api.syncHealthData = syncHealthData;
 api.getLatestSyncTimestamps = getLatestSyncTimestamps;
 api.getHealthData = getHealthData;

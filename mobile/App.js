@@ -21,6 +21,8 @@ import MealDetailScreen from './screens/MealDetailScreen';
 import MealHistoryScreen from './screens/MealHistoryScreen';
 import DiabetesRiskAssessmentScreen from './screens/DiabetesRiskAssessmentScreen';
 import AssessmentResultsScreen from './screens/AssessmentResultsScreen';
+import PhysicianCommunicationScreen from './screens/PhysicianCommunicationScreen';
+import PhysicianMessagesScreen from './screens/PhysicianMessagesScreen';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingScreen from './components/LoadingScreen';
 import WelcomeScreen from './screens/WelcomeScreen';
@@ -246,6 +248,30 @@ function AppNavigator() {
               {(props) => (
                 <UniversalScreenWrapper>
                   <AssessmentResultsScreen {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="PhysicianCommunication" 
+              options={{ 
+                headerShown: false
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <PhysicianCommunicationScreen {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="PhysicianMessages" 
+              options={{ 
+                headerShown: false
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <PhysicianMessagesScreen {...props} />
                 </UniversalScreenWrapper>
               )}
             </Stack.Screen>

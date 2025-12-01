@@ -95,8 +95,12 @@ class User:
 
             # If not permanent, check if current date is before end date
             end_date = record.get('end_date')
-            if end_date and end_date > now:
-                return True
+            if end_date:
+                # Convert to datetime if it's a string
+                if isinstance(end_date, str):
+                    end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                if end_date > now:
+                    return True
 
         return False
 
@@ -116,8 +120,11 @@ class User:
                 return record
 
             end_date = record.get('end_date')
-            if end_date and end_date > now:
-                return record
+            if end_date:
+                if isinstance(end_date, str):
+                    end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                if end_date > now:
+                    return record
 
         return None
 

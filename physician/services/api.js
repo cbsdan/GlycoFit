@@ -552,4 +552,46 @@ export const appointmentAPI = {
   },
 };
 
+// export const availabilityService = {
+//   create: async (data) => {
+//     try {
+//       const response = await api.post('/physician/availability-schedule', data);
+//       return response.data;
+//     } catch (error) {
+//       console.error('Create availability error:', error);
+//       throw error;
+//     }
+//   },
+
+//   getAll: async (params) => {
+//     try {
+//       const response = await api.get('/physician/availability-schedule', { params });
+//       return response.data;
+//     } catch (error) {
+//       console.error('Get availability error:', error);
+//       throw error;
+//     }
+//   },
+
+//   update: async (id, data) => {
+//     try {
+//       const response = await api.put(`/physician/availability-schedule/${id}`, data);
+//       return response.data;
+//     } catch (error) {
+//       console.error('Update availability error:', error);
+//       throw error;
+//     }
+//   },
+
+//   delete: async (id) => {
+//     try {
+//       const response = await api.delete(`/physician/availability-schedule/${id}`);
+//       return response.data;
+//     } catch (error) {
+//       console.error('Delete availability error:', error);
+//       throw error;
+//     }
+//   },
+// };
+
 export default api;
