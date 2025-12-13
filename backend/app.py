@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
+from flask_socketio import SocketIO
 from waitress import serve
 import os
 import logging
@@ -18,6 +19,8 @@ from routes.admin_routes import admin_bp
 from routes.physician_routes import physician_bp
 from routes.health_data_routes import health_data_bp
 from routes.diabetes_assessment_routes import diabetes_assessment_bp
+from routes.chat_routes import chat_bp
+from controllers.chat_controller import register_socket_events
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
 from services.ml_service import init_ml_service
@@ -124,6 +127,7 @@ def create_app():
     app.register_blueprint(physician_bp, url_prefix='/api/v1/physician')
     app.register_blueprint(health_data_bp, url_prefix='/api/v1/health-data')
     app.register_blueprint(diabetes_assessment_bp, url_prefix='/api/v1/diabetes-assessment')
+    app.register_blueprint(chat_bp, url_prefix='/api/v1/chat')
 
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])
@@ -189,13 +193,32 @@ def create_app():
     
     return app
 
+# Initialize SocketIO globally
+socketio = None
+
+def create_socketio(app):
+    """Create and configure SocketIO instance"""
+    global socketio
+    socketio = SocketIO(
+        app,
+        cors_allowed_origins="*",
+        async_mode='threading',
+        logger=True,
+        engineio_logger=True
+    )
+    # Register socket events
+    register_socket_events(socketio)
+    return socketio
+
 if __name__ == '__main__':
     app = create_app()
+    socketio = create_socketio(app)
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_ENV') == 'development'
     
     logging.info(f"Starting GlycoFit Backend on port {port}")
     logging.info(f"Debug mode: {debug}")
+    logging.info("Socket.IO enabled for real-time chat")
 
-    serve(app, host='0.0.0.0', port=port)
-    #app.run(host='0.0.0.0', port=port, debug=debug)
+    # Use SocketIO's run method instead of waitress for WebSocket support
+    socketio.run(app, host='0.0.0.0', port=port, debug=debug, allow_unsafe_werkzeug=True)

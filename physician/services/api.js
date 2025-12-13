@@ -552,6 +552,108 @@ export const appointmentAPI = {
   },
 };
 
+// ========== CHAT SERVICE ==========
+export const chatService = {
+  // Get or create a conversation
+  getOrCreateConversation: async (patientId, physicianId, relationshipId) => {
+    try {
+      const response = await api.post('/chat/conversation', {
+        patient_id: patientId,
+        physician_id: physicianId,
+        relationship_id: relationshipId
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error creating/getting conversation:', error);
+      throw error;
+    }
+  },
+
+  // Get all conversations for the physician
+  getConversations: async () => {
+    try {
+      const response = await api.get('/chat/conversations', {
+        params: { role: 'physician' }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error getting conversations:', error);
+      throw error;
+    }
+  },
+
+  // Get messages for a conversation
+  getMessages: async (conversationId, limit = 50, skip = 0) => {
+    try {
+      const response = await api.get(`/chat/conversation/${conversationId}/messages`, {
+        params: { role: 'physician', limit, skip }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error getting messages:', error);
+      throw error;
+    }
+  },
+
+  // Send a message (HTTP fallback)
+  sendMessage: async (conversationId, content, messageType = 'text') => {
+    try {
+      const response = await api.post('/chat/message', {
+        conversation_id: conversationId,
+        content,
+        sender_role: 'physician',
+        message_type: messageType
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error sending message:', error);
+      throw error;
+    }
+  },
+
+  // Mark messages as read
+  markMessagesAsRead: async (conversationId) => {
+    try {
+      const response = await api.put(`/chat/conversation/${conversationId}/read`, null, {
+        params: { role: 'physician' }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error marking messages as read:', error);
+      throw error;
+    }
+  },
+
+  // Send image message
+  sendImageMessage: async (conversationId, imageUri) => {
+    try {
+      const formData = new FormData();
+      formData.append('conversation_id', conversationId);
+      formData.append('sender_role', 'physician');
+      formData.append('message_type', 'image');
+      
+      // Get filename from URI
+      const filename = imageUri.split('/').pop();
+      
+      formData.append('image', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: filename || 'image.jpg',
+      });
+
+      const response = await api.post('/chat/message/image', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error sending image message:', error);
+      throw error;
+    }
+  },
+};
+
 // export const availabilityService = {
 //   create: async (data) => {
 //     try {

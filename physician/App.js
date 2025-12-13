@@ -9,6 +9,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import IntroductionScreen from './screens/IntroductionScreen';
 import LoginScreen from './screens/LoginScreen';
+import PatientChatScreen from './screens/PatientChatScreen';
 import TabNavigator from './navigation/TabNavigator';
 
 const Stack = createNativeStackNavigator();
@@ -101,10 +102,19 @@ function AppContent() {
             component={LoginScreen}
           />
         ) : (
-          <Stack.Screen 
-            name="Main" 
-            component={TabNavigator}
-          />
+          <>
+            <Stack.Screen 
+              name="Main" 
+              component={TabNavigator}
+            />
+            <Stack.Screen 
+              name="PatientChat" 
+              component={PatientChatScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+          </>
         )}
       </Stack.Navigator>
     </NavigationContainer>

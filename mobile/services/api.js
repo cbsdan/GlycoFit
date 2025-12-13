@@ -997,6 +997,107 @@ export const updateAssessmentAnswers = async (answers) => {
   }
 };
 
+// ========== CHAT ENDPOINTS ==========
+
+// Get or create a conversation
+const getOrCreateConversation = async (patientId, physicianId, relationshipId) => {
+  try {
+    const response = await api.post('/chat/conversation', {
+      patient_id: patientId,
+      physician_id: physicianId,
+      relationship_id: relationshipId
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error creating/getting conversation:', error);
+    throw error;
+  }
+};
+
+// Get all conversations for the user
+const getConversations = async (role = 'patient') => {
+  try {
+    const response = await api.get('/chat/conversations', {
+      params: { role }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error getting conversations:', error);
+    throw error;
+  }
+};
+
+// Get messages for a conversation
+const getMessages = async (conversationId, role = 'patient', limit = 50, skip = 0) => {
+  try {
+    const response = await api.get(`/chat/conversation/${conversationId}/messages`, {
+      params: { role, limit, skip }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error getting messages:', error);
+    throw error;
+  }
+};
+
+// Send a message (HTTP fallback)
+const sendChatMessage = async (conversationId, content, senderRole = 'patient', messageType = 'text') => {
+  try {
+    const response = await api.post('/chat/message', {
+      conversation_id: conversationId,
+      content,
+      sender_role: senderRole,
+      message_type: messageType
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error sending message:', error);
+    throw error;
+  }
+};
+
+// Mark messages as read
+const markMessagesAsRead = async (conversationId, role = 'patient') => {
+  try {
+    const response = await api.put(`/chat/conversation/${conversationId}/read`, null, {
+      params: { role }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error marking messages as read:', error);
+    throw error;
+  }
+};
+
+// Send image message
+const sendImageMessage = async (conversationId, imageUri, senderRole = 'patient') => {
+  try {
+    const formData = new FormData();
+    formData.append('conversation_id', conversationId);
+    formData.append('sender_role', senderRole);
+    formData.append('message_type', 'image');
+    
+    // Get filename from URI
+    const filename = imageUri.split('/').pop();
+    
+    formData.append('image', {
+      uri: imageUri,
+      type: 'image/jpeg',
+      name: filename || 'image.jpg',
+    });
+
+    const response = await api.post('/chat/message/image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error sending image message:', error);
+    throw error;
+  }
+};
+
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
 api.saveMeal = saveMeal;
@@ -1036,5 +1137,13 @@ api.getStatisticsSummary = getStatisticsSummary;
 api.submitDiabetesAssessment = submitDiabetesAssessment;
 api.getMyAssessment = getMyAssessment;
 api.updateAssessmentAnswers = updateAssessmentAnswers;
+
+// Chat endpoints
+api.getOrCreateConversation = getOrCreateConversation;
+api.getConversations = getConversations;
+api.getMessages = getMessages;
+api.sendChatMessage = sendChatMessage;
+api.markMessagesAsRead = markMessagesAsRead;
+api.sendImageMessage = sendImageMessage;
 
 export default api;

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,15 +9,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
-  SafeAreaView,
   ActivityIndicator,
   Modal,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import api from '../services/api';
+import { chatService } from '../services/api';
 import {
   initializeSocket,
   joinConversation,
@@ -29,12 +29,11 @@ import {
   onTyping,
   onMessagesRead,
   removeAllListeners,
-  disconnectSocket,
 } from '../services/chatService';
 
-const PhysicianMessagesScreen = ({ route, navigation }) => {
-  const { relationship } = route.params;
-  const { colors } = useTheme();
+export default function PatientChatScreen({ route, navigation }) {
+  const { patient, relationship } = route.params;
+  const { colors: theme } = useTheme();
   const { user } = useAuth();
   const flatListRef = useRef(null);
   
@@ -57,12 +56,22 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
   const [newMessageCount, setNewMessageCount] = useState(0);
   const typingTimeoutRef = useRef(null);
 
-  // Initialize chat
+  // Get patient info
+  const patientInfo = patient || relationship?.patient;
+  const patientFirstName = patientInfo?.first_name || 'Patient';
+  const patientLastName = patientInfo?.last_name || '';
+  const patientAvatar = patientInfo?.avatar?.url;
+  const patientId = patientInfo?._id || patientInfo?.id;
+  // relationship can be the full object with 'id' or nested with '_id'
+  const relationshipId = relationship?.id || relationship?._id || relationship?.relationship?.id;
+
+  // Get physician user_id from the user object
+  const physicianUserId = user?.physician?._id || user?._id || user?.id;
+
   useEffect(() => {
     initializeChat();
     
     return () => {
-      // Cleanup on unmount
       if (conversationId) {
         leaveConversation(conversationId);
       }
@@ -77,30 +86,20 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
       // Initialize socket connection
       await initializeSocket();
       
-      // Get or create conversation
-      // user contains the patient's data from AuthContext
-      const patientId = user?._id || user?.id;
-      
-      // The relationship object structure from getMyPhysician API:
-      // { relationship: {...}, physician: { _id, user_id, user: {...} } }
-      // physician.user_id is the User._id of the physician (needed for conversation)
-      const physicianUserId = relationship?.physician?.user_id;
-      
-      // relationship.relationship.id (API returns 'id' not '_id')
-      const relationshipId = relationship?.relationship?.id || relationship?.relationship?._id || relationship?._id || relationship?.id;
-      
       console.log('Chat init - patientId:', patientId);
       console.log('Chat init - physicianUserId:', physicianUserId);
       console.log('Chat init - relationshipId:', relationshipId);
-      console.log('Chat init - relationship structure:', JSON.stringify(relationship, null, 2));
+      console.log('Chat init - patient:', JSON.stringify(patient, null, 2));
+      console.log('Chat init - relationship:', JSON.stringify(relationship, null, 2));
+      console.log('Chat init - user:', JSON.stringify(user, null, 2));
       
       if (!patientId || !physicianUserId || !relationshipId) {
-        console.error('Missing required IDs for conversation:', { patientId, physicianUserId, relationshipId });
+        console.error('Missing required IDs:', { patientId, physicianUserId, relationshipId });
         setLoading(false);
         return;
       }
       
-      const response = await api.getOrCreateConversation(
+      const response = await chatService.getOrCreateConversation(
         patientId,
         physicianUserId,
         relationshipId
@@ -111,7 +110,7 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
         setConversationId(convId);
         
         // Join conversation room
-        joinConversation(convId, 'patient');
+        joinConversation(convId, 'physician');
         
         // Load messages
         await loadMessages(convId);
@@ -129,7 +128,7 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
   const loadMessages = async (convId, loadMore = false) => {
     try {
       const skip = loadMore ? messages.length : 0;
-      const response = await api.getMessages(convId, 'patient', 50, skip);
+      const response = await chatService.getMessages(convId, 50, skip);
       
       if (response.success && response.messages) {
         const formattedMessages = response.messages.map(msg => ({
@@ -153,7 +152,7 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
           if (formattedMessages.length > 0) {
             setTimeout(() => {
               console.log('📨 Marking messages as read for conversation:', convId);
-              markMessagesRead(convId, 'patient');
+              markMessagesRead(convId, 'physician');
             }, 500);
           }
         }
@@ -180,7 +179,6 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
       };
       
       setMessages(prev => {
-        // Check if message already exists
         if (prev.some(m => m.id === newMessage.id)) {
           return prev;
         }
@@ -188,7 +186,7 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
       });
       
       // Auto scroll to bottom for own messages or if user is near bottom
-      if (data.sender_role === 'patient') {
+      if (data.sender_role === 'physician') {
         setShouldScrollToEnd(true);
         setShowScrollButton(false);
         setNewMessageCount(0);
@@ -201,16 +199,16 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
         setNewMessageCount(prev => prev + 1);
       }
       
-      // Mark as read if from physician
-      if (data.sender_role === 'physician' && conversationId) {
-        console.log('📨 New message from physician, marking as read');
-        markMessagesRead(conversationId, 'patient');
+      // Mark as read if from patient
+      if (data.sender_role === 'patient' && conversationId) {
+        console.log('📨 New message from patient, marking as read');
+        markMessagesRead(conversationId, 'physician');
       }
     });
 
     // Listen for typing indicator
     onTyping((data) => {
-      if (data.user_role === 'physician') {
+      if (data.user_role === 'patient') {
         setOtherUserTyping(data.is_typing);
       }
     });
@@ -221,12 +219,12 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
       console.log('Current conversation:', conversationId);
       console.log('Event conversation:', data.conversation_id);
       
-      // Only update if it's for this conversation and physician read patient's messages
-      if (data.conversation_id === conversationId && data.reader_role === 'physician') {
-        console.log('✅ Marking patient messages as read');
+      // Only update if it's for this conversation and patient read physician's messages
+      if (data.conversation_id === conversationId && data.reader_role === 'patient') {
+        console.log('✅ Marking physician messages as read');
         setMessages(prev => {
           const updated = prev.map(msg => {
-            if (msg.sender === 'patient') {
+            if (msg.sender === 'physician') {
               console.log('Updating message:', msg.id, 'from read:', msg.read, 'to true');
               return { ...msg, read: true };
             }
@@ -275,7 +273,7 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
     const tempMessage = {
       id: tempId,
       text: imageUri,
-      sender: 'patient',
+      sender: 'physician',
       timestamp: new Date().toISOString(),
       read: false,
       messageType: 'image',
@@ -292,7 +290,7 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
     }, 100);
     
     try {
-      const response = await api.sendImageMessage(conversationId, imageUri, 'patient');
+      const response = await chatService.sendImageMessage(conversationId, imageUri);
       
       if (response.success && response.message) {
         // Replace temporary message with actual message
@@ -335,30 +333,27 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
     setSending(true);
 
     try {
-      const senderId = user?._id || user?.id;
-      
       // Try to send via socket first
       const socketSent = sendSocketMessage(
         conversationId,
-        senderId,
-        'patient',
+        physicianUserId,
+        'physician',
         content
       );
 
       // If socket failed, use HTTP fallback
       if (!socketSent) {
-        await api.sendChatMessage(conversationId, content, 'patient');
+        await chatService.sendMessage(conversationId, content);
       }
       
       // Stop typing indicator
       if (isTyping) {
-        sendTypingIndicator(conversationId, 'patient', false);
+        sendTypingIndicator(conversationId, 'physician', false);
         setIsTyping(false);
       }
       
     } catch (error) {
       console.error('Error sending message:', error);
-      // Restore message if failed
       setMessageText(content);
     } finally {
       setSending(false);
@@ -370,22 +365,19 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
     
     if (!conversationId) return;
     
-    // Send typing indicator
     if (!isTyping && text.length > 0) {
       setIsTyping(true);
-      sendTypingIndicator(conversationId, 'patient', true);
+      sendTypingIndicator(conversationId, 'physician', true);
     }
     
-    // Clear previous timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
     
-    // Set timeout to stop typing indicator
     typingTimeoutRef.current = setTimeout(() => {
       if (isTyping) {
         setIsTyping(false);
-        sendTypingIndicator(conversationId, 'patient', false);
+        sendTypingIndicator(conversationId, 'physician', false);
       }
     }, 2000);
   };
@@ -438,27 +430,26 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
   };
 
   const renderMessage = ({ item }) => {
-    const isPhysician = item.sender === 'physician';
+    const isPatient = item.sender === 'patient';
     const isImageMessage = item.messageType === 'image' || item.image_url;
     
     return (
       <View style={[
         styles.messageContainer,
-        isPhysician ? styles.physicianMessageContainer : styles.patientMessageContainer,
+        isPatient ? styles.patientMessageContainer : styles.physicianMessageContainer,
         isImageMessage && { width: '100%' },
       ]}>
-        {isPhysician && (
-          <View style={styles.physicianAvatarContainer}>
-            {relationship.physician.user.avatar?.url ? (
+        {isPatient && (
+          <View style={styles.avatarContainer}>
+            {patientAvatar ? (
               <Image 
-                source={{ uri: relationship.physician.user.avatar.url }} 
+                source={{ uri: patientAvatar }} 
                 style={styles.messageAvatar} 
               />
             ) : (
-              <View style={[styles.messageAvatarPlaceholder, { backgroundColor: colors.primary }]}>
+              <View style={[styles.messageAvatarPlaceholder, { backgroundColor: theme.primary }]}>
                 <Text style={styles.messageAvatarText}>
-                  {relationship.physician.user.first_name[0]}
-                  {relationship.physician.user.last_name[0]}
+                  {patientFirstName[0]}{patientLastName[0] || ''}
                 </Text>
               </View>
             )}
@@ -468,15 +459,15 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
         <View style={[
           styles.messageBubble,
           {
-            backgroundColor: isPhysician ? colors.card : colors.primary,
-            borderColor: isPhysician ? colors.border : colors.primary,
+            backgroundColor: isPatient ? theme.card : theme.primary,
+            borderColor: isPatient ? theme.border : theme.primary,
             maxWidth: isImageMessage ? '75%' : '75%',
             width: isImageMessage ? '65%' : 'auto',
           }
         ]}>
-          {isPhysician && (
-            <Text style={[styles.senderName, { color: colors.primary }]}>
-              Dr. {relationship.physician.user.first_name} {relationship.physician.user.last_name}
+          {isPatient && (
+            <Text style={[styles.senderName, { color: theme.primary }]}>
+              {patientFirstName} {patientLastName}
             </Text>
           )}
           {isImageMessage ? (
@@ -496,7 +487,7 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
           ) : (
             <Text style={[
               styles.messageText,
-              { color: isPhysician ? colors.text : '#FFFFFF' }
+              { color: isPatient ? theme.text : '#FFFFFF' }
             ]}>
               {item.text}
             </Text>
@@ -504,13 +495,13 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
           <View style={styles.messageFooter}>
             <Text style={[
               styles.timestamp,
-              { color: isPhysician ? colors.secondary : '#FFFFFF', opacity: 0.7 }
+              { color: isPatient ? theme.secondary : '#FFFFFF', opacity: 0.7 }
             ]}>
               {formatTime(item.timestamp)}
             </Text>
-            {!isPhysician && (
-              <Icon 
-                name={item.read ? 'check-all' : 'check'} 
+            {!isPatient && (
+              <Ionicons 
+                name={item.read ? 'checkmark-done' : 'checkmark'} 
                 size={14} 
                 color={item.read ? '#34D399' : '#FFFFFF'} 
                 style={styles.readIcon}
@@ -524,10 +515,10 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.secondary }]}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={[styles.loadingText, { color: theme.secondary }]}>
             Loading conversation...
           </Text>
         </View>
@@ -536,133 +527,134 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Icon name="arrow-left" size={24} color={colors.text} />
-        </TouchableOpacity>
-        
-        <View style={styles.headerPhysicianInfo}>
-          {relationship.physician.user.avatar?.url ? (
-            <Image 
-              source={{ uri: relationship.physician.user.avatar.url }} 
-              style={styles.headerAvatar} 
-            />
-          ) : (
-            <View style={[styles.headerAvatarPlaceholder, { backgroundColor: colors.primary }]}>
-              <Text style={styles.headerAvatarText}>
-                {relationship.physician.user.first_name[0]}
-                {relationship.physician.user.last_name[0]}
+    <SafeAreaView style={[styles.safeContainer, { backgroundColor: theme.background }]} edges={['top']}>
+      <KeyboardAvoidingView 
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+        enabled={true}
+      >
+        {/* Header */}
+        <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={theme.text} />
+          </TouchableOpacity>
+          
+          <View style={styles.headerPatientInfo}>
+            {patientAvatar ? (
+              <Image 
+                source={{ uri: patientAvatar }} 
+                style={styles.headerAvatar} 
+              />
+            ) : (
+              <View style={[styles.headerAvatarPlaceholder, { backgroundColor: theme.primary }]}>
+                <Text style={styles.headerAvatarText}>
+                  {patientFirstName[0]}{patientLastName[0] || ''}
+                </Text>
+              </View>
+            )}
+            <View style={styles.headerTextContainer}>
+              <Text style={[styles.headerName, { color: theme.text }]}>
+                {patientFirstName} {patientLastName}
+              </Text>
+              <Text style={[styles.headerStatus, { color: otherUserTyping ? theme.primary : theme.secondary }]}>
+                {otherUserTyping ? 'Typing...' : 'Patient'}
+              </Text>
+            </View>
+          </View>
+          
+          <TouchableOpacity style={styles.moreButton}>
+            <Ionicons name="ellipsis-vertical" size={24} color={theme.text} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Messages List */}
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={item => item.id}
+          contentContainerStyle={[
+            styles.messagesList,
+            messages.length === 0 && styles.emptyList
+          ]}
+          showsVerticalScrollIndicator={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.1}
+          onContentSizeChange={() => {
+            if (shouldScrollToEnd) {
+              setTimeout(() => {
+                flatListRef.current?.scrollToOffset({ offset: 999999, animated: true });
+                setShouldScrollToEnd(false);
+              }, 100);
+            }
+          }}
+          onLayout={() => {
+            if (shouldScrollToEnd && messages.length > 0) {
+              setTimeout(() => {
+                flatListRef.current?.scrollToOffset({ offset: 999999, animated: false });
+                setShouldScrollToEnd(false);
+              }, 200);
+            }
+          }}
+          ListHeaderComponent={loadingMore ? (
+            <View style={styles.loadingMoreContainer}>
+              <ActivityIndicator size="small" color={theme.primary} />
+            </View>
+          ) : null}
+          ListEmptyComponent={() => (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="chatbubble-ellipses-outline" size={64} color={theme.secondary} />
+              <Text style={[styles.emptyText, { color: theme.secondary }]}>
+                No messages yet
+              </Text>
+              <Text style={[styles.emptySubtext, { color: theme.secondary }]}>
+                Start the conversation with your patient
               </Text>
             </View>
           )}
-          <View style={styles.headerTextContainer}>
-            <Text style={[styles.headerName, { color: colors.text }]}>
-              Dr. {relationship.physician.user.first_name} {relationship.physician.user.last_name}
-            </Text>
-            <Text style={[styles.headerSpec, { color: otherUserTyping ? colors.primary : colors.secondary }]}>
-              {otherUserTyping ? 'Typing...' : relationship.physician.specialization}
-            </Text>
-          </View>
-        </View>
-        
-        <TouchableOpacity style={styles.moreButton}>
-          <Icon name="dots-vertical" size={24} color={colors.text} />
-        </TouchableOpacity>
-      </View>
+        />
 
-      {/* Messages List */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={item => item.id}
-        contentContainerStyle={[
-          styles.messagesList,
-          messages.length === 0 && styles.emptyList
-        ]}
-        showsVerticalScrollIndicator={false}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.1}
-        onContentSizeChange={() => {
-          if (shouldScrollToEnd) {
-            setTimeout(() => {
-              flatListRef.current?.scrollToOffset({ offset: 999999, animated: true });
-              setShouldScrollToEnd(false);
-            }, 100);
-          }
-        }}
-        onLayout={() => {
-          if (shouldScrollToEnd && messages.length > 0) {
-            setTimeout(() => {
-              flatListRef.current?.scrollToOffset({ offset: 999999, animated: false });
-              setShouldScrollToEnd(false);
-            }, 200);
-          }
-        }}
-        ListHeaderComponent={loadingMore ? (
-          <View style={styles.loadingMoreContainer}>
-            <ActivityIndicator size="small" color={colors.primary} />
-          </View>
-        ) : null}
-        ListEmptyComponent={() => (
-          <View style={styles.emptyContainer}>
-            <Icon name="message-text-outline" size={64} color={colors.secondary} />
-            <Text style={[styles.emptyText, { color: colors.secondary }]}>
-              No messages yet
-            </Text>
-            <Text style={[styles.emptySubtext, { color: colors.secondary }]}>
-              Start the conversation with your physician
-            </Text>
-          </View>
+        {/* Scroll to bottom button */}
+        {showScrollButton && (
+          <TouchableOpacity
+            style={[styles.scrollToBottomButton, { backgroundColor: theme.primary }]}
+            onPress={scrollToBottom}
+          >
+            {newMessageCount > 0 && (
+              <View style={styles.newMessageBadge}>
+                <Text style={styles.newMessageBadgeText}>{newMessageCount}</Text>
+              </View>
+            )}
+            <Ionicons name="chevron-down" size={24} color="#FFFFFF" />
+            {newMessageCount > 0 && (
+              <Text style={styles.newMessageText}>New</Text>
+            )}
+          </TouchableOpacity>
         )}
-      />
 
-      {/* Scroll to bottom button */}
-      {showScrollButton && (
-        <TouchableOpacity
-          style={[styles.scrollToBottomButton, { backgroundColor: colors.primary }]}
-          onPress={scrollToBottom}
-        >
-          {newMessageCount > 0 && (
-            <View style={styles.newMessageBadge}>
-              <Text style={styles.newMessageBadgeText}>{newMessageCount}</Text>
-            </View>
-          )}
-          <Icon name="chevron-down" size={24} color="#FFFFFF" />
-          {newMessageCount > 0 && (
-            <Text style={styles.newMessageText}>New</Text>
-          )}
-        </TouchableOpacity>
-      )}
-
-      {/* Input Area */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
-        <View style={[styles.inputContainer, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+        {/* Input Area */}
+        <View style={[styles.inputContainer, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
           <TouchableOpacity 
             style={styles.attachButton}
             onPress={() => setShowImageOptions(true)}
           >
-            <Icon name="paperclip" size={24} color={colors.secondary} />
+            <Ionicons name="attach" size={24} color={theme.secondary} />
           </TouchableOpacity>
           
           <TextInput
             style={[
               styles.input,
               { 
-                backgroundColor: colors.background,
-                color: colors.text,
-                borderColor: colors.border,
+                backgroundColor: theme.background,
+                color: theme.text,
+                borderColor: theme.border,
               }
             ]}
             placeholder="Type a message..."
-            placeholderTextColor={colors.secondary}
+            placeholderTextColor={theme.secondary}
             value={messageText}
             onChangeText={handleTyping}
             multiline
@@ -672,7 +664,7 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
           <TouchableOpacity
             style={[
               styles.sendButton,
-              { backgroundColor: messageText.trim() && !sending ? colors.primary : colors.border }
+              { backgroundColor: messageText.trim() && !sending ? theme.primary : theme.border }
             ]}
             onPress={handleSend}
             disabled={!messageText.trim() || sending}
@@ -680,7 +672,7 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
             {sending ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Icon name="send" size={20} color="#FFFFFF" />
+              <Ionicons name="send" size={20} color="#FFFFFF" />
             )}
           </TouchableOpacity>
         </View>
@@ -694,30 +686,30 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
         onRequestClose={() => setShowImageOptions(false)}
       >
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.7)' }]}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Send Image</Text>
+          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Send Image</Text>
             
             <TouchableOpacity 
-              style={[styles.modalOption, { borderBottomColor: colors.border }]}
+              style={[styles.modalOption, { borderBottomColor: theme.border }]}
               onPress={() => handlePickImage('camera')}
             >
-              <Icon name="camera" size={24} color={colors.primary} />
-              <Text style={[styles.modalOptionText, { color: colors.text }]}>Take Photo</Text>
+              <Ionicons name="camera" size={24} color={theme.primary} />
+              <Text style={[styles.modalOptionText, { color: theme.text }]}>Take Photo</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
               style={[styles.modalOption]}
               onPress={() => handlePickImage('library')}
             >
-              <Icon name="image" size={24} color={colors.primary} />
-              <Text style={[styles.modalOptionText, { color: colors.text }]}>Choose from Library</Text>
+              <Ionicons name="image" size={24} color={theme.primary} />
+              <Text style={[styles.modalOptionText, { color: theme.text }]}>Choose from Library</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
               style={styles.modalCancel}
               onPress={() => setShowImageOptions(false)}
             >
-              <Text style={[styles.modalCancelText, { color: colors.primary }]}>Cancel</Text>
+              <Text style={[styles.modalCancelText, { color: theme.primary }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -735,7 +727,7 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
             style={styles.imagePreviewClose}
             onPress={() => setPreviewImage(null)}
           >
-            <Icon name="close" size={30} color="#FFFFFF" />
+            <Ionicons name="close" size={30} color="#FFFFFF" />
           </TouchableOpacity>
           <Image 
             source={{ uri: previewImage }} 
@@ -746,9 +738,12 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
       </Modal>
     </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
+  safeContainer: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },
@@ -775,7 +770,7 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 4,
   },
-  headerPhysicianInfo: {
+  headerPatientInfo: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -807,7 +802,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 2,
   },
-  headerSpec: {
+  headerStatus: {
     fontSize: 12,
   },
   moreButton: {
@@ -839,13 +834,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     alignItems: 'flex-end',
   },
-  physicianMessageContainer: {
+  patientMessageContainer: {
     justifyContent: 'flex-start',
   },
-  patientMessageContainer: {
+  physicianMessageContainer: {
     justifyContent: 'flex-end',
   },
-  physicianAvatarContainer: {
+  avatarContainer: {
     marginRight: 8,
   },
   messageAvatar: {
@@ -981,7 +976,6 @@ const styles = StyleSheet.create({
     right: 20,
     zIndex: 1,
     padding: 10,
-    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   imagePreviewFull: {
     width: '100%',
@@ -1047,5 +1041,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-
-export default PhysicianMessagesScreen;
