@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import {
@@ -10,10 +10,12 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
+import messaging, { getToken, onTokenRefresh, onMessage, getInitialNotification, onNotificationOpenedApp } from '@react-native-firebase/messaging';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
 import { getMyAssessment } from './services/api';
+import api from './services/api';
 import LoginScreen from './screens/auth/LoginScreen';
 import RegisterScreen from './screens/auth/RegisterScreen';
 import OTPScreen from './screens/auth/OTPScreen';
@@ -30,6 +32,11 @@ import WelcomeScreen from './screens/WelcomeScreen';
 const Stack = createStackNavigator();
 const WELCOME_SHOWN_KEY = '@welcome_shown';
 const ASSESSMENT_SKIPPED_KEY = '@assessment_skipped';
+
+// Register background handler - must be outside of any component
+messaging().setBackgroundMessageHandler(async (remoteMessage) => {
+  console.log('Message handled in the background!', remoteMessage);
+});
 
 // Universal Screen Wrapper that handles safe areas for all screens
 const UniversalScreenWrapper = ({ children }) => {
@@ -332,13 +339,133 @@ function AppNavigator() {
   );
 }
 
+// Request notification permission
+const requestUserPermission = async () => {
+  const authStatus = await messaging().requestPermission();
+  const enabled =
+    authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+    authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+  if (enabled) {
+    console.log('Authorization status:', authStatus);
+  }
+  
+  return enabled;
+};
+
+// Setup FCM with authentication check
+const setupFCMWithAuth = async (isAuthenticated) => {
+  if (!isAuthenticated) {
+    console.log('User not authenticated, skipping FCM setup');
+    return null;
+  }
+
+  // Check if user has enabled notifications in settings
+  try {
+    const notificationsEnabled = await AsyncStorage.getItem('@notifications_enabled');
+    if (notificationsEnabled === 'false') {
+      console.log('Notifications disabled by user in settings');
+      return null;
+    }
+  } catch (error) {
+    console.log('Error checking notification preference:', error);
+  }
+
+  const hasPermission = await requestUserPermission();
+  
+  if (hasPermission) {
+    try {
+      const token = await getToken(messaging());
+      console.log('FCM Token:', token);
+      
+      // Save token to backend
+      await api.saveFCMToken(token);
+      console.log('FCM token saved to backend successfully');
+      
+      // Save preference that notifications are enabled
+      await AsyncStorage.setItem('@notifications_enabled', 'true');
+      return token;
+    } catch (error) {
+      console.error('Failed to get or save FCM token:', error);
+      return null;
+    }
+  } else {
+    console.log('Permission not granted');
+    return null;
+  }
+};
+
+function FCMHandler() {
+  const { isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      console.log('User not authenticated, FCM handlers not active');
+      return;
+    }
+
+    // Setup FCM when user is authenticated
+    setupFCMWithAuth(isAuthenticated);
+
+    // Listen for token refresh
+    const unsubscribeTokenRefresh = onTokenRefresh(messaging(), async (token) => {
+      console.log('FCM Token refreshed:', token);
+      if (isAuthenticated) {
+        try {
+          await api.saveFCMToken(token);
+          console.log('Refreshed FCM token saved to backend successfully');
+        } catch (error) {
+          console.error('Failed to save refreshed FCM token to backend:', error);
+        }
+      }
+    });
+
+    // Handle notification that opened the app from quit state
+    getInitialNotification(messaging()).then(async (remoteMessage) => {
+      if (remoteMessage) {
+        console.log(
+          'Notification caused app to open from quit state:',
+          remoteMessage.notification
+        );
+      }
+    });
+
+    // Handle notification that opened the app from background state
+    const unsubscribeOnNotificationOpenedApp = onNotificationOpenedApp(messaging(), (remoteMessage) => {
+      console.log(
+        'Notification caused app to open from background state:',
+        remoteMessage.notification
+      );
+    });
+
+    // Handle foreground messages
+    const unsubscribeOnMessage = onMessage(messaging(), async (remoteMessage) => {
+      Alert.alert(
+        'A new FCM message arrived!',
+        JSON.stringify(remoteMessage)
+      );
+    });
+
+    // Cleanup subscriptions
+    return () => {
+      unsubscribeTokenRefresh();
+      unsubscribeOnNotificationOpenedApp();
+      unsubscribeOnMessage();
+    };
+  }, [isAuthenticated]);
+
+  return null;
+}
+
 export default function App() {
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <ThemeProvider>
           <ToastProvider>
             <AuthProvider>
+              <FCMHandler />
               <AppNavigator />
             </AuthProvider>
           </ToastProvider>

@@ -203,3 +203,14 @@ def reschedule_consultation(consultation_id):
 def rate_consultation_route(consultation_id):
     """Rate a completed consultation"""
     return rate_consultation(consultation_id)
+
+# FCM Token Management Routes
+@user_bp.route('/fcm-token', methods=['POST'])
+def save_fcm_token():
+    """Save FCM token for push notifications"""
+    return UserInfoController.save_fcm_token()
+
+@user_bp.route('/fcm-token', methods=['DELETE'])
+def delete_fcm_token():
+    """Delete FCM token (e.g., on logout)"""
+    return UserInfoController.delete_fcm_token()

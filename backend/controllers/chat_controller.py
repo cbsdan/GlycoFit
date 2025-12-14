@@ -13,6 +13,7 @@ from models.patient_physician import PatientPhysician
 from models.user import User
 from models.physician import Physician
 from services.cloudinary_service import CloudinaryService
+from services.fcm_service import FCMService
 
 # Module-level socketio instance (set by register_socket_events)
 _socketio = None
@@ -386,6 +387,41 @@ def register_socket_events(socketio):
             
             logging.info(f"Message sent in conversation {conversation_id}")
             
+            # Send push notification to recipient
+            try:
+                # Determine recipient based on sender role
+                if sender_role == 'patient':
+                    recipient_id = conversation.physician_id
+                    recipient_role = 'physician'
+                    # Get sender name from users collection
+                    sender = User.find_by_id(sender_id)
+                    sender_name = f"{sender.first_name} {sender.last_name}" if sender else "Patient"
+                else:
+                    recipient_id = conversation.patient_id
+                    recipient_role = 'patient'
+                    # Get sender name from physicians collection
+                    physician = Physician.find_by_user_id(sender_id)
+                    if physician:
+                        sender_user = User.find_by_id(physician.user_id)
+                        sender_name = f"Dr. {sender_user.first_name} {sender_user.last_name}" if sender_user else "Physician"
+                    else:
+                        sender_name = "Physician"
+                
+                # Send notification
+                result = FCMService.send_chat_notification(
+                    recipient_id=recipient_id,
+                    sender_name=sender_name,
+                    message_content=content if message_type == 'text' else '[Image]',
+                    conversation_id=conversation_id,
+                    recipient_role=recipient_role
+                )
+                if result.get('success'):
+                    logging.info(f"📲 Push notification sent to {recipient_role} for new message: {result.get('message')}")
+                else:
+                    logging.warning(f"❌ Failed to send push notification to {recipient_role}: {result.get('error')}")
+            except Exception as notif_error:
+                logging.error(f"Error sending push notification: {str(notif_error)}")
+            
         except Exception as e:
             logging.error(f"Error handling socket message: {str(e)}")
             emit('error', {'message': str(e)})
@@ -527,6 +563,37 @@ def send_image_message():
                     'created_at': message.created_at.isoformat()
                 }
                 _socketio.emit('new_message', message_data, room=f"conversation_{conversation_id}")
+                
+                # Send push notification to recipient
+                try:
+                    if sender_role == 'patient':
+                        recipient_id = conversation.physician_id
+                        recipient_role = 'physician'
+                        sender = User.find_by_id(current_user._id)
+                        sender_name = f"{sender.first_name} {sender.last_name}" if sender else "Patient"
+                    else:
+                        recipient_id = conversation.patient_id
+                        recipient_role = 'patient'
+                        physician = Physician.find_by_user_id(current_user._id)
+                        if physician:
+                            sender_user = User.find_by_id(physician.user_id)
+                            sender_name = f"Dr. {sender_user.first_name} {sender_user.last_name}" if sender_user else "Physician"
+                        else:
+                            sender_name = "Physician"
+                    
+                    result = FCMService.send_chat_notification(
+                        recipient_id=recipient_id,
+                        sender_name=sender_name,
+                        message_content="Sent an image",
+                        conversation_id=conversation_id,
+                        recipient_role=recipient_role
+                    )
+                    if result.get('success'):
+                        logging.info(f"📲 Push notification sent for image message: {result.get('message')}")
+                    else:
+                        logging.warning(f"❌ Failed to send push notification for image: {result.get('error')}")
+                except Exception as notif_error:
+                    logging.error(f"Error sending push notification for image: {str(notif_error)}")
             
             return jsonify({
                 'success': True,

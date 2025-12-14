@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from flask_socketio import SocketIO
+from flask_jwt_extended import JWTManager
 from waitress import serve
 import os
 import logging
@@ -37,6 +38,9 @@ def create_app():
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET', 'jwt-secret-change-this')
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)  # Changed to 7 days like your .env
+    app.config['JWT_TOKEN_LOCATION'] = ['headers']  # Look for JWT in Authorization header
+    app.config['JWT_HEADER_NAME'] = 'Authorization'  # Header name to look for JWT
+    app.config['JWT_HEADER_TYPE'] = 'Bearer'  # Expected token type in header
     app.config['DB_URI'] = os.getenv('DB_URI', 'mongodb://localhost:27017/glycofit')
     
     # File upload configuration
@@ -56,6 +60,8 @@ def create_app():
         "https://glycofit.vercel.app"
     ], supports_credentials=True)
     
+    # Initialize JWT Manager
+    jwt = JWTManager(app)
     
     # Setup logging
     setup_logging()

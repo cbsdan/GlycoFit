@@ -302,6 +302,14 @@ export const authService = {
   
   logout: async () => {
     try {
+      // Delete FCM token from backend before signing out
+      try {
+        await api.deleteFCMToken();
+      } catch (fcmError) {
+        console.log('Warning: Failed to delete FCM token:', fcmError);
+        // Continue with logout even if FCM deletion fails
+      }
+      
       await auth.signOut();
       await SecureStore.deleteItemAsync('auth_token');
       await AsyncStorage.removeItem('user');
@@ -1098,6 +1106,29 @@ const sendImageMessage = async (conversationId, imageUri, senderRole = 'patient'
   }
 };
 
+// FCM Token Management
+export const saveFCMToken = async (fcmToken) => {
+  try {
+    const response = await api.post('/users/fcm-token', { fcmToken });
+    console.log('FCM token saved to backend:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Error saving FCM token:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+export const deleteFCMToken = async () => {
+  try {
+    const response = await api.delete('/users/fcm-token');
+    console.log('FCM token deleted from backend:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting FCM token:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
 api.saveMeal = saveMeal;
@@ -1145,5 +1176,7 @@ api.getMessages = getMessages;
 api.sendChatMessage = sendChatMessage;
 api.markMessagesAsRead = markMessagesAsRead;
 api.sendImageMessage = sendImageMessage;
+api.saveFCMToken = saveFCMToken;
+api.deleteFCMToken = deleteFCMToken;
 
 export default api;

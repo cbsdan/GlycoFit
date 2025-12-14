@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,15 @@ import {
   Switch,
   Alert,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import messaging, { getToken } from '@react-native-firebase/messaging';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
+import api from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+
+const NOTIFICATIONS_ENABLED_KEY = '@notifications_enabled';
 
 const SettingsScreen = ({ navigation }) => {
   const { colors, isDarkMode, toggleTheme } = useTheme();
@@ -20,10 +25,89 @@ const SettingsScreen = ({ navigation }) => {
   const { user, logout } = useAuth();
   
   // Settings state
-  const [notifications, setNotifications] = useState(true);
+  const [notifications, setNotifications] = useState(false);
   const [biometrics, setBiometrics] = useState(false);
   const [dataSync, setDataSync] = useState(true);
   const [reminders, setReminders] = useState(true);
+  const [isTogglingNotifications, setIsTogglingNotifications] = useState(false);
+
+  useEffect(() => {
+    loadNotificationPreference();
+  }, []);
+
+  const loadNotificationPreference = async () => {
+    try {
+      const enabled = await AsyncStorage.getItem(NOTIFICATIONS_ENABLED_KEY);
+      if (enabled !== null) {
+        setNotifications(enabled === 'true');
+      }
+    } catch (error) {
+      console.log('Error loading notification preference:', error);
+    }
+  };
+
+  const handleNotificationToggle = async (value) => {
+    if (isTogglingNotifications) return;
+    
+    setIsTogglingNotifications(true);
+    
+    try {
+      if (value) {
+        // Enable notifications
+        const authStatus = await messaging().requestPermission();
+        const enabled =
+          authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+          authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+        if (enabled) {
+          const token = await getToken(messaging());
+          await api.saveFCMToken(token);
+          await AsyncStorage.setItem(NOTIFICATIONS_ENABLED_KEY, 'true');
+          setNotifications(true);
+          toast.success('Notifications enabled');
+        } else {
+          toast.error('Notification permission denied');
+        }
+      } else {
+        // Disable notifications
+        Alert.alert(
+          'Disable Notifications',
+          'You will no longer receive push notifications. You can re-enable them anytime from settings.',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => setIsTogglingNotifications(false),
+            },
+            {
+              text: 'Disable',
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  const token = await getToken(messaging());
+                  await api.deleteFCMToken(token);
+                  await AsyncStorage.setItem(NOTIFICATIONS_ENABLED_KEY, 'false');
+                  setNotifications(false);
+                  toast.success('Notifications disabled');
+                } catch (error) {
+                  console.error('Error disabling notifications:', error);
+                  toast.error('Failed to disable notifications');
+                } finally {
+                  setIsTogglingNotifications(false);
+                }
+              },
+            },
+          ]
+        );
+        return; // Don't set isTogglingNotifications to false here, Alert will handle it
+      }
+    } catch (error) {
+      console.error('Error toggling notifications:', error);
+      toast.error('Failed to update notification settings');
+    } finally {
+      setIsTogglingNotifications(false);
+    }
+  };
 
   const settingSections = [
     {
@@ -86,7 +170,7 @@ const SettingsScreen = ({ navigation }) => {
           icon: 'bell',
           hasSwitch: true,
           value: notifications,
-          onToggle: setNotifications,
+          onToggle: handleNotificationToggle,
         },
         {
           id: 'reminders',

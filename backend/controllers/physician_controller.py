@@ -269,3 +269,80 @@ def upload_profile_picture():
             'success': False,
             'message': 'Failed to upload profile picture'
         }), 500
+
+def save_physician_fcm_token():
+    """Save FCM token for push notifications"""
+    try:
+        current_user = g.current_user
+        data = request.get_json()
+        fcm_token = data.get('fcmToken')
+        
+        if not fcm_token:
+            return jsonify({'error': 'FCM token is required'}), 400
+        
+        logging.info(f"Saving FCM token for physician: {current_user._id}")
+        
+        from config.database import get_db
+        db = get_db()
+        
+        # Save token to physicians collection (not users collection)
+        result = db.physicians.update_one(
+            {'user_id': ObjectId(current_user._id)},
+            {
+                '$addToSet': {'push_tokens': fcm_token},
+                '$set': {'updated_at': datetime.utcnow()}
+            }
+        )
+        
+        logging.info(f"FCM token saved successfully for physician: {current_user._id}")
+        return jsonify({
+            'success': True,
+            'message': 'FCM token saved successfully'
+        }), 200
+        
+    except Exception as e:
+        logging.error(f"Error saving FCM token: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+def delete_physician_fcm_token():
+    """Delete FCM token (e.g., on logout)"""
+    try:
+        current_user = g.current_user
+        data = request.get_json() or {}
+        fcm_token = data.get('fcmToken')
+        
+        logging.info(f"Deleting FCM token for physician: {current_user._id}")
+        
+        from config.database import get_db
+        db = get_db()
+        
+        # If specific token provided, remove only that token
+        # Otherwise, clear all tokens
+        if fcm_token:
+            result = db.physicians.update_one(
+                {'user_id': ObjectId(current_user._id)},
+                {
+                    '$pull': {'push_tokens': fcm_token},
+                    '$set': {'updated_at': datetime.utcnow()}
+                }
+            )
+        else:
+            result = db.physicians.update_one(
+                {'user_id': ObjectId(current_user._id)},
+                {
+                    '$set': {
+                        'push_tokens': [],
+                        'updated_at': datetime.utcnow()
+                    }
+                }
+            )
+        
+        logging.info(f"FCM token deleted successfully for physician: {current_user._id}")
+        return jsonify({
+            'success': True,
+            'message': 'FCM token deleted successfully'
+        }), 200
+        
+    except Exception as e:
+        logging.error(f"Error deleting FCM token: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500

@@ -4,6 +4,7 @@ from config.database import get_db
 from models.user import User
 from services.cloudinary_service import CloudinaryService
 from middleware.logging_middleware import log_database_operation, log_error
+from middleware.firebase_auth import firebase_auth_required
 import logging
 from datetime import datetime
 from bson import ObjectId
@@ -362,4 +363,96 @@ class UserInfoController:
             
         except Exception as e:
             log_error(e, 'Error deleting user info')
+            return jsonify({'error': 'Internal server error'}), 500
+
+    @staticmethod
+    @firebase_auth_required
+    def save_fcm_token():
+        """Save or update FCM token for push notifications"""
+        try:
+            user_id = request.current_user_id
+            data = request.get_json()
+            fcm_token = data.get('fcmToken')
+            
+            if not fcm_token:
+                return jsonify({'error': 'FCM token is required'}), 400
+            
+            logging.info(f"Saving FCM token for user: {user_id}")
+            
+            db = get_db()
+            
+            # Check if user exists
+            user = User.find_by_id(user_id)
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            # Update user's push_tokens array (add if not exists, avoid duplicates)
+            result = db.users.update_one(
+                {'_id': ObjectId(user_id)},
+                {
+                    '$addToSet': {'push_tokens': fcm_token},
+                    '$set': {'updated_at': datetime.utcnow()}
+                }
+            )
+            log_database_operation('update_one', 'users', {'fcm_token': fcm_token}, result)
+            
+            logging.info(f"FCM token saved successfully for user: {user_id}")
+            return jsonify({
+                'success': True,
+                'message': 'FCM token saved successfully'
+            }), 200
+            
+        except Exception as e:
+            log_error(e, 'Error saving FCM token')
+            return jsonify({'error': 'Internal server error'}), 500
+
+    @staticmethod
+    @firebase_auth_required
+    def delete_fcm_token():
+        """Delete FCM token (e.g., on logout)"""
+        try:
+            user_id = request.current_user_id
+            data = request.get_json() or {}
+            fcm_token = data.get('fcmToken')
+            
+            logging.info(f"Deleting FCM token for user: {user_id}")
+            
+            db = get_db()
+            
+            # Check if user exists
+            user = User.find_by_id(user_id)
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            # If specific token provided, remove only that token
+            # Otherwise, clear all tokens
+            if fcm_token:
+                result = db.users.update_one(
+                    {'_id': ObjectId(user_id)},
+                    {
+                        '$pull': {'push_tokens': fcm_token},
+                        '$set': {'updated_at': datetime.utcnow()}
+                    }
+                )
+            else:
+                result = db.users.update_one(
+                    {'_id': ObjectId(user_id)},
+                    {
+                        '$set': {
+                            'push_tokens': [],
+                            'updated_at': datetime.utcnow()
+                        }
+                    }
+                )
+            
+            log_database_operation('update_one', 'users', {'delete_fcm_token': True}, result)
+            
+            logging.info(f"FCM token deleted successfully for user: {user_id}")
+            return jsonify({
+                'success': True,
+                'message': 'FCM token deleted successfully'
+            }), 200
+            
+        except Exception as e:
+            log_error(e, 'Error deleting FCM token')
             return jsonify({'error': 'Internal server error'}), 500

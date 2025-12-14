@@ -144,6 +144,15 @@ export const authService = {
 
   logout: async () => {
     try {
+      // Delete FCM token from backend before signing out
+      try {
+        await api.delete('/physician/fcm-token');
+        console.log('FCM token deleted from backend');
+      } catch (fcmError) {
+        console.log('Warning: Failed to delete FCM token:', fcmError);
+        // Continue with logout even if FCM deletion fails
+      }
+      
       await auth.signOut();
       await SecureStore.deleteItemAsync('auth_token');
       await AsyncStorage.removeItem('user');
@@ -275,6 +284,30 @@ export const physicianAPI = {
       return response.data;
     } catch (error) {
       console.error('Upload profile picture error:', error);
+      throw error;
+    }
+  },
+
+  saveFCMToken: async (fcmToken) => {
+    try {
+      const response = await api.post('/physician/fcm-token', { fcmToken });
+      console.log('FCM token saved to backend:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error saving FCM token:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  deleteFCMToken: async (fcmToken) => {
+    try {
+      const response = await api.delete('/physician/fcm-token', {
+        data: { fcmToken }
+      });
+      console.log('FCM token deleted from backend:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting FCM token:', error.response?.data || error.message);
       throw error;
     }
   },
