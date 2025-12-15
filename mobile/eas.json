@@ -7,6 +7,9 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "android": {
+        "gradleCommand": ":app:assembleDebug"
+      },
       "env": {
         "GOOGLE_SERVICES_JSON": "@GOOGLE_SERVICES_JSON"
       }

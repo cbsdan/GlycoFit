@@ -34,6 +34,7 @@
     "react-native-safe-area-context": "^5.6.1",
     "react-native-screens": "^4.15.2",
     "react-native-vector-icons": "^10.3.0",
+    "react-native-edge-to-edge": "^1.0.1",
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {

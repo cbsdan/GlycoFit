@@ -32,6 +32,8 @@ const MeasureScreen = ({ navigation }) => {
   const [showFoodTypeModal, setShowFoodTypeModal] = useState(false);
   const [editableNutrients, setEditableNutrients] = useState({});
   const [focusedNutrient, setFocusedNutrient] = useState(null);
+  const [recipes, setRecipes] = useState([]);
+  const [imageLayout, setImageLayout] = useState({ width: 0, height: 0 });
   
   // Meal details state
   const [mealDetails, setMealDetails] = useState({
@@ -126,6 +128,43 @@ const MeasureScreen = ({ navigation }) => {
     },
   ];
 
+  // Merge duplicate recipes (same label, different boxes)
+  const mergeRecipes = (recipesList) => {
+    if (!recipesList || !Array.isArray(recipesList)) return [];
+    const merged = {};
+    recipesList.forEach(recipe => {
+      const label = recipe.label;
+      if (!merged[label]) {
+        merged[label] = {
+          label: label,
+          boxes: [recipe.box_2d]
+        };
+      } else {
+        merged[label].boxes.push(recipe.box_2d);
+      }
+    });
+    return Object.values(merged);
+  };
+
+  // Get merged recipes
+  const getMergedRecipes = () => {
+    return mergeRecipes(recipes);
+  };
+
+  // Generate consistent color for each ingredient
+  const getIngredientColor = (label) => {
+    const colors = [
+      '#27AE60', '#3498DB', '#E74C3C', '#F39C12', '#9B59B6',
+      '#1ABC9C', '#E67E22', '#34495E', '#16A085', '#2980B9',
+      '#8E44AD', '#2C3E50', '#D35400', '#C0392B'
+    ];
+    let hash = 0;
+    for (let i = 0; i < label.length; i++) {
+      hash = label.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
+
   // Food Scanner Functions
   const openFoodScanner = () => {
     setShowImagePickerModal(true);
@@ -154,6 +193,7 @@ const MeasureScreen = ({ navigation }) => {
     setPredictionData(null);
     setEditableNutrients({});
     setFocusedNutrient(null);
+    setRecipes([]);
     setMealDetails({
       mealName: '',
       foodType: 'unlabeled',
@@ -209,8 +249,7 @@ const MeasureScreen = ({ navigation }) => {
     try {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
+        allowsEditing: false,
         quality: 0.8,
       });
 
@@ -277,6 +316,7 @@ const MeasureScreen = ({ navigation }) => {
         
         setPredictionData(response.data);
         setEditableNutrients(response.data.nutrients || {});
+        setRecipes(response.data.recipes || []);
         setMealDetails(prev => ({
           ...prev,
           mealName: response.data.meal_name || '',
@@ -361,7 +401,8 @@ const MeasureScreen = ({ navigation }) => {
         mealDetails.notes.trim(),
         predictionData.temp_image_public_id,
         mealDetails.servingSize,
-        mealDetails.confidenceRate
+        mealDetails.confidenceRate,
+        recipes
       );
 
       console.log('Save meal response:', response);
@@ -583,10 +624,38 @@ const MeasureScreen = ({ navigation }) => {
       overflow: 'hidden',
       borderWidth: 2,
       borderColor: colors.border,
+      position: 'relative',
     },
     foodImage: {
       width: '100%',
-      height: 200,
+      aspectRatio: 1,
+      minHeight: 250,
+      maxHeight: 400,
+    },
+    boundingBoxContainer: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      pointerEvents: 'none',
+    },
+    boundingBox: {
+      position: 'absolute',
+      borderWidth: 2,
+      borderRadius: 4,
+    },
+    boundingBoxLabel: {
+      position: 'absolute',
+      top: -2,
+      left: -2,
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+      borderTopLeftRadius: 4,
+      maxWidth: 120,
+    },
+    boundingBoxText: {
+      color: 'white',
+      fontSize: 8,
+      fontWeight: '600',
     },
     imageActions: {
       flexDirection: 'row',
@@ -869,6 +938,60 @@ const MeasureScreen = ({ navigation }) => {
       fontSize: 16,
       fontWeight: '600',
     },
+    /* Recipes Section Styles */
+    recipesSection: {
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      padding: 20,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    recipeSubtitle: {
+      fontSize: 14,
+      color: colors.secondary,
+      marginBottom: 16,
+      fontStyle: 'italic',
+    },
+    recipesList: {
+      gap: 12,
+    },
+    recipeCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.background,
+      borderRadius: 8,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    recipeIconContainer: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: '#27AE6015',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 12,
+    },
+    recipeInfo: {
+      flex: 1,
+    },
+    recipeLabel: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 4,
+    },
+    recipeCount: {
+      fontSize: 12,
+      color: colors.secondary,
+    },
+    recipeBoundingBox: {
+      fontSize: 11,
+      color: colors.secondary,
+      fontFamily: 'monospace',
+    },
   });
 
   return (
@@ -937,7 +1060,55 @@ const MeasureScreen = ({ navigation }) => {
             {capturedImage && (
               <View style={styles.imageSection}>
                 <View style={styles.imageContainer}>
-                  <Image source={{ uri: capturedImage }} style={styles.foodImage} resizeMode="cover" />
+                  <Image 
+                    source={{ uri: capturedImage }} 
+                    style={styles.foodImage} 
+                    resizeMode="cover"
+                    onLayout={(event) => {
+                      const { width, height } = event.nativeEvent.layout;
+                      setImageLayout({ width, height });
+                    }}
+                  />
+                  {/* Draw bounding boxes on image */}
+                  {recipes.length > 0 && imageLayout.width > 0 && (
+                    <View style={[styles.boundingBoxContainer, { width: imageLayout.width, height: imageLayout.height }]}>
+                      {recipes.map((recipe, index) => {
+                        if (!recipe.box_2d || recipe.box_2d.length !== 4) return null;
+                        const [x_min, y_min, x_max, y_max] = recipe.box_2d;
+                        const ingredientColor = getIngredientColor(recipe.label);
+                        // Assume original image is around 1000x1000, scale to actual display size
+                        const scaleX = imageLayout.width / 1000;
+                        const scaleY = imageLayout.height / 1000;
+                        const left = x_min * scaleX;
+                        const top = y_min * scaleY;
+                        const width = (x_max - x_min) * scaleX;
+                        const height = (y_max - y_min) * scaleY;
+                        
+                        return (
+                          <View
+                            key={index}
+                            style={[
+                              styles.boundingBox,
+                              {
+                                left,
+                                top,
+                                width,
+                                height,
+                                borderColor: ingredientColor,
+                                backgroundColor: `${ingredientColor}15`,
+                              }
+                            ]}
+                          >
+                            <View style={[styles.boundingBoxLabel, { backgroundColor: ingredientColor }]}>
+                              <Text style={styles.boundingBoxText} numberOfLines={1}>
+                                {recipe.label}
+                              </Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
                 </View>
                 <View style={styles.imageActions}>
                   <TouchableOpacity 
@@ -1048,6 +1219,31 @@ const MeasureScreen = ({ navigation }) => {
                   })}
                 </View>
               </View>
+
+              {/* Detected Ingredients/Recipes */}
+              {recipes && recipes.length > 0 && (
+                <View style={styles.recipesSection}>
+                  <Text style={styles.sectionTitle}>Detected Ingredients</Text>
+                  <Text style={styles.recipeSubtitle}>
+                    {getMergedRecipes().length} unique ingredient{getMergedRecipes().length !== 1 ? 's' : ''} detected
+                  </Text>
+                  <View style={styles.recipesList}>
+                    {getMergedRecipes().map((recipe, index) => (
+                      <View key={index} style={styles.recipeCard}>
+                        <View style={styles.recipeIconContainer}>
+                          <Icon name="food-variant" size={20} color="#27AE60" />
+                        </View>
+                        <View style={styles.recipeInfo}>
+                          <Text style={styles.recipeLabel}>{recipe.label}</Text>
+                          <Text style={styles.recipeCount}>
+                            {recipe.boxes.length} location{recipe.boxes.length !== 1 ? 's' : ''} detected
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
               </>
             )}
 

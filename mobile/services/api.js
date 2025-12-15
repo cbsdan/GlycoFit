@@ -390,8 +390,8 @@ const predictNutrientsOnly = async (imageUri) => {
   }
 };
 
-const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePublicId, servingSize = null, confidenceRate = null) => {
-  try {
+const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePublicId, servingSize = null, confidenceRate = null, recipes = []) => {
+  try{
     const data = {
       nutrients,
       meal_name: mealName,
@@ -399,7 +399,8 @@ const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePubl
       notes,
       temp_image_public_id: tempImagePublicId,
       serving_size: servingSize,
-      confidence_rate: confidenceRate
+      confidence_rate: confidenceRate,
+      recipes: recipes
     };
 
     const response = await api.post('/gemini/save-meal', data, {

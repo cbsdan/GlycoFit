@@ -61,12 +61,14 @@ STRONG RULES TO FOLLOW:
 3. Always specify the serving size used.
 4. If the food is clearly a branded or known product, match it to the closest known variant from nutrition databases.
 5. Rate your confidence (0–100%) based on image clarity and recognition certainty.
-6. If no food can be identified or the image is unclear, return:
+6. Detect individual ingredients/components in the food and provide bounding box coordinates for each detected item.
+7. Bounding boxes should use pixel coordinates in the format [x_min, y_min, x_max, y_max] where coordinates represent the rectangle containing each food item.
+8. If no food can be identified or the image is unclear, return:
 {
   "success": false,
   "error": "Unable to identify the food from the image"
 }
-7. Return your response **ONLY** as a valid JSON object with no extra text.
+9. Return your response **ONLY** as a valid JSON object with no extra text.
 
 For valid food images, use exactly this JSON format:
 {
@@ -81,7 +83,13 @@ For valid food images, use exactly this JSON format:
         "Protein (g)": <number>,
         "Fat (g)": <number>
     },
-    "confidence_percentage": <number between 0-100>
+    "confidence_percentage": <number between 0-100>,
+    "recipes": [
+        {
+            "box_2d": [x_min, y_min, x_max, y_max],
+            "label": "Ingredient or component name"
+        }
+    ]
 }
 
 For non-food images or unclear images, use this exact JSON format:
@@ -91,6 +99,20 @@ For non-food images or unclear images, use this exact JSON format:
     "message": "Please upload a clear image of food",
     "confidence_percentage": 0
 }
+
+Bounding box guidelines:
+- Use pixel coordinates in format [x_min, y_min, x_max, y_max]
+- x_min, y_min: top-left corner of the bounding box (in pixels)
+- x_max, y_max: bottom-right corner of the bounding box (in pixels)
+- Each detected food item/ingredient should have its own bounding box
+- Estimate reasonable coordinates based on typical image dimensions (e.g., 1000x1000)
+
+Recipe/Ingredient detection guidelines:
+- List all identifiable ingredients or components visible in the food
+- For complex meals, break down into individual components (e.g., "Braised Pork Cubes", "Steamed White Rice", "Scallion Garnish")
+- For simple foods, list the main item and any visible toppings or accompaniments
+- Provide accurate bounding boxes for each detected component
+- If no distinct components can be identified, return an empty recipes array
 
 Confidence rating guidelines:
 - 90-100%: Very clear image, easily identifiable food, confident in nutritional estimates
@@ -142,7 +164,15 @@ Provide realistic nutritional estimates based on typical serving sizes. Return O
                         # Ensure it's between 0-100
                         result['confidence_percentage'] = max(0, min(100, float(result['confidence_percentage'])))
                     
-                    logging.info(f"Gemini successfully analyzed food: {result['meal_name']} (Confidence: {result['confidence_percentage']}%)")
+                    # Ensure recipes field is present
+                    if 'recipes' not in result:
+                        result['recipes'] = []
+                    
+                    # Validate recipes structure
+                    if not isinstance(result['recipes'], list):
+                        result['recipes'] = []
+                    
+                    logging.info(f"Gemini successfully analyzed food: {result['meal_name']} (Confidence: {result['confidence_percentage']}%, Recipes: {len(result['recipes'])})")
                     return result
                 else:
                     # Food not detected
