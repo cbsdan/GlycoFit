@@ -9,7 +9,9 @@ import {
   Dimensions,
   ActivityIndicator,
   RefreshControl,
+  Modal,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -22,6 +24,7 @@ import {
   getThisWeekData,
   getActivityData,
 } from '../services/healthConnectService';
+import HealthMetricsSetupScreen from './HealthMetricsSetupScreen';
 
 const { width } = Dimensions.get('window');
 
@@ -38,6 +41,8 @@ const HomeScreen = ({ navigation }) => {
   const [weeklyHealthData, setWeeklyHealthData] = useState(null);
   const [monthlyHealthData, setMonthlyHealthData] = useState(null);
   const [healthConnectAvailable, setHealthConnectAvailable] = useState(false);
+  const [showHealthMetricsPrompt, setShowHealthMetricsPrompt] = useState(false);
+  const [showHealthMetricsModal, setShowHealthMetricsModal] = useState(false);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -51,6 +56,7 @@ const HomeScreen = ({ navigation }) => {
       await Promise.all([
         fetchNutritionData(),
         fetchHealthData(),
+        checkHealthMetricsStatus(),
       ]);
     } catch (error) {
       console.error('Error loading dashboard data:', error);
@@ -203,6 +209,42 @@ const HomeScreen = ({ navigation }) => {
       console.log('Error fetching health data:', error);
       setHealthData(null);
     }
+  };
+
+  const checkHealthMetricsStatus = async () => {
+    try {
+      const response = await api.getHealthMetrics();
+      const metrics = response?.health_metrics;
+      
+      // Check if all required metrics are set
+      const hasAllMetrics = metrics && 
+        metrics.age !== null && metrics.age !== undefined &&
+        metrics.sex !== null && metrics.sex !== undefined &&
+        metrics.height !== null && metrics.height !== undefined &&
+        metrics.weight !== null && metrics.weight !== undefined;
+      
+      // Show prompt if metrics are incomplete
+      setShowHealthMetricsPrompt(!hasAllMetrics);
+    } catch (error) {
+      console.log('Error checking health metrics:', error);
+      // If there's an error (like 404), show the prompt
+      setShowHealthMetricsPrompt(true);
+    }
+  };
+
+  const handleCompleteProfile = async () => {
+    // Clear the skip flag so user can complete it
+    await AsyncStorage.removeItem('@health_metrics_skipped');
+    // Show the health metrics modal
+    setShowHealthMetricsModal(true);
+  };
+
+  const handleHealthMetricsComplete = async () => {
+    setShowHealthMetricsModal(false);
+    setShowHealthMetricsPrompt(false);
+    // Refresh dashboard to reflect new data
+    await loadDashboardData();
+    toast.success('Health metrics saved successfully!');
   };
 
   useEffect(() => {
@@ -546,6 +588,41 @@ const HomeScreen = ({ navigation }) => {
       marginTop: 16,
       fontSize: 16,
     },
+    healthMetricsPrompt: {
+      backgroundColor: colors.primary,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 24,
+      flexDirection: 'row',
+      alignItems: 'center',
+      ...colors.shadow,
+    },
+    promptIconContainer: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: 'rgba(255, 255, 255, 0.2)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 12,
+    },
+    promptContent: {
+      flex: 1,
+    },
+    promptTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: '#FFFFFF',
+      marginBottom: 4,
+    },
+    promptSubtitle: {
+      fontSize: 13,
+      color: 'rgba(255, 255, 255, 0.85)',
+      lineHeight: 18,
+    },
+    promptArrow: {
+      marginLeft: 8,
+    },
   });
 
   if (isLoading) {
@@ -581,6 +658,28 @@ const HomeScreen = ({ navigation }) => {
             </Text>
           </Text>
         </View>
+
+        {/* Health Metrics Prompt Banner */}
+        {showHealthMetricsPrompt && (
+          <TouchableOpacity
+            style={styles.healthMetricsPrompt}
+            onPress={handleCompleteProfile}
+            activeOpacity={0.8}
+          >
+            <View style={styles.promptIconContainer}>
+              <Icon name="account-details" size={28} color="#FFFFFF" />
+            </View>
+            <View style={styles.promptContent}>
+              <Text style={styles.promptTitle}>Complete Your Health Profile</Text>
+              <Text style={styles.promptSubtitle}>
+                Add your health metrics for personalized insights
+              </Text>
+            </View>
+            <View style={styles.promptArrow}>
+              <Icon name="chevron-right" size={24} color="#FFFFFF" />
+            </View>
+          </TouchableOpacity>
+        )}
 
         {/* Today's Stats */}
         <View style={styles.statsSection}>
@@ -640,6 +739,19 @@ const HomeScreen = ({ navigation }) => {
         </View>
 
       </ScrollView>
+
+      {/* Health Metrics Setup Modal */}
+      <Modal
+        visible={showHealthMetricsModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowHealthMetricsModal(false)}
+      >
+        <HealthMetricsSetupScreen
+          onComplete={handleHealthMetricsComplete}
+          onSkip={() => setShowHealthMetricsModal(false)}
+        />
+      </Modal>
     </SafeAreaView>
   );
 };

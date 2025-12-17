@@ -1130,6 +1130,27 @@ export const deleteFCMToken = async () => {
   }
 };
 
+// Health Metrics Management
+export const getHealthMetrics = async () => {
+  try {
+    const response = await api.get('/users/health-metrics');
+    return response.data;
+  } catch (error) {
+    console.error('Error getting health metrics:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+export const updateHealthMetrics = async (metrics) => {
+  try {
+    const response = await api.put('/users/health-metrics', metrics);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating health metrics:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
 api.saveMeal = saveMeal;
@@ -1179,5 +1200,7 @@ api.markMessagesAsRead = markMessagesAsRead;
 api.sendImageMessage = sendImageMessage;
 api.saveFCMToken = saveFCMToken;
 api.deleteFCMToken = deleteFCMToken;
+api.getHealthMetrics = getHealthMetrics;
+api.updateHealthMetrics = updateHealthMetrics;
 
 export default api;

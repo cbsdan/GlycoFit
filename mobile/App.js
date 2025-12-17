@@ -25,6 +25,7 @@ import DiabetesRiskAssessmentScreen from './screens/DiabetesRiskAssessmentScreen
 import AssessmentResultsScreen from './screens/AssessmentResultsScreen';
 import PhysicianCommunicationScreen from './screens/PhysicianCommunicationScreen';
 import PhysicianMessagesScreen from './screens/PhysicianMessagesScreen';
+import HealthMetricsSetupScreen from './screens/HealthMetricsSetupScreen';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingScreen from './components/LoadingScreen';
 import WelcomeScreen from './screens/WelcomeScreen';
@@ -32,6 +33,7 @@ import WelcomeScreen from './screens/WelcomeScreen';
 const Stack = createStackNavigator();
 const WELCOME_SHOWN_KEY = '@welcome_shown';
 const ASSESSMENT_SKIPPED_KEY = '@assessment_skipped';
+const HEALTH_METRICS_SKIPPED_KEY = '@health_metrics_skipped';
 
 // Register background handler - must be outside of any component
 messaging().setBackgroundMessageHandler(async (remoteMessage) => {
@@ -62,6 +64,8 @@ function AppNavigator() {
   const [isCheckingWelcome, setIsCheckingWelcome] = useState(true);
   const [showAssessment, setShowAssessment] = useState(false);
   const [isCheckingAssessment, setIsCheckingAssessment] = useState(false);
+  const [showHealthMetrics, setShowHealthMetrics] = useState(false);
+  const [isCheckingHealthMetrics, setIsCheckingHealthMetrics] = useState(false);
 
   useEffect(() => {
     checkWelcomeStatus();
@@ -69,7 +73,7 @@ function AppNavigator() {
 
   useEffect(() => {
     if (isAuthenticated && user) {
-      checkAssessmentStatus();
+      checkHealthMetricsStatus();
     }
   }, [isAuthenticated, user]);
 
@@ -115,6 +119,43 @@ function AppNavigator() {
     }
   };
 
+  const checkHealthMetricsStatus = async () => {
+    try {
+      setIsCheckingHealthMetrics(true);
+      const skipped = await AsyncStorage.getItem(HEALTH_METRICS_SKIPPED_KEY);
+      
+      if (skipped === 'true') {
+        setShowHealthMetrics(false);
+        // Check assessment after health metrics check
+        await checkAssessmentStatus();
+        return;
+      }
+
+      const response = await api.getHealthMetrics();
+      const metrics = response?.health_metrics;
+      
+      // Check if all required metrics are set
+      const hasAllMetrics = metrics && 
+        metrics.age !== null && metrics.age !== undefined &&
+        metrics.sex !== null && metrics.sex !== undefined &&
+        metrics.height !== null && metrics.height !== undefined &&
+        metrics.weight !== null && metrics.weight !== undefined;
+      
+      setShowHealthMetrics(!hasAllMetrics);
+      
+      // Only check assessment if health metrics are complete
+      if (hasAllMetrics) {
+        await checkAssessmentStatus();
+      }
+    } catch (error) {
+      console.log('Error checking health metrics status:', error);
+      // If there's an error (like 404), assume metrics need to be set
+      setShowHealthMetrics(true);
+    } finally {
+      setIsCheckingHealthMetrics(false);
+    }
+  };
+
   const handleAssessmentSkip = async () => {
     try {
       await AsyncStorage.setItem(ASSESSMENT_SKIPPED_KEY, 'true');
@@ -129,7 +170,25 @@ function AppNavigator() {
     setShowAssessment(false);
   };
 
-  if (isLoading || isCheckingWelcome || isCheckingAssessment) {
+  const handleHealthMetricsSkip = async () => {
+    try {
+      await AsyncStorage.setItem(HEALTH_METRICS_SKIPPED_KEY, 'true');
+      setShowHealthMetrics(false);
+      // Check if assessment needs to be shown after skipping health metrics
+      await checkAssessmentStatus();
+    } catch (error) {
+      console.log('Error saving health metrics skip:', error);
+      setShowHealthMetrics(false);
+    }
+  };
+
+  const handleHealthMetricsComplete = async () => {
+    setShowHealthMetrics(false);
+    // Check if assessment needs to be shown after completing health metrics
+    await checkAssessmentStatus();
+  };
+
+  if (isLoading || isCheckingWelcome || isCheckingAssessment || isCheckingHealthMetrics) {
     return <LoadingScreen />;
   }
 
@@ -180,7 +239,22 @@ function AppNavigator() {
       >
         {isAuthenticated ? (
           <>
-            {showAssessment ? (
+            {showHealthMetrics ? (
+              <Stack.Screen 
+                name="HealthMetricsSetup" 
+                options={{ headerShown: false }}
+              >
+                {(props) => (
+                  <UniversalScreenWrapper>
+                    <HealthMetricsSetupScreen 
+                      {...props}
+                      onSkip={handleHealthMetricsSkip}
+                      onComplete={handleHealthMetricsComplete}
+                    />
+                  </UniversalScreenWrapper>
+                )}
+              </Stack.Screen>
+            ) : showAssessment ? (
               <Stack.Screen 
                 name="InitialAssessment" 
                 options={{ headerShown: false }}

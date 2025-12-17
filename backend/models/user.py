@@ -36,6 +36,11 @@ class User:
         self.permission_token = None
         self.multi_factor_enabled = False
         self.disable_history = []
+        # Health metrics
+        self.age = None
+        self.sex = None  # male/female/other
+        self.height = None  # in cm
+        self.weight = None  # in kg
         self.created_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
 
@@ -53,6 +58,10 @@ class User:
             'permission_token': self.permission_token,
             'multi_factor_enabled': self.multi_factor_enabled,
             'disable_history': self.disable_history,
+            'age': self.age,
+            'sex': self.sex,
+            'height': self.height,
+            'weight': self.weight,
             'created_at': self.created_at,
             'updated_at': self.updated_at
         }
@@ -73,6 +82,10 @@ class User:
         user.permission_token = data.get('permission_token')
         user.multi_factor_enabled = data.get('multi_factor_enabled', False)
         user.disable_history = data.get('disable_history', [])
+        user.age = data.get('age')
+        user.sex = data.get('sex')
+        user.height = data.get('height')
+        user.weight = data.get('weight')
         user.created_at = data.get('created_at', datetime.utcnow())
         user.updated_at = data.get('updated_at', datetime.utcnow())
         return user
@@ -275,7 +288,7 @@ class User:
 
     def update_profile(self, **kwargs):
         """Update user profile fields"""
-        allowed_fields = ['first_name', 'last_name', 'avatar', 'enable_push_notifications', 'permission_token']
+        allowed_fields = ['first_name', 'last_name', 'avatar', 'enable_push_notifications', 'permission_token', 'age', 'sex', 'height', 'weight']
         
         for field, value in kwargs.items():
             if field in allowed_fields:
@@ -295,6 +308,10 @@ class User:
             'avatar': self.avatar,
             'enable_push_notifications': self.enable_push_notifications,
             'multi_factor_enabled': self.multi_factor_enabled,
+            'age': self.age,
+            'sex': self.sex,
+            'height': self.height,
+            'weight': self.weight,
             'is_disabled': self.is_currently_disabled(),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None

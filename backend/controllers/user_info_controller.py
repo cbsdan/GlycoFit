@@ -456,3 +456,139 @@ class UserInfoController:
         except Exception as e:
             log_error(e, 'Error deleting FCM token')
             return jsonify({'error': 'Internal server error'}), 500
+
+    @staticmethod
+    @firebase_auth_required
+    def update_health_metrics():
+        """Update user health metrics (age, sex, height, weight)"""
+        try:
+            user_id = request.current_user_id
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({'error': 'Request body is required'}), 400
+            
+            logging.info(f"Updating health metrics for user: {user_id}")
+            
+            # Find user
+            user = User.find_by_id(user_id)
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            # Validate and update health metrics
+            update_data = {}
+            
+            # Age validation
+            if 'age' in data:
+                age = data.get('age')
+                if age is not None:
+                    if not isinstance(age, (int, float)) or age < 0 or age > 150:
+                        return jsonify({'error': 'Age must be a number between 0 and 150'}), 400
+                    update_data['age'] = int(age)
+                else:
+                    update_data['age'] = None
+            
+            # Sex/Gender validation
+            if 'sex' in data:
+                sex = data.get('sex')
+                if sex is not None:
+                    if sex.lower() not in ['male', 'female', 'other']:
+                        return jsonify({'error': 'Sex must be male, female, or other'}), 400
+                    update_data['sex'] = sex.lower()
+                else:
+                    update_data['sex'] = None
+            
+            # Height validation (in cm)
+            if 'height' in data:
+                height = data.get('height')
+                if height is not None:
+                    if not isinstance(height, (int, float)) or height < 0 or height > 300:
+                        return jsonify({'error': 'Height must be a number between 0 and 300 cm'}), 400
+                    update_data['height'] = float(height)
+                else:
+                    update_data['height'] = None
+            
+            # Weight validation (in kg)
+            if 'weight' in data:
+                weight = data.get('weight')
+                if weight is not None:
+                    if not isinstance(weight, (int, float)) or weight < 0 or weight > 500:
+                        return jsonify({'error': 'Weight must be a number between 0 and 500 kg'}), 400
+                    update_data['weight'] = float(weight)
+                else:
+                    update_data['weight'] = None
+            
+            if not update_data:
+                return jsonify({'error': 'No valid fields to update'}), 400
+            
+            # Update user profile
+            user.update_profile(**update_data)
+            user.save()
+            
+            # Calculate BMI if both height and weight are available
+            bmi = None
+            if user.height and user.weight and user.height > 0:
+                height_m = user.height / 100  # Convert cm to meters
+                bmi = round(user.weight / (height_m ** 2), 2)
+            
+            logging.info(f"Health metrics updated successfully for user: {user_id}")
+            return jsonify({
+                'success': True,
+                'message': 'Health metrics updated successfully',
+                'user': user.to_safe_dict(),
+                'bmi': bmi
+            }), 200
+            
+        except Exception as e:
+            log_error(e, 'Error updating health metrics')
+            return jsonify({'error': 'Internal server error'}), 500
+
+    @staticmethod
+    @firebase_auth_required
+    def get_health_metrics():
+        """Get user health metrics including calculated BMI"""
+        try:
+            user_id = request.current_user_id
+            
+            logging.info(f"Getting health metrics for user: {user_id}")
+            
+            # Find user
+            user = User.find_by_id(user_id)
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            # Calculate BMI if both height and weight are available
+            bmi = None
+            bmi_category = None
+            if user.height and user.weight and user.height > 0:
+                height_m = user.height / 100  # Convert cm to meters
+                bmi = round(user.weight / (height_m ** 2), 2)
+                
+                # Determine BMI category
+                if bmi < 18.5:
+                    bmi_category = 'Underweight'
+                elif bmi < 25:
+                    bmi_category = 'Normal weight'
+                elif bmi < 30:
+                    bmi_category = 'Overweight'
+                else:
+                    bmi_category = 'Obese'
+            
+            health_metrics = {
+                'age': user.age,
+                'sex': user.sex,
+                'height': user.height,
+                'weight': user.weight,
+                'bmi': bmi,
+                'bmi_category': bmi_category
+            }
+            
+            logging.info(f"Health metrics retrieved successfully for user: {user_id}")
+            return jsonify({
+                'success': True,
+                'health_metrics': health_metrics
+            }), 200
+            
+        except Exception as e:
+            log_error(e, 'Error getting health metrics')
+            return jsonify({'error': 'Internal server error'}), 500

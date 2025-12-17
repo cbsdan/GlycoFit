@@ -11,11 +11,14 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
+  Alert,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { getMyAssessment, submitDiabetesAssessment } from '../services/api';
+import api from '../services/api';
+import HealthMetricsSetupScreen from './HealthMetricsSetupScreen';
 
 const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, onComplete }) => {
   const { colors } = useTheme();
@@ -26,7 +29,14 @@ const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, o
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [existingAssessment, setExistingAssessment] = useState(null);
-  const [showIntroModal, setShowIntroModal] = useState(isInitial);
+  const [showIntroModal, setShowIntroModal] = useState(true);
+  const [healthMetrics, setHealthMetrics] = useState(null);
+  const [bmiAutoFilled, setBmiAutoFilled] = useState(false);
+  const [sexAutoFilled, setSexAutoFilled] = useState(false);
+  const [ageAutoFilled, setAgeAutoFilled] = useState(false);
+  const [healthMetricsChecked, setHealthMetricsChecked] = useState(false);
+  const [hasHealthMetrics, setHasHealthMetrics] = useState(false);
+  const [showHealthMetricsModal, setShowHealthMetricsModal] = useState(false);
 
   const questions = [
     {
@@ -209,10 +219,32 @@ const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, o
   const currentQuestion = questions[currentStep];
   const progress = ((currentStep + 1) / questions.length) * 100;
 
-  // Load existing assessment on mount
+  // Load existing assessment and check health metrics on mount
   useEffect(() => {
     loadExistingAssessment();
+    checkHealthMetrics();
   }, []);
+
+  // Auto-fill BMI when reaching question 4 if health metrics exist
+  useEffect(() => {
+    if (currentStep === 3 && !bmiAutoFilled && hasHealthMetrics) {
+      autoFillBMI();
+    }
+  }, [currentStep, hasHealthMetrics]);
+
+  // Auto-fill Sex when reaching question 18 if health metrics exist
+  useEffect(() => {
+    if (currentStep === 17 && !sexAutoFilled && hasHealthMetrics) {
+      autoFillSex();
+    }
+  }, [currentStep, hasHealthMetrics]);
+
+  // Auto-fill Age when reaching question 19 if health metrics exist
+  useEffect(() => {
+    if (currentStep === 18 && !ageAutoFilled && hasHealthMetrics) {
+      autoFillAge();
+    }
+  }, [currentStep, hasHealthMetrics]);
 
   const loadExistingAssessment = async () => {
     try {
@@ -226,6 +258,99 @@ const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, o
       console.error('Error loading assessment:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkHealthMetrics = async () => {
+    try {
+      const response = await api.getHealthMetrics();
+      const metrics = response?.health_metrics;
+      
+      if (metrics && metrics.height && metrics.weight) {
+        setHealthMetrics(metrics);
+        setHasHealthMetrics(true);
+      } else {
+        setHasHealthMetrics(false);
+      }
+    } catch (error) {
+      console.log('Error fetching health metrics:', error);
+      setHasHealthMetrics(false);
+    } finally {
+      setHealthMetricsChecked(true);
+    }
+  };
+
+  const autoFillBMI = () => {
+    if (healthMetrics && healthMetrics.height && healthMetrics.weight) {
+      const heightInMeters = healthMetrics.height / 100;
+      const bmi = (healthMetrics.weight / (heightInMeters * heightInMeters)).toFixed(1);
+      
+      setAnswers(prev => ({ ...prev, BMI: parseFloat(bmi) }));
+      setBmiAutoFilled(true);
+      
+      toast.success(`BMI auto-filled: ${bmi}`);
+    }
+  };
+
+  const autoFillSex = () => {
+    if (healthMetrics && healthMetrics.sex) {
+      // Map 'male' to 1, 'female' to 0 for the assessment
+      const sexValue = healthMetrics.sex === 'male' ? 1 : 0;
+      
+      setAnswers(prev => ({ ...prev, Sex: sexValue }));
+      setSexAutoFilled(true);
+      
+      toast.success(`Sex auto-filled: ${healthMetrics.sex}`);
+    }
+  };
+
+  const autoFillAge = () => {
+    if (healthMetrics && healthMetrics.age) {
+      const age = healthMetrics.age;
+      let ageCategory;
+      
+      if (age >= 18 && age <= 24) ageCategory = 1;
+      else if (age >= 25 && age <= 29) ageCategory = 2;
+      else if (age >= 30 && age <= 34) ageCategory = 3;
+      else if (age >= 35 && age <= 39) ageCategory = 4;
+      else if (age >= 40 && age <= 44) ageCategory = 5;
+      else if (age >= 45 && age <= 49) ageCategory = 6;
+      else if (age >= 50 && age <= 54) ageCategory = 7;
+      else if (age >= 55 && age <= 59) ageCategory = 8;
+      else if (age >= 60 && age <= 64) ageCategory = 9;
+      else if (age >= 65 && age <= 69) ageCategory = 10;
+      else if (age >= 70 && age <= 74) ageCategory = 11;
+      else if (age >= 75 && age <= 79) ageCategory = 12;
+      else if (age >= 80) ageCategory = 13;
+      else ageCategory = 1; // Default to 18-24 if age is below 18
+      
+      setAnswers(prev => ({ ...prev, Age: ageCategory }));
+      setAgeAutoFilled(true);
+      
+      toast.success(`Age category auto-filled: ${age} years`);
+    }
+  };
+
+  const handleCompleteHealthMetrics = () => {
+    setShowIntroModal(false);
+    setShowHealthMetricsModal(true);
+  };
+
+  const handleHealthMetricsComplete = () => {
+    setShowHealthMetricsModal(false);
+    setShowIntroModal(true);
+    // Re-check health metrics after completing
+    setTimeout(() => checkHealthMetrics(), 500);
+  };
+
+  const handleHealthMetricsExit = () => {
+    setShowHealthMetricsModal(false);
+    setShowIntroModal(false);
+    // Exit the assessment since health metrics are required
+    if (isInitial && onSkip) {
+      onSkip();
+    } else {
+      navigation.goBack();
     }
   };
 
@@ -337,14 +462,28 @@ const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, o
       case 'choice':
         return (
           <View style={styles.optionsContainer}>
+            {currentQuestion.id === 'Sex' && sexAutoFilled && (
+              <View style={[styles.autoFillBanner, { backgroundColor: `${colors.success || '#27AE60'}15`, borderColor: colors.success || '#27AE60' }]}>
+                <Icon name="check-circle" size={20} color={colors.success || '#27AE60'} />
+                <Text style={[styles.autoFillText, { color: colors.text }]}>
+                  Sex auto-filled from your health metrics
+                </Text>
+              </View>
+            )}
             {currentQuestion.options.map((option) => (
               <TouchableOpacity
                 key={option.value}
                 style={[
                   styles.optionButton,
                   answers[currentQuestion.id] === option.value && styles.optionButtonSelected,
+                  currentQuestion.id === 'Sex' && sexAutoFilled && styles.optionButtonDisabled,
                 ]}
-                onPress={() => handleAnswer(option.value)}
+                onPress={() => {
+                  if (currentQuestion.id !== 'Sex' || !sexAutoFilled) {
+                    handleAnswer(option.value);
+                  }
+                }}
+                disabled={currentQuestion.id === 'Sex' && sexAutoFilled}
               >
                 <Text
                   style={[
@@ -362,14 +501,28 @@ const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, o
       case 'scale':
         return (
           <View style={styles.scaleContainer}>
+            {currentQuestion.id === 'Age' && ageAutoFilled && (
+              <View style={[styles.autoFillBanner, { backgroundColor: `${colors.success || '#27AE60'}15`, borderColor: colors.success || '#27AE60' }]}>
+                <Icon name="check-circle" size={20} color={colors.success || '#27AE60'} />
+                <Text style={[styles.autoFillText, { color: colors.text }]}>
+                  Age category auto-filled from your health metrics
+                </Text>
+              </View>
+            )}
             {currentQuestion.options.map((option) => (
               <TouchableOpacity
                 key={option.value}
                 style={[
                   styles.scaleButton,
                   answers[currentQuestion.id] === option.value && styles.scaleButtonSelected,
+                  currentQuestion.id === 'Age' && ageAutoFilled && styles.scaleButtonDisabled,
                 ]}
-                onPress={() => handleAnswer(option.value)}
+                onPress={() => {
+                  if (currentQuestion.id !== 'Age' || !ageAutoFilled) {
+                    handleAnswer(option.value);
+                  }
+                }}
+                disabled={currentQuestion.id === 'Age' && ageAutoFilled}
               >
                 <Text
                   style={[
@@ -387,8 +540,20 @@ const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, o
       case 'number':
         return (
           <View style={styles.inputContainer}>
+            {currentQuestion.id === 'BMI' && bmiAutoFilled && (
+              <View style={[styles.autoFillBanner, { backgroundColor: `${colors.success || '#27AE60'}15`, borderColor: colors.success || '#27AE60' }]}>
+                <Icon name="check-circle" size={20} color={colors.success || '#27AE60'} />
+                <Text style={[styles.autoFillText, { color: colors.text }]}>
+                  BMI auto-calculated from your health metrics
+                </Text>
+              </View>
+            )}
             <TextInput
-              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+              style={[
+                styles.input,
+                { color: colors.text, borderColor: colors.border },
+                currentQuestion.id === 'BMI' && bmiAutoFilled && styles.inputReadOnly
+              ]}
               placeholder={currentQuestion.placeholder}
               placeholderTextColor={colors.secondary}
               keyboardType="numeric"
@@ -397,9 +562,21 @@ const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, o
                 const numValue = parseFloat(text);
                 if (!isNaN(numValue) || text === '') {
                   handleAnswer(text === '' ? '' : numValue);
+                  if (currentQuestion.id === 'BMI') {
+                    setBmiAutoFilled(false); // Mark as manually edited
+                  }
                 }
               }}
+              editable={currentQuestion.id !== 'BMI' || !bmiAutoFilled}
             />
+            {currentQuestion.id === 'BMI' && !hasHealthMetrics && (
+              <View style={[styles.infoMessage, { backgroundColor: `${colors.secondary}10`, borderColor: `${colors.secondary}30` }]}>
+                <Icon name="information-outline" size={16} color={colors.secondary} />
+                <Text style={[styles.infoMessageText, { color: colors.secondary }]}>
+                  Complete your health profile for automatic BMI calculation
+                </Text>
+              </View>
+            )}
           </View>
         );
 
@@ -511,6 +688,9 @@ const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, o
       backgroundColor: colors.primary,
       borderColor: colors.primary,
     },
+    optionButtonDisabled: {
+      opacity: 0.6,
+    },
     optionText: {
       fontSize: 18,
       fontWeight: '600',
@@ -534,6 +714,9 @@ const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, o
       backgroundColor: colors.primary,
       borderColor: colors.primary,
     },
+    scaleButtonDisabled: {
+      opacity: 0.6,
+    },
     scaleText: {
       fontSize: 16,
       fontWeight: '500',
@@ -554,6 +737,51 @@ const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, o
       fontSize: 18,
       fontWeight: '500',
       textAlign: 'center',
+    },
+    inputReadOnly: {
+      backgroundColor: `${colors.primary}08`,
+      borderColor: colors.primary,
+      opacity: 0.8,
+    },
+    autoFillBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 12,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginBottom: 12,
+      gap: 8,
+    },
+    autoFillText: {
+      fontSize: 13,
+      flex: 1,
+    },
+    infoMessage: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginTop: 12,
+      gap: 8,
+    },
+    infoMessageText: {
+      fontSize: 12,
+      flex: 1,
+    },
+    warningBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 12,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginBottom: 12,
+      gap: 8,
+    },
+    warningText: {
+      fontSize: 13,
+      flex: 1,
+      lineHeight: 18,
     },
     footer: {
       padding: 16,
@@ -675,7 +903,18 @@ const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, o
         visible={showIntroModal}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setShowIntroModal(false)}
+        onRequestClose={() => {
+          // If health metrics don't exist, exit the assessment
+          if (!hasHealthMetrics) {
+            if (isInitial && onSkip) {
+              onSkip();
+            } else {
+              navigation.goBack();
+            }
+          } else {
+            setShowIntroModal(false);
+          }
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
@@ -690,6 +929,15 @@ const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, o
             <Text style={[styles.modalDescription, { color: colors.secondary }]}>
               This comprehensive assessment will help evaluate your risk factors for diabetes. It includes questions about:
             </Text>
+            
+            {healthMetricsChecked && !hasHealthMetrics && (
+              <View style={[styles.warningBanner, { backgroundColor: `${colors.warning || '#F39C12'}15`, borderColor: colors.warning || '#F39C12' }]}>
+                <Icon name="alert-circle" size={20} color={colors.warning || '#F39C12'} />
+                <Text style={[styles.warningText, { color: colors.text }]}>
+                  For accurate BMI calculation, please complete your health profile first.
+                </Text>
+              </View>
+            )}
             
             <View style={styles.modalFeatures}>
               <View style={styles.modalFeatureItem}>
@@ -725,36 +973,68 @@ const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, o
               </Text>
             </View>
             
-            <TouchableOpacity
-              style={[styles.modalButton, { backgroundColor: colors.primary }]}
-              onPress={() => setShowIntroModal(false)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.modalButtonText}>Start Assessment</Text>
-              <Icon name="arrow-right" size={18} color="#FFFFFF" />
-            </TouchableOpacity>
-            
-            {isInitial && onSkip && (
-              <TouchableOpacity
-                style={styles.modalSkipButton}
-                onPress={() => {
-                  setShowIntroModal(false);
-                  if (onSkip) {
-                    onSkip();
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.modalSkipText, { color: colors.secondary }]}>
-                  I'll do this later
-                </Text>
-              </TouchableOpacity>
+            {healthMetricsChecked && !hasHealthMetrics ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                  onPress={handleCompleteHealthMetrics}
+                  activeOpacity={0.8}
+                >
+                  <Icon name="account-details" size={18} color="#FFFFFF" />
+                  <Text style={styles.modalButtonText}>Complete Health Profile to Continue</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.modalSkipButton}
+                  onPress={() => {
+                    setShowIntroModal(false);
+                    if (isInitial && onSkip) {
+                      onSkip();
+                    } else {
+                      navigation.goBack();
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.modalSkipText, { color: colors.secondary }]}>
+                    {isInitial ? 'Skip Assessment for Now' : 'Cancel'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                  onPress={() => setShowIntroModal(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.modalButtonText}>Start Assessment</Text>
+                  <Icon name="arrow-right" size={18} color="#FFFFFF" />
+                </TouchableOpacity>
+                
+                {isInitial && onSkip && (
+                  <TouchableOpacity
+                    style={styles.modalSkipButton}
+                    onPress={() => {
+                      setShowIntroModal(false);
+                      if (onSkip) {
+                        onSkip();
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.modalSkipText, { color: colors.secondary }]}>
+                      I'll do this later
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
           </View>
         </View>
       </Modal>
 
-      {loading ? (
+      {loading || !healthMetricsChecked ? (
         <View style={[styles.content, { justifyContent: 'center', alignItems: 'center' }]}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.questionText, { marginTop: 16 }]}>Loading...</Text>
@@ -834,6 +1114,19 @@ const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, o
           </KeyboardAvoidingView>
         </>
       )}
+
+      {/* Health Metrics Modal */}
+      <Modal
+        visible={showHealthMetricsModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={handleHealthMetricsExit}
+      >
+        <HealthMetricsSetupScreen
+          onComplete={handleHealthMetricsComplete}
+          onSkip={handleHealthMetricsExit}
+        />
+      </Modal>
     </SafeAreaView>
   );
 };

@@ -214,3 +214,14 @@ def save_fcm_token():
 def delete_fcm_token():
     """Delete FCM token (e.g., on logout)"""
     return UserInfoController.delete_fcm_token()
+
+# Health Metrics Routes
+@user_bp.route('/health-metrics', methods=['GET'])
+def get_health_metrics():
+    """Get user health metrics (age, sex, height, weight, BMI)"""
+    return UserInfoController.get_health_metrics()
+
+@user_bp.route('/health-metrics', methods=['PUT'])
+def update_health_metrics():
+    """Update user health metrics (age, sex, height, weight)"""
+    return UserInfoController.update_health_metrics()
