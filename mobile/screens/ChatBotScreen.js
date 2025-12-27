@@ -51,6 +51,11 @@ const ChatBotScreen = ({ navigation }) => {
         setTotalMessages(response.total);
         setSkip(response.limit);
         setHasMoreMessages(response.limit + 20 < response.total);
+        
+        // Scroll to bottom after loading
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: false });
+        }, 100);
       }
     } catch (error) {
       console.error('Error loading chat history:', error);
@@ -62,6 +67,11 @@ const ChatBotScreen = ({ navigation }) => {
         timestamp: new Date(),
       };
       setMessages([greeting]);
+      
+      // Scroll to bottom after loading
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 100);
     } finally {
       setIsLoadingHistory(false);
     }
@@ -122,6 +132,11 @@ const ChatBotScreen = ({ navigation }) => {
         };
         setMessages((prev) => [...prev, botMessage]);
         setTotalMessages(totalMessages + 1);
+        
+        // Scroll to bottom after API response
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
       } else {
         // Fallback response on error
         const botMessage = {
@@ -131,6 +146,11 @@ const ChatBotScreen = ({ navigation }) => {
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, botMessage]);
+        
+        // Scroll to bottom after response
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
       }
     } catch (error) {
       console.error('Error sending message to chatbot:', error);
@@ -142,16 +162,18 @@ const ChatBotScreen = ({ navigation }) => {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, botMessage]);
+      
+      // Scroll to bottom after response
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
     } finally {
       setIsTyping(false);
     }
   };
 
   const quickReplies = [
-    { id: '1', text: '📊 My glucose levels', icon: 'chart-line' },
-    { id: '2', text: '🍽️ Log a meal', icon: 'food' },
-    { id: '3', text: '🏃 Activity stats', icon: 'walk' },
-    { id: '4', text: '👨‍⚕️ Find doctor', icon: 'doctor' },
+    { id: '1', text: 'What is a good breakfast meal plan?', icon: 'food' },
   ];
 
   const handleQuickReply = (text) => {
