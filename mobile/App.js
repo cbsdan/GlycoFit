@@ -29,6 +29,7 @@ import HealthMetricsSetupScreen from './screens/HealthMetricsSetupScreen';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingScreen from './components/LoadingScreen';
 import WelcomeScreen from './screens/WelcomeScreen';
+import DisclaimerScreen, { DISCLAIMER_ACCEPTED_KEY } from './screens/DisclaimerScreen';
 
 const Stack = createStackNavigator();
 const WELCOME_SHOWN_KEY = '@welcome_shown';
@@ -62,6 +63,8 @@ function AppNavigator() {
   const { colors, isDarkMode } = useTheme();
   const [showWelcome, setShowWelcome] = useState(false);
   const [isCheckingWelcome, setIsCheckingWelcome] = useState(true);
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
+  const [isCheckingDisclaimer, setIsCheckingDisclaimer] = useState(false);
   const [showAssessment, setShowAssessment] = useState(false);
   const [isCheckingAssessment, setIsCheckingAssessment] = useState(false);
   const [showHealthMetrics, setShowHealthMetrics] = useState(false);
@@ -73,7 +76,7 @@ function AppNavigator() {
 
   useEffect(() => {
     if (isAuthenticated && user) {
-      checkHealthMetricsStatus();
+      checkDisclaimerStatus();
     }
   }, [isAuthenticated, user]);
 
@@ -97,6 +100,32 @@ function AppNavigator() {
       console.log('Error saving welcome status:', error);
       setShowWelcome(false);
     }
+  };
+
+  const checkDisclaimerStatus = async () => {
+    try {
+      setIsCheckingDisclaimer(true);
+      const disclaimerAccepted = await AsyncStorage.getItem(DISCLAIMER_ACCEPTED_KEY);
+      const shouldShowDisclaimer = disclaimerAccepted !== 'true';
+      
+      setShowDisclaimer(shouldShowDisclaimer);
+      
+      // If disclaimer already accepted, proceed to check health metrics
+      if (!shouldShowDisclaimer) {
+        await checkHealthMetricsStatus();
+      }
+    } catch (error) {
+      console.log('Error checking disclaimer status:', error);
+      setShowDisclaimer(true);
+    } finally {
+      setIsCheckingDisclaimer(false);
+    }
+  };
+
+  const handleDisclaimerComplete = async () => {
+    setShowDisclaimer(false);
+    // After disclaimer is accepted, check health metrics
+    await checkHealthMetricsStatus();
   };
 
   const checkAssessmentStatus = async () => {
@@ -188,7 +217,7 @@ function AppNavigator() {
     await checkAssessmentStatus();
   };
 
-  if (isLoading || isCheckingWelcome || isCheckingAssessment || isCheckingHealthMetrics) {
+  if (isLoading || isCheckingWelcome || isCheckingDisclaimer || isCheckingAssessment || isCheckingHealthMetrics) {
     return <LoadingScreen />;
   }
 
@@ -239,7 +268,21 @@ function AppNavigator() {
       >
         {isAuthenticated ? (
           <>
-            {showHealthMetrics ? (
+            {showDisclaimer ? (
+              <Stack.Screen 
+                name="Disclaimer" 
+                options={{ headerShown: false }}
+              >
+                {(props) => (
+                  <UniversalScreenWrapper>
+                    <DisclaimerScreen 
+                      {...props}
+                      onComplete={handleDisclaimerComplete}
+                    />
+                  </UniversalScreenWrapper>
+                )}
+              </Stack.Screen>
+            ) : showHealthMetrics ? (
               <Stack.Screen 
                 name="HealthMetricsSetup" 
                 options={{ headerShown: false }}

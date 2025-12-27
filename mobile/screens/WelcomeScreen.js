@@ -34,15 +34,6 @@ const WelcomeScreen = ({ navigation, onComplete }) => {
     },
     {
       id: 2,
-      title: 'Smart Blood Sugar Predictions',
-      description: 'Get accurate blood glucose predictions based on your meals and activity',
-      details: 'Our AI-powered system analyzes your food intake and physical activity to provide personalized glucose level forecasts.',
-      icon: 'analytics',
-      gradientColors: ['#2196F3', '#1976D2'],
-      features: ['AI Predictions', 'Meal Analysis', 'Real-time Insights'],
-    },
-    {
-      id: 3,
       title: 'Complete Meal History',
       description: 'Keep track of your meals and see how they affect your glucose levels',
       details: 'Log your meals easily and discover patterns between your diet and blood sugar levels over time.',
@@ -51,7 +42,7 @@ const WelcomeScreen = ({ navigation, onComplete }) => {
       features: ['Photo Logging', 'Nutrition Info', 'Impact Analysis'],
     },
     {
-      id: 4,
+      id: 3,
       title: 'Personalized Health Insights',
       description: 'View comprehensive health data and get personalized recommendations',
       details: 'Access all your health metrics in one place and receive tailored advice to improve your wellness journey.',

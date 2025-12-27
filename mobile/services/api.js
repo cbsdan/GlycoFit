@@ -1112,6 +1112,15 @@ export const saveFCMToken = async (fcmToken) => {
   try {
     const response = await api.post('/users/fcm-token', { fcmToken });
     console.log('FCM token saved to backend:', response.data);
+    
+    // Also store locally for logout purposes
+    try {
+      await SecureStore.setItemAsync('fcm_token', fcmToken);
+    } catch (storageError) {
+      console.warn('Failed to store FCM token locally:', storageError);
+      // Don't throw - backend save is successful
+    }
+    
     return response.data;
   } catch (error) {
     console.error('Error saving FCM token:', error.response?.data || error.message);
@@ -1119,10 +1128,34 @@ export const saveFCMToken = async (fcmToken) => {
   }
 };
 
-export const deleteFCMToken = async () => {
+export const deleteFCMToken = async (fcmToken = null) => {
   try {
-    const response = await api.delete('/users/fcm-token');
+    // If no token provided, retrieve from secure storage
+    let tokenToDelete = fcmToken;
+    if (!tokenToDelete) {
+      try {
+        tokenToDelete = await SecureStore.getItemAsync('fcm_token');
+      } catch (error) {
+        console.warn('Failed to retrieve FCM token from storage:', error);
+        // Continue without token - backend will clear all tokens
+      }
+    }
+
+    const response = await api.delete('/users/fcm-token', {
+      data: { fcmToken: tokenToDelete },
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
     console.log('FCM token deleted from backend:', response.data);
+    
+    // Clear from local storage
+    try {
+      await SecureStore.deleteItemAsync('fcm_token');
+    } catch (storageError) {
+      console.warn('Failed to delete FCM token from storage:', storageError);
+    }
+    
     return response.data;
   } catch (error) {
     console.error('Error deleting FCM token:', error.response?.data || error.message);

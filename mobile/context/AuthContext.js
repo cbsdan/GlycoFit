@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../config/firebase-config';
 import { authService } from '../services/api';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 const AuthContext = createContext({});
 
@@ -163,6 +164,17 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       setIsLoading(true);
+      
+      // Sign out from Google Sign-in to clear the cached account
+      try {
+        await GoogleSignin.signOut();
+        console.log('Signed out from Google Sign-in');
+      } catch (googleError) {
+        console.warn('Google Sign-out warning:', googleError);
+        // Don't throw - continue with logout even if Google sign-out fails
+      }
+      
+      // Sign out from backend/Firebase
       await authService.logout();
       setUser(null);
       setIsAuthenticated(false);
