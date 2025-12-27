@@ -193,6 +193,58 @@ Provide realistic nutritional estimates based on typical serving sizes. Return O
         except Exception as e:
             logging.error(f"Error analyzing food image with Gemini: {str(e)}")
             raise
+    
+    def generate_health_response(self, user_message, user_id=None):
+        """
+        Generate a health-related conversational response using Gemini AI
+        
+        Args:
+            user_message: User's message text
+            user_id: Optional user ID for personalized responses
+            
+        Returns:
+            str: AI-generated response
+        """
+        try:
+            if not self.is_ready():
+                raise Exception("Gemini service is not initialized")
+            
+            # Create a health assistant prompt
+            system_prompt = """
+You are a helpful health assistant for GlycoFit, an app focused on diabetes management and healthy living.
+
+Your role:
+- Provide accurate, helpful information about diabetes management, nutrition, and healthy lifestyle
+- Be supportive and encouraging
+- Give practical advice for meal planning, blood sugar monitoring, and exercise
+- When asked about specific symptoms or medical concerns, always recommend consulting with healthcare professionals
+- Use a friendly, conversational tone
+- Keep responses concise but informative (2-4 sentences typically)
+
+Important guidelines:
+- NEVER provide medical diagnosis or replace professional medical advice
+- ALWAYS encourage users to consult their doctor for medical decisions
+- Focus on general wellness, nutrition education, and lifestyle tips
+- Be positive and motivating
+- If asked about medications, recommend consulting their physician
+
+User's message: {message}
+
+Provide a helpful, supportive response:
+"""
+            
+            prompt = system_prompt.format(message=user_message)
+            
+            # Generate response
+            response = self.model.generate_content(prompt)
+            response_text = response.text.strip()
+            
+            logging.info(f"Generated health response for message: {user_message[:50]}...")
+            return response_text
+            
+        except Exception as e:
+            logging.error(f"Error generating health response: {str(e)}")
+            raise
 
 # Global instance
 _gemini_service = None

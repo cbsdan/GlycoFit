@@ -1180,4 +1180,15 @@ api.sendImageMessage = sendImageMessage;
 api.saveFCMToken = saveFCMToken;
 api.deleteFCMToken = deleteFCMToken;
 
+// Chatbot endpoint
+api.sendChatbotMessage = async (message) => {
+  try {
+    const response = await api.post('/chatbot/message', { message });
+    return response.data;
+  } catch (error) {
+    console.error('Error sending chatbot message:', error);
+    throw error;
+  }
+};
+
 export default api;

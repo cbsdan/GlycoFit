@@ -22,6 +22,7 @@ import {
   getThisWeekData,
   getActivityData,
 } from '../services/healthConnectService';
+import ChatBotBubble from '../components/ChatBotBubble';
 
 const { width } = Dimensions.get('window');
 
@@ -640,6 +641,9 @@ const HomeScreen = ({ navigation }) => {
         </View>
 
       </ScrollView>
+      
+      {/* ChatBot Floating Bubble */}
+      <ChatBotBubble onPress={() => navigation.navigate('ChatBot')} />
     </SafeAreaView>
   );
 };
