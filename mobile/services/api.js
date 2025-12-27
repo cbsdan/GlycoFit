@@ -9,6 +9,7 @@ import {
 } from "firebase/auth";
 import { auth, isTokenExpired } from '../config/firebase-config';
 import { API_URL } from '../config/constants';
+import { GoogleSignin as RNGoogleSignin } from '@react-native-google-signin/google-signin';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -310,6 +311,14 @@ export const authService = {
         // Continue with logout even if FCM deletion fails
       }
       
+      // Sign out from Google Sign-in to clear the cached account
+      try {
+        await RNGoogleSignin.signOut();
+        console.log('Signed out from Google Sign-in');
+      } catch (googleError) {
+        console.warn('Google Sign-out warning:', googleError);
+        // Don't throw - continue with logout even if Google sign-out fails
+      }
       await auth.signOut();
       await SecureStore.deleteItemAsync('auth_token');
       await AsyncStorage.removeItem('user');

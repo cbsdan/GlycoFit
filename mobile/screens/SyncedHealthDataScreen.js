@@ -29,9 +29,11 @@ const SyncedHealthDataScreen = ({ navigation }) => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedDataType, setSelectedDataType] = useState('heart_rate'); // heart_rate, exercise, active_calories
+  const [selectedDataType, setSelectedDataType] = useState('steps'); // steps (steps + calories), sleep
   const [selectedPeriod, setSelectedPeriod] = useState('daily'); // daily, weekly, monthly
   const [statistics, setStatistics] = useState(null);
+  const [stepsStats, setStepsStats] = useState(null);
+  const [caloriesStats, setCaloriesStats] = useState(null);
   const [recentData, setRecentData] = useState([]);
 
   useEffect(() => {
@@ -51,51 +53,70 @@ const SyncedHealthDataScreen = ({ navigation }) => {
       
       const promises = [];
       
-      // Statistics promise
-      if (selectedPeriod === 'daily') {
-        promises.push(getDailyStatistics(selectedDataType, today));
-      } else if (selectedPeriod === 'weekly') {
-        // Calculate week start (Sunday) using local date components to avoid timezone issues
-        const now = new Date();
-        const currentDay = now.getDay(); // 0 = Sunday, 6 = Saturday
+      // For steps tab, fetch both steps and calories statistics
+      if (selectedDataType === 'steps') {
+        // Fetch steps statistics
+        if (selectedPeriod === 'daily') {
+          promises.push(getDailyStatistics('steps', today));
+          promises.push(getDailyStatistics('active_calories', today));
+        } else if (selectedPeriod === 'weekly') {
+          const now = new Date();
+          const currentDay = now.getDay();
+          const isEarlyWeek = currentDay <= 2;
+          const daysToSubtract = isEarlyWeek ? currentDay + 7 : currentDay;
+          const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysToSubtract);
+          const year = weekStart.getFullYear();
+          const month = String(weekStart.getMonth() + 1).padStart(2, '0');
+          const day = String(weekStart.getDate()).padStart(2, '0');
+          const startDateStr = `${year}-${month}-${day}`;
+          promises.push(getWeeklyStatistics('steps', startDateStr));
+          promises.push(getWeeklyStatistics('active_calories', startDateStr));
+        } else if (selectedPeriod === 'monthly') {
+          const now = new Date();
+          promises.push(getMonthlyStatistics('steps', now.getFullYear(), now.getMonth() + 1));
+          promises.push(getMonthlyStatistics('active_calories', now.getFullYear(), now.getMonth() + 1));
+        }
         
-        // If today is Sunday, Monday, or Tuesday (early in the week), show last week's stats
-        // This ensures users see complete week data rather than empty stats early in new week
-        const isEarlyWeek = currentDay <= 2; // Sunday(0), Monday(1), Tuesday(2)
-        const daysToSubtract = isEarlyWeek ? currentDay + 7 : currentDay;
+        // Recent records - fetch both steps and calories
+        promises.push(getHealthData('steps', 5));
+        promises.push(getHealthData('active_calories', 5));
         
-        console.log('📅 Week calculation:', {
-          now: now.toString(),
-          currentDay,
-          isEarlyWeek,
-          daysToSubtract,
-          date: now.getDate(),
-          targetDate: now.getDate() - daysToSubtract
-        });
+        // Fetch all in parallel
+        const [stepsStats, caloriesStats, stepsData, caloriesData] = await Promise.all(promises);
         
-        // Create a new date for the week start
-        const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysToSubtract);
+        setStepsStats(stepsStats);
+        setCaloriesStats(caloriesStats);
+        setRecentData(stepsData?.data || []);
+      } else {
+        // For sleep, fetch normally
+        // Statistics promise
+        if (selectedPeriod === 'daily') {
+          promises.push(getDailyStatistics(selectedDataType, today));
+        } else if (selectedPeriod === 'weekly') {
+          const now = new Date();
+          const currentDay = now.getDay();
+          const isEarlyWeek = currentDay <= 2;
+          const daysToSubtract = isEarlyWeek ? currentDay + 7 : currentDay;
+          const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysToSubtract);
+          const year = weekStart.getFullYear();
+          const month = String(weekStart.getMonth() + 1).padStart(2, '0');
+          const day = String(weekStart.getDate()).padStart(2, '0');
+          const startDateStr = `${year}-${month}-${day}`;
+          promises.push(getWeeklyStatistics(selectedDataType, startDateStr));
+        } else if (selectedPeriod === 'monthly') {
+          const now = new Date();
+          promises.push(getMonthlyStatistics(selectedDataType, now.getFullYear(), now.getMonth() + 1));
+        }
         
-        // Use local date format to avoid timezone conversion issues
-        const year = weekStart.getFullYear();
-        const month = String(weekStart.getMonth() + 1).padStart(2, '0');
-        const day = String(weekStart.getDate()).padStart(2, '0');
-        const startDateStr = `${year}-${month}-${day}`;
-        console.log('📅 Week start calculated:', startDateStr);
-        promises.push(getWeeklyStatistics(selectedDataType, startDateStr));
-      } else if (selectedPeriod === 'monthly') {
-        const now = new Date();
-        promises.push(getMonthlyStatistics(selectedDataType, now.getFullYear(), now.getMonth() + 1));
+        // Recent records promise
+        promises.push(getHealthData(selectedDataType, 5));
+        
+        // Fetch both in parallel
+        const [stats, data] = await Promise.all(promises);
+        
+        setStatistics(stats);
+        setRecentData(data?.data || []);
       }
-      
-      // Recent records promise - limit to 5 for faster loading
-      promises.push(getHealthData(selectedDataType, 5));
-      
-      // Fetch both in parallel
-      const [stats, data] = await Promise.all(promises);
-      
-      setStatistics(stats);
-      setRecentData(data?.data || []);
     } catch (error) {
       console.error('Error fetching synced data:', error);
       toast.error('Failed to load synced data');
@@ -112,12 +133,8 @@ const SyncedHealthDataScreen = ({ navigation }) => {
 
   const getDataTypeIcon = (type) => {
     switch (type) {
-      case 'heart_rate':
-        return 'heart-pulse';
-      case 'exercise':
-        return 'run';
-      case 'active_calories':
-        return 'fire';
+      case 'steps':
+        return 'walk';
       case 'sleep':
         return 'sleep';
       default:
@@ -127,12 +144,8 @@ const SyncedHealthDataScreen = ({ navigation }) => {
 
   const getDataTypeLabel = (type) => {
     switch (type) {
-      case 'heart_rate':
-        return 'Heart Rate';
-      case 'exercise':
-        return 'Exercise';
-      case 'active_calories':
-        return 'Active Calories';
+      case 'steps':
+        return 'Steps';
       case 'sleep':
         return 'Sleep';
       default:
@@ -144,9 +157,10 @@ const SyncedHealthDataScreen = ({ navigation }) => {
     if (!value && value !== 0) return 'N/A';
     
     switch (type) {
-      case 'heart_rate':
-        return `${Math.round(value)} bpm`;
-      case 'exercise':
+      case 'steps':
+        return `${Math.round(value).toLocaleString()} steps`;
+      case 'active_calories':
+        return `${Math.round(value)} kcal`;
       case 'sleep':
         // Show hours if over 60 minutes, otherwise show minutes
         if (value >= 60) {
@@ -154,8 +168,6 @@ const SyncedHealthDataScreen = ({ navigation }) => {
           return `${hours} hrs`;
         }
         return `${Math.round(value)} min`;
-      case 'active_calories':
-        return `${Math.round(value)} kcal`;
       default:
         return value.toString();
     }
@@ -183,9 +195,88 @@ const SyncedHealthDataScreen = ({ navigation }) => {
   };
 
   const renderStatisticsCard = () => {
+    if (selectedDataType === 'steps') {
+      // Show both steps and calories for steps
+      if (!stepsStats || !caloriesStats) return null;
+
+      return (
+        <View style={[styles.statisticsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.statisticsTitle, { color: colors.text }]}>
+            {selectedPeriod.charAt(0).toUpperCase() + selectedPeriod.slice(1)} Summary
+          </Text>
+
+          {/* Steps Section */}
+          <View style={styles.activitySection}>
+            <View style={styles.activityHeader}>
+              <Icon name="walk" size={20} color="#4CAF50" />
+              <Text style={[styles.activityTitle, { color: colors.text }]}>Steps</Text>
+            </View>
+            <View style={styles.statsGrid}>
+              <View style={styles.statItem}>
+                <Icon name="chart-line-variant" size={24} color={colors.primary} />
+                <Text style={[styles.statValue, { color: colors.text }]}>
+                  {formatValue(stepsStats.average, 'steps')}
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.secondary }]}>Average</Text>
+              </View>
+
+              <View style={styles.statItem}>
+                <Icon name="arrow-up-bold" size={24} color="#4CAF50" />
+                <Text style={[styles.statValue, { color: colors.text }]}>
+                  {formatValue(stepsStats.max, 'steps')}
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.secondary }]}>Max</Text>
+              </View>
+
+              <View style={styles.statItem}>
+                <Icon name="sigma" size={24} color={colors.accent} />
+                <Text style={[styles.statValue, { color: colors.text }]}>
+                  {formatValue(stepsStats.total, 'steps')}
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.secondary }]}>Total</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Calories Section */}
+          <View style={styles.activitySection}>
+            <View style={styles.activityHeader}>
+              <Icon name="fire" size={20} color="#FF5722" />
+              <Text style={[styles.activityTitle, { color: colors.text }]}>Calories Burned</Text>
+            </View>
+            <View style={styles.statsGrid}>
+              <View style={styles.statItem}>
+                <Icon name="chart-line-variant" size={24} color={colors.primary} />
+                <Text style={[styles.statValue, { color: colors.text }]}>
+                  {formatValue(caloriesStats.average, 'active_calories')}
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.secondary }]}>Average</Text>
+              </View>
+
+              <View style={styles.statItem}>
+                <Icon name="arrow-up-bold" size={24} color="#FF5722" />
+                <Text style={[styles.statValue, { color: colors.text }]}>
+                  {formatValue(caloriesStats.max, 'active_calories')}
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.secondary }]}>Max</Text>
+              </View>
+
+              <View style={styles.statItem}>
+                <Icon name="sigma" size={24} color={colors.accent} />
+                <Text style={[styles.statValue, { color: colors.text }]}>
+                  {formatValue(caloriesStats.total, 'active_calories')}
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.secondary }]}>Total</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    // For sleep, show normal statistics
     if (!statistics) return null;
 
-    // Backend returns statistics directly in the response
     const stats = statistics || {};
     
     return (
@@ -219,7 +310,7 @@ const SyncedHealthDataScreen = ({ navigation }) => {
             <Text style={[styles.statLabel, { color: colors.secondary }]}>Minimum</Text>
           </View>
 
-          {selectedDataType !== 'heart_rate' && (
+          {selectedDataType !== 'sleep' && (
             <View style={styles.statItem}>
               <Icon name="sigma" size={24} color={colors.accent} />
               <Text style={[styles.statValue, { color: colors.text }]}>
@@ -394,6 +485,22 @@ const SyncedHealthDataScreen = ({ navigation }) => {
       fontWeight: '600',
       marginBottom: 16,
     },
+    activitySection: {
+      marginBottom: 16,
+      paddingBottom: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    activityHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+      gap: 8,
+    },
+    activityTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+    },
     statsGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -555,66 +662,22 @@ const SyncedHealthDataScreen = ({ navigation }) => {
           <TouchableOpacity
             style={[
               styles.dataTypeButton,
-              selectedDataType === 'heart_rate' && styles.dataTypeButtonActive,
+              selectedDataType === 'steps' && styles.dataTypeButtonActive,
             ]}
-            onPress={() => setSelectedDataType('heart_rate')}
+            onPress={() => setSelectedDataType('steps')}
           >
             <Icon
-              name="heart-pulse"
+              name="walk"
               size={18}
-              color={selectedDataType === 'heart_rate' ? '#fff' : colors.text}
+              color={selectedDataType === 'steps' ? '#fff' : colors.text}
             />
             <Text
               style={[
                 styles.dataTypeButtonText,
-                selectedDataType === 'heart_rate' && styles.dataTypeButtonTextActive,
+                selectedDataType === 'steps' && styles.dataTypeButtonTextActive,
               ]}
             >
-              Heart Rate
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.dataTypeButton,
-              selectedDataType === 'exercise' && styles.dataTypeButtonActive,
-            ]}
-            onPress={() => setSelectedDataType('exercise')}
-          >
-            <Icon
-              name="run"
-              size={18}
-              color={selectedDataType === 'exercise' ? '#fff' : colors.text}
-            />
-            <Text
-              style={[
-                styles.dataTypeButtonText,
-                selectedDataType === 'exercise' && styles.dataTypeButtonTextActive,
-              ]}
-            >
-              Exercise
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.dataTypeButton,
-              selectedDataType === 'active_calories' && styles.dataTypeButtonActive,
-            ]}
-            onPress={() => setSelectedDataType('active_calories')}
-          >
-            <Icon
-              name="fire"
-              size={18}
-              color={selectedDataType === 'active_calories' ? '#fff' : colors.text}
-            />
-            <Text
-              style={[
-                styles.dataTypeButtonText,
-                selectedDataType === 'active_calories' && styles.dataTypeButtonTextActive,
-              ]}
-            >
-              Calories
+              Steps
             </Text>
           </TouchableOpacity>
 

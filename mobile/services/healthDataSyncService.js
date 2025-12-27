@@ -88,40 +88,33 @@ class HealthDataSyncService {
   /**
    * Transform Health Connect data to backend format
    * Optimized to limit number of records per data type
+   * Now only syncs: Steps, Active Calories, and Sleep
    */
   transformHealthDataForSync(healthData) {
     const dataToSync = [];
     const MAX_RECORDS_PER_TYPE = 100; // Limit to prevent overwhelming the backend
 
-    // Transform heart rate data (limit samples)
-    if (healthData.vitals?.heartRate && Array.isArray(healthData.vitals.heartRate)) {
-      let heartRateCount = 0;
-      for (const record of healthData.vitals.heartRate) {
-        if (heartRateCount >= MAX_RECORDS_PER_TYPE) break;
-        
-        if (record.samples && Array.isArray(record.samples)) {
-          for (const sample of record.samples) {
-            if (heartRateCount >= MAX_RECORDS_PER_TYPE) break;
-            
-            if (sample.beatsPerMinute && sample.time) {
-              // Validate data before adding
-              const bpm = Number(sample.beatsPerMinute);
-              if (!isNaN(bpm) && bpm > 0 && bpm < 300) {  // Reasonable heart rate range
-                dataToSync.push({
-                  data_type: 'heart_rate',
-                  value: bpm,
-                  unit: 'bpm',
-                  timestamp: sample.time,
-                  metadata: {
-                    source: 'health_connect',
-                  },
-                });
-                heartRateCount++;
-              }
-            }
+    // Transform steps data (limit records)
+    if (healthData.activity?.steps && Array.isArray(healthData.activity.steps)) {
+      const stepsRecords = healthData.activity.steps.slice(0, MAX_RECORDS_PER_TYPE);
+      stepsRecords.forEach(record => {
+        if (record.count && record.startTime) {
+          // Validate steps value
+          const steps = Number(record.count);
+          if (!isNaN(steps) && steps > 0 && steps < 100000) {  // Reasonable steps range
+            dataToSync.push({
+              data_type: 'steps',
+              value: steps,
+              unit: 'count',
+              timestamp: record.startTime,
+              metadata: {
+                source: 'health_connect',
+                end_time: record.endTime || null,
+              },
+            });
           }
         }
-      }
+      });
     }
 
     // Transform active calories data (limit records)
@@ -140,32 +133,6 @@ class HealthDataSyncService {
               metadata: {
                 source: 'health_connect',
                 end_time: record.endTime || null,
-              },
-            });
-          }
-        }
-      });
-    }
-
-    // Transform exercise data (limit records)
-    if (healthData.activity?.exerciseSessions && Array.isArray(healthData.activity.exerciseSessions)) {
-      const exerciseRecords = healthData.activity.exerciseSessions.slice(0, MAX_RECORDS_PER_TYPE);
-      exerciseRecords.forEach(record => {
-        if (record.startTime && record.endTime) {
-          const durationMinutes = (new Date(record.endTime) - new Date(record.startTime)) / (1000 * 60);
-          
-          // Validate exercise duration (between 1 min and 24 hours)
-          if (!isNaN(durationMinutes) && durationMinutes > 0 && durationMinutes < 1440) {
-            dataToSync.push({
-              data_type: 'exercise',
-              value: Math.round(durationMinutes),
-              unit: 'minutes',
-              timestamp: record.startTime,
-              metadata: {
-                source: 'health_connect',
-                exercise_type: record.exerciseType || 'unknown',
-                end_time: record.endTime,
-                title: record.title || null,
               },
             });
           }

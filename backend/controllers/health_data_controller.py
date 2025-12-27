@@ -51,7 +51,7 @@ class HealthDataController:
                 return jsonify({'error': 'Data must be an array'}), 400
 
             # Validate data types
-            valid_data_types = ['heart_rate', 'exercise', 'active_calories', 'sleep']
+            valid_data_types = ['heart_rate', 'exercise', 'active_calories', 'sleep', "steps"]
             
             health_data_objects = []
             for idx, record in enumerate(health_records):

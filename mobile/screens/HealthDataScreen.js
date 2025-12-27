@@ -34,6 +34,7 @@ const HealthDataScreen = ({ navigation }) => {
   const { colors } = useTheme();
   const toast = useToast();
   const spinValue = useRef(new Animated.Value(0)).current;
+  const hasInitializedRef = useRef(false);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -43,10 +44,14 @@ const HealthDataScreen = ({ navigation }) => {
   const [isInitialized, setIsInitialized] = useState(false);
   const [hasPermissions, setHasPermissions] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState(null);
+  const [isInitializationInProgress, setIsInitializationInProgress] = useState(false);
 
   useEffect(() => {
-    initializeHealthConnect();
-    loadLastSyncTime();
+    if (!hasInitializedRef.current) {
+      hasInitializedRef.current = true;
+      initializeHealthConnect();
+      loadLastSyncTime();
+    }
   }, []);
 
   // Fetch data when period changes
@@ -66,7 +71,13 @@ const HealthDataScreen = ({ navigation }) => {
   };
 
   const initializeHealthConnect = async () => {
+    // Prevent multiple initialization attempts
+    if (isInitializationInProgress || isInitialized) {
+      return;
+    }
+
     try {
+      setIsInitializationInProgress(true);
       setIsLoading(true);
       await initHealthConnect();
       setIsInitialized(true);
@@ -75,10 +86,12 @@ const HealthDataScreen = ({ navigation }) => {
       console.log('🔍 Health Connect SDK Status:', status);
       
       if (healthConnectManager.isSdkAvailable()) {
-        toast.success('Health Connect initialized successfully!');
-        // Don't try to fetch data yet - always show permission screen first
-        // This ensures user explicitly grants all needed permissions
+        console.log('✅ Health Connect is available, requesting permissions...');
+        // After successful initialization, automatically request permissions
+        // This ensures user gets prompted to grant permissions on first launch
+        await requestPermissions();
       } else {
+        console.warn('❌ Health Connect not available:', healthConnectManager.getSdkStatusDescription());
         toast.error(`Health Connect not available: ${healthConnectManager.getSdkStatusDescription()}`);
       }
     } catch (error) {
@@ -115,6 +128,7 @@ const HealthDataScreen = ({ navigation }) => {
       toast.error(error.message);
     } finally {
       setIsLoading(false);
+      setIsInitializationInProgress(false);
     }
   };
 
@@ -165,12 +179,8 @@ const HealthDataScreen = ({ navigation }) => {
         }
       }
       
-      // Refresh SDK status to ensure we have the latest
-      const currentStatus = await healthConnectManager.getSdkStatus();
-      console.log('📊 Current SDK Status before permission request:', currentStatus);
-      console.log('📊 SDK is available?', healthConnectManager.isSdkAvailable());
-      
       console.log('🔐 Requesting all health permissions...');
+      toast.info('Opening permission dialog...');
       const permissions = await requestAllHealthPermissions();
       
       console.log('📋 Permission Results:', permissions);
@@ -194,25 +204,58 @@ const HealthDataScreen = ({ navigation }) => {
       // If dialog was shown and completed without error, assume success even if return is empty
       // This is a known behavior with react-native-health-connect
       if (grantedCount === 0 && Array.isArray(permissions)) {
-        console.log('⚠️ Empty array returned, but dialog was shown. Assuming permissions granted.');
-        // Try to fetch data - if it works, permissions were granted
-        setHasPermissions(true);
-        toast.success('Permissions processed - checking data access...');
+        console.log('⚠️ Empty array returned, but dialog was shown. Checking if permissions actually work...');
         
         try {
+          // Try to fetch data to verify permissions were actually granted
           await fetchHealthData();
+          // If we get here, permissions worked!
+          setHasPermissions(true);
           toast.success('Health Connect permissions granted!');
         } catch (error) {
-          console.error('Failed to fetch after permission grant:', error);
-          setHasPermissions(false);
-          Alert.alert(
-            'Permission Issue',
-            'Could not access health data. Please try granting permissions again or check Health Connect settings.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Try Again', onPress: () => requestPermissions() }
-            ]
-          );
+          console.error('❌ Permission verification failed:', error);
+          
+          // Check if this is a permission error
+          const errorMsg = error.message?.toLowerCase() || '';
+          const isPermissionError = errorMsg.includes('permission') || errorMsg.includes('lacks');
+          
+          if (isPermissionError) {
+            // Permissions were NOT actually granted despite the dialog
+            console.warn('⚠️ Permissions were not actually granted. Showing Settings option...');
+            setHasPermissions(false);
+            
+            Alert.alert(
+              'Permissions Not Granted',
+              'The Health Connect permission dialog was shown but permissions were not granted to the app. Please open Settings to manually grant permissions.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'Open Settings', 
+                  onPress: () => {
+                    try {
+                      Linking.openSettings();
+                    } catch (err) {
+                      console.error('Could not open settings:', err);
+                      toast.error('Could not open app settings');
+                    }
+                  }
+                }
+              ]
+            );
+            
+            toast.error('Permissions were not granted. Please enable them in Settings.');
+          } else {
+            // Different error - not a permission issue
+            setHasPermissions(false);
+            Alert.alert(
+              'Data Access Failed',
+              'Could not verify data access. Please try again or check your Health Connect settings.\n\n' + error.message,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Try Again', onPress: () => requestPermissions() }
+              ]
+            );
+          }
         }
       } else if (grantedCount > 0) {
         setHasPermissions(true);
@@ -228,25 +271,46 @@ const HealthDataScreen = ({ navigation }) => {
           }, 1000);
         }
         
-        fetchHealthData();
+        await fetchHealthData();
       } else {
+        // No permissions granted - offer to try again or go to settings
+        console.log('❌ User denied all permissions');
         toast.error('No permissions granted');
+        
         Alert.alert(
           'Permissions Required',
-          'Health data access requires permissions. Please grant at least some permissions to use this feature.',
+          'Health data access requires permissions. You can:\n\n1. Try requesting again\n2. Open Settings to manually grant permissions',
           [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Try Again', onPress: () => requestPermissions() }
+            { 
+              text: 'Try Again', 
+              onPress: () => requestPermissions(),
+              style: 'default'
+            },
+            { 
+              text: 'Open Settings', 
+              onPress: () => {
+                // Open the app settings
+                try {
+                  Linking.openSettings();
+                } catch (error) {
+                  console.error('Could not open settings:', error);
+                  toast.error('Could not open app settings');
+                }
+              },
+              style: 'default'
+            }
           ]
         );
       }
     } catch (error) {
-      console.error('❌ Initialization error:', error);
+      console.error('❌ Permission request error:', error);
       
       // Show user-friendly error with action buttons
       let message = error.message || 'Failed to request permissions';
       let buttons = [{ text: 'OK' }];
       
+      // Check if it's a Health Connect specific error
       if (error.code === 'NOT_INSTALLED' || error.code === 'UPDATE_REQUIRED' || error.code === 'SERVICE_UNAVAILABLE') {
         message = error.suggestion || message;
         buttons = [
@@ -259,6 +323,23 @@ const HealthDataScreen = ({ navigation }) => {
                   console.error('Failed to open Play Store:', err);
                   toast.error('Could not open Play Store');
                 });
+              }
+            }
+          }
+        ];
+      } else if (error.message && error.message.includes('permission') && error.message.toLowerCase().includes('denied')) {
+        // Permission denied error - offer settings option
+        message = 'Permissions were denied. You can enable them in Settings.';
+        buttons = [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Open Settings', 
+            onPress: () => {
+              try {
+                Linking.openSettings();
+              } catch (err) {
+                console.error('Could not open settings:', err);
+                toast.error('Could not open app settings');
               }
             }
           }
@@ -304,22 +385,16 @@ const HealthDataScreen = ({ navigation }) => {
 
       console.log('📅 Fetching health data from', startDate.toISOString(), 'to', endDate.toISOString());
 
-      // Fetch all categories of health data with individual error handling
-      // This prevents one permission error from breaking the entire fetch
-      let activity = { steps: [], distance: [], activeCalories: [], totalCalories: [], exerciseSessions: [] };
-      let vitals = { heartRate: [], bloodPressure: [], bloodGlucose: [], oxygenSaturation: [], restingHeartRate: [] };
+      // Fetch only steps and calories from activity
+      let activity = { steps: [], activeCalories: [] };
       let sleep = [];
 
       try {
-        activity = await getActivityData(startDate, endDate);
+        const activityData = await getActivityData(startDate, endDate);
+        activity.steps = activityData.steps || [];
+        activity.activeCalories = activityData.activeCalories || [];
       } catch (error) {
         console.warn('⚠️ Failed to fetch activity data:', error.message);
-      }
-
-      try {
-        vitals = await getVitalsData(startDate, endDate);
-      } catch (error) {
-        console.warn('⚠️ Failed to fetch vitals data:', error.message);
       }
 
       try {
@@ -330,13 +405,7 @@ const HealthDataScreen = ({ navigation }) => {
 
       console.log('📊 Activity Data:', {
         steps: Array.isArray(activity?.steps) ? activity.steps.length : 0,
-        distance: Array.isArray(activity?.distance) ? activity.distance.length : 0,
         activeCalories: Array.isArray(activity?.activeCalories) ? activity.activeCalories.length : 0,
-      });
-
-      console.log('❤️ Vitals Data:', {
-        heartRate: Array.isArray(vitals?.heartRate) ? vitals.heartRate.length : 0,
-        bloodPressure: Array.isArray(vitals?.bloodPressure) ? vitals.bloodPressure.length : 0,
       });
 
       console.log('😴 Sleep Data:', {
@@ -345,7 +414,6 @@ const HealthDataScreen = ({ navigation }) => {
 
       const allData = {
         activity,
-        vitals,
         sleep,
         fetchedAt: new Date().toISOString(),
       };
@@ -353,15 +421,14 @@ const HealthDataScreen = ({ navigation }) => {
       setHealthData(allData);
       
       // Count successful data categories
-      const hasActivityData = activity.steps?.length > 0 || activity.distance?.length > 0;
-      const hasVitalsData = vitals.heartRate?.length > 0 || vitals.bloodPressure?.length > 0;
+      const hasActivityData = activity.steps?.length > 0 || activity.activeCalories?.length > 0;
       const hasSleepData = sleep?.length > 0;
-      const successCount = [hasActivityData, hasVitalsData, hasSleepData].filter(Boolean).length;
+      const successCount = [hasActivityData, hasSleepData].filter(Boolean).length;
       
       if (successCount > 0) {
-        toast.success(`Health data loaded (${successCount}/3 categories available)`);
+        toast.success(`Health data loaded (${successCount}/2 categories available)`);
       } else {
-        toast.info('No health data available. Try granting more permissions or add data in Health Connect.');
+        toast.info('No health data available. Try adding data in Health Connect.');
       }
     } catch (error) {
       console.error('Failed to fetch health data:', error);
@@ -508,49 +575,13 @@ const HealthDataScreen = ({ navigation }) => {
   };
 
   const getLatestHeartRate = () => {
-    if (!healthData?.vitals?.heartRate || 
-        !Array.isArray(healthData.vitals.heartRate) ||
-        healthData.vitals.heartRate.length === 0) 
-      return { bpm: '--', time: null };
-    
-    // Get the most recent heart rate record
-    const latest = healthData.vitals.heartRate[healthData.vitals.heartRate.length - 1];
-    console.log('💓 Latest Heart Rate Record:', latest);
-    
-    // Heart rate data is in samples array
-    if (latest.samples && Array.isArray(latest.samples) && latest.samples.length > 0) {
-      const latestSample = latest.samples[latest.samples.length - 1];
-      return {
-        bpm: latestSample.beatsPerMinute || '--',
-        time: latestSample.time || null
-      };
-    }
-    
+    // Not used anymore - keeping for compatibility
     return { bpm: '--', time: null };
   };
 
   const getAverageHeartRate = () => {
-    if (!healthData?.vitals?.heartRate || 
-        !Array.isArray(healthData.vitals.heartRate) ||
-        healthData.vitals.heartRate.length === 0) 
-      return '--';
-    
-    let totalBpm = 0;
-    let sampleCount = 0;
-    
-    healthData.vitals.heartRate.forEach(record => {
-      if (record.samples && Array.isArray(record.samples)) {
-        record.samples.forEach(sample => {
-          if (sample.beatsPerMinute) {
-            totalBpm += sample.beatsPerMinute;
-            sampleCount++;
-          }
-        });
-      }
-    });
-    
-    if (sampleCount === 0) return '--';
-    return Math.round(totalBpm / sampleCount);
+    // Not used anymore - keeping for compatibility
+    return '--';
   };
 
   const showRecordDetails = (title, records) => {
@@ -567,41 +598,6 @@ const HealthDataScreen = ({ navigation }) => {
         message += `  Start: ${startTime}\n`;
         message += `  End: ${endTime}\n`;
         message += `  Duration: ${duration} hours\n\n`;
-      });
-    } else if (title === 'Heart Rate') {
-      const avgBpm = getAverageHeartRate();
-      const latestHR = getLatestHeartRate();
-      const latestBpm = latestHR.bpm;
-      
-      // Count total samples
-      let totalSamples = 0;
-      records.forEach(record => {
-        if (record.samples && Array.isArray(record.samples)) {
-          totalSamples += record.samples.length;
-        }
-      });
-      
-      message += `Total readings: ${totalSamples}\n`;
-      message += `Latest: ${latestBpm} bpm\n`;
-      message += `Average: ${avgBpm} bpm\n\n`;
-      message += `Recent readings:\n`;
-      
-      // Get recent samples from the last few records
-      const recentSamples = [];
-      records.slice(-5).forEach(record => {
-        if (record.samples && Array.isArray(record.samples)) {
-          record.samples.forEach(sample => {
-            recentSamples.push({
-              time: sample.time,
-              bpm: sample.beatsPerMinute
-            });
-          });
-        }
-      });
-      
-      recentSamples.slice(-10).reverse().forEach(sample => {
-        const time = new Date(sample.time).toLocaleTimeString();
-        message += `  ${time}: ${sample.bpm} bpm\n`;
       });
     } else if (title === 'Steps') {
       const total = calculateStepsTotal();
@@ -1047,64 +1043,12 @@ const HealthDataScreen = ({ navigation }) => {
           </View>
         ) : (
           <>
-            {/* Summary Section */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Quick Summary</Text>
-              <View style={styles.summaryGrid}>
-                {renderSummaryCard(
-                  'Steps',
-                  calculateStepsTotal().toLocaleString(),
-                  'steps',
-                  'walk',
-                  '#4CAF50'
-                )}
-                {renderSummaryCard(
-                  'Calories',
-                  calculateCaloriesTotal(),
-                  'kcal',
-                  'fire',
-                  '#FF5722'
-                )}
-                {(() => {
-                  const latestHR = getLatestHeartRate();
-                  return renderSummaryCard(
-                    'Latest HR',
-                    latestHR.bpm,
-                    'bpm',
-                    'heart-pulse',
-                    '#E91E63',
-                    latestHR.time
-                  );
-                })()}
-                {renderSummaryCard(
-                  'Avg HR',
-                  getAverageHeartRate(),
-                  'bpm',
-                  'heart',
-                  '#E91E63'
-                )}
-              </View>
-            </View>
-
             {/* Activity Section */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Activity</Text>
               <View style={styles.dataGrid}>
                 {renderDataCard('Steps', 'walk', '#4CAF50', healthData.activity, 'steps', showRecordDetails)}
-                {renderDataCard('Distance', 'map-marker-distance', '#2196F3', healthData.activity, 'distance', showRecordDetails)}
                 {renderDataCard('Active Calories', 'fire', '#FF5722', healthData.activity, 'activeCalories', showRecordDetails)}
-                {renderDataCard('Exercise', 'dumbbell', '#9C27B0', healthData.activity, 'exerciseSessions', showRecordDetails)}
-              </View>
-            </View>
-
-            {/* Vitals Section */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Vitals</Text>
-              <View style={styles.dataGrid}>
-                {renderDataCard('Heart Rate', 'heart-pulse', '#E91E63', healthData.vitals, 'heartRate', showRecordDetails)}
-                {renderDataCard('Blood Pressure', 'blood-bag', '#F44336', healthData.vitals, 'bloodPressure', showRecordDetails)}
-                {renderDataCard('Blood Glucose', 'water', '#00BCD4', healthData.vitals, 'bloodGlucose', showRecordDetails)}
-                {renderDataCard('Oxygen', 'air-filter', '#03A9F4', healthData.vitals, 'oxygenSaturation', showRecordDetails)}
               </View>
             </View>
 

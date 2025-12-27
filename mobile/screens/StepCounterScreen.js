@@ -1225,7 +1225,6 @@ const StepCounterScreen = ({ navigation }) => {
             <Text style={styles.stepsLabel}>
               {selectedPeriod === 'today' ? 'Steps Today' : 'Total Steps'}
             </Text>
-            {renderStepsBadge()}
           </View>
 
           {/* Goal progress for today */}
@@ -1260,7 +1259,6 @@ const StepCounterScreen = ({ navigation }) => {
 
         {/* Chart for week/month */}
         {renderChart()}
-
         {/* Activity metrics */}
         <View style={styles.metricsGrid}>
           <View style={styles.metricCard}>
