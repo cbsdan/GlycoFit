@@ -156,6 +156,9 @@ const DisclaimerScreen = ({ navigation, onComplete }) => {
       ...buttonStyles.primary,
       opacity: hasRead && isScrolledToBottom ? 1 : 0.5,
     },
+    primaryText: {
+        color: colors.text
+    },
     declineButton: {
       ...buttonStyles.outline,
       borderColor: colors.primary,
@@ -330,7 +333,7 @@ const DisclaimerScreen = ({ navigation, onComplete }) => {
           disabled={!hasRead || !isScrolledToBottom}
           activeOpacity={0.7}
         >
-          <Text style={buttonStyles.primaryText}>I Accept & Understand</Text>
+          <Text style={styles.primaryText}>I Accept & Understand</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

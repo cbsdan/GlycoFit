@@ -21,12 +21,15 @@ from routes.physician_routes import physician_bp
 from routes.health_data_routes import health_data_bp
 from routes.diabetes_assessment_routes import diabetes_assessment_bp
 from routes.chat_routes import chat_bp
+from routes.chatbot_routes import chatbot_bp
 from controllers.chat_controller import register_socket_events
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
 from services.ml_service import init_ml_service
 from services.gemini_service import init_gemini_service
+from services.groq_service import init_groq_service
 from services.diabetes_service import init_diabetes_service
+from models.chatbot_message import ChatbotMessage
 
 # Load environment variables
 load_dotenv()
@@ -99,6 +102,22 @@ def create_app():
         logging.error(f"Failed to initialize Gemini AI Service: {str(e)}")
         logging.warning("Gemini AI features will be disabled")
     
+    # Initialize Groq Service for Chatbot
+    try:
+        init_groq_service()
+        logging.info("Groq Service initialized successfully")
+    except Exception as e:
+        logging.error(f"Failed to initialize Groq Service: {str(e)}")
+        logging.warning("Chatbot features will be disabled")
+    
+    # Initialize Chatbot Message Model Indexes
+    try:
+        ChatbotMessage.ensure_indexes()
+        logging.info("Chatbot message database indexes created successfully")
+    except Exception as e:
+        logging.error(f"Failed to create chatbot message indexes: {str(e)}")
+        logging.warning("Chatbot message queries may be slower without indexes")
+    
     # Initialize Diabetes Prediction Service
     try:
         init_diabetes_service()
@@ -134,6 +153,7 @@ def create_app():
     app.register_blueprint(health_data_bp, url_prefix='/api/v1/health-data')
     app.register_blueprint(diabetes_assessment_bp, url_prefix='/api/v1/diabetes-assessment')
     app.register_blueprint(chat_bp, url_prefix='/api/v1/chat')
+    app.register_blueprint(chatbot_bp, url_prefix='/api/v1/chatbot')
 
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])
@@ -220,11 +240,18 @@ if __name__ == '__main__':
     app = create_app()
     socketio = create_socketio(app)
     port = int(os.getenv('PORT', 5000))
-    debug = os.getenv('FLASK_ENV') == 'development'
-    
+
+    debug = False  # force OFF
+
     logging.info(f"Starting GlycoFit Backend on port {port}")
     logging.info(f"Debug mode: {debug}")
     logging.info("Socket.IO enabled for real-time chat")
 
-    # Use SocketIO's run method instead of waitress for WebSocket support
-    socketio.run(app, host='0.0.0.0', port=port, debug=debug, allow_unsafe_werkzeug=True)
+    socketio.run(
+        app,
+        host='0.0.0.0',
+        port=port,
+        debug=False,
+        use_reloader=False,
+        allow_unsafe_werkzeug=True
+    )

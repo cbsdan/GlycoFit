@@ -25,6 +25,7 @@ import {
   getActivityData,
 } from '../services/healthConnectService';
 import HealthMetricsSetupScreen from './HealthMetricsSetupScreen';
+import ChatBotBubble from '../components/ChatBotBubble';
 
 const { width } = Dimensions.get('window');
 
@@ -752,6 +753,9 @@ const HomeScreen = ({ navigation }) => {
           onSkip={() => setShowHealthMetricsModal(false)}
         />
       </Modal>
+      
+      {/* ChatBot Floating Bubble */}
+      <ChatBotBubble onPress={() => navigation.navigate('ChatBot')} />
     </SafeAreaView>
   );
 };

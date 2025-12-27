@@ -1184,6 +1184,31 @@ export const updateHealthMetrics = async (metrics) => {
   }
 };
 
+export const sendChatbotMessage = async (message) => {
+  try {
+    const response = await api.post('/chatbot/message', { message });
+    return response.data;
+  } catch (error) {
+    console.error('Error sending chatbot message:', error);
+    throw error;
+  }
+};
+
+export const getChatbotHistory = async (skip = 0, limit = 20) => {
+  try {
+    const response = await api.get('/chatbot/history', {
+      params: {
+        skip: skip,
+        limit: limit
+      }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching chatbot history:', error);
+    throw error;
+  }
+};
+
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
 api.saveMeal = saveMeal;
@@ -1235,5 +1260,7 @@ api.saveFCMToken = saveFCMToken;
 api.deleteFCMToken = deleteFCMToken;
 api.getHealthMetrics = getHealthMetrics;
 api.updateHealthMetrics = updateHealthMetrics;
+api.sendChatbotMessage = sendChatbotMessage;
+api.getChatbotHistory = getChatbotHistory;
 
 export default api;

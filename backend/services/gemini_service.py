@@ -194,6 +194,7 @@ Provide realistic nutritional estimates based on typical serving sizes. Return O
             logging.error(f"Error analyzing food image with Gemini: {str(e)}")
             raise
 
+
 # Global instance
 _gemini_service = None
 

@@ -25,6 +25,7 @@ import DiabetesRiskAssessmentScreen from './screens/DiabetesRiskAssessmentScreen
 import AssessmentResultsScreen from './screens/AssessmentResultsScreen';
 import PhysicianCommunicationScreen from './screens/PhysicianCommunicationScreen';
 import PhysicianMessagesScreen from './screens/PhysicianMessagesScreen';
+import ChatBotScreen from './screens/ChatBotScreen';
 import HealthMetricsSetupScreen from './screens/HealthMetricsSetupScreen';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingScreen from './components/LoadingScreen';
@@ -396,6 +397,18 @@ function AppNavigator() {
               {(props) => (
                 <UniversalScreenWrapper>
                   <PhysicianMessagesScreen {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="ChatBot" 
+              options={{ 
+                headerShown: false
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <ChatBotScreen {...props} />
                 </UniversalScreenWrapper>
               )}
             </Stack.Screen>
