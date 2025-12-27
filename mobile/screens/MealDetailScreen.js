@@ -350,6 +350,55 @@ const MealDetailScreen = ({ route, navigation }) => {
       fontWeight: '600',
       color: colors.text,
     },
+    servingSizeContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+      paddingHorizontal: 8,
+      paddingVertical: 8,
+      backgroundColor: '#3498DB10',
+      borderRadius: 8,
+      borderLeftWidth: 3,
+      borderLeftColor: '#3498DB',
+      flexWrap: 'wrap',
+    },
+    servingSizeLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+      marginLeft: 8,
+      marginRight: 4,
+    },
+    servingSizeValue: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: '#3498DB',
+      flex: 1,
+      flexWrap: 'wrap',
+    },
+    confidenceContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 16,
+      paddingHorizontal: 8,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderLeftWidth: 3,
+      flexWrap: 'wrap',
+    },
+    confidenceLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+      marginLeft: 8,
+      marginRight: 4,
+    },
+    confidenceValue: {
+      fontSize: 14,
+      fontWeight: '700',
+      flex: 1,
+      flexWrap: 'wrap',
+    },
     notesSection: {
       marginTop: 16,
       paddingTop: 16,
@@ -654,6 +703,43 @@ const MealDetailScreen = ({ route, navigation }) => {
             </View>
             <Text style={styles.foodTypeText}>{foodTypeInfo.label}</Text>
           </View>
+
+          {/* Serving Size Section */}
+          {meal.serving_size && (
+            <View style={styles.servingSizeContainer}>
+              <Icon name="bowl" size={16} color="#3498DB" />
+              <Text style={styles.servingSizeLabel}>Serving Size:</Text>
+              <Text style={styles.servingSizeValue}>{meal.serving_size}</Text>
+            </View>
+          )}
+
+          {/* Confidence Rate Section */}
+          {meal.confidence_rate !== undefined && meal.confidence_rate !== null && (
+            <View style={[
+              styles.confidenceContainer,
+              {
+                borderLeftColor: meal.confidence_rate >= 70 ? '#27AE60' :
+                                meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C',
+                backgroundColor: meal.confidence_rate >= 70 ? '#27AE6010' :
+                                meal.confidence_rate >= 50 ? '#F39C1210' : '#E74C3C10',
+              }
+            ]}>
+              <Icon name="shield-check" size={16} color={
+                meal.confidence_rate >= 70 ? '#27AE60' :
+                meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C'
+              } />
+              <Text style={styles.confidenceLabel}>Detection Confidence:</Text>
+              <Text style={[
+                styles.confidenceValue,
+                {
+                  color: meal.confidence_rate >= 70 ? '#27AE60' :
+                         meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C'
+                }
+              ]}>
+                {meal.confidence_rate.toFixed(0)}%
+              </Text>
+            </View>
+          )}
 
           {/* Notes Section */}
           <View style={styles.notesSection}>

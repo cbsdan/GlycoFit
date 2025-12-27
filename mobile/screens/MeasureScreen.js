@@ -45,6 +45,12 @@ const MeasureScreen = ({ navigation }) => {
     confidenceRate: 0
   });
 
+  // Base nutrients from initial prediction (before any portion adjustments)
+  const [baseNutrients, setBaseNutrients] = useState(null);
+  
+  // Portion multiplier for recalculating nutrients
+  const [portionMultiplier, setPortionMultiplier] = useState(1);
+
   // Valid food types from backend model
   const foodTypes = [
     { label: 'Unlabeled', value: 'unlabeled' },
@@ -192,6 +198,8 @@ const MeasureScreen = ({ navigation }) => {
     setCapturedImage(null);
     setPredictionData(null);
     setEditableNutrients({});
+    setBaseNutrients(null);
+    setPortionMultiplier(1);
     setFocusedNutrient(null);
     setRecipes([]);
     setMealDetails({
@@ -316,6 +324,8 @@ const MeasureScreen = ({ navigation }) => {
         
         setPredictionData(response.data);
         setEditableNutrients(response.data.nutrients || {});
+        setBaseNutrients(response.data.nutrients || {}); // Store base nutrients for portion calculations
+        setPortionMultiplier(1); // Reset portion multiplier
         setRecipes(response.data.recipes || []);
         setMealDetails(prev => ({
           ...prev,
@@ -438,6 +448,30 @@ const MeasureScreen = ({ navigation }) => {
       ...prev,
       [nutrientKey]: value
     }));
+  };
+
+  // Recalculate nutrients based on portion multiplier
+  const recalculateNutrients = (multiplier) => {
+    if (!baseNutrients) return;
+    
+    const adjusted = {};
+    Object.entries(baseNutrients).forEach(([key, value]) => {
+      if (typeof value === 'number') {
+        adjusted[key] = Math.round((value * multiplier) * 100) / 100; // Round to 2 decimals
+      } else {
+        adjusted[key] = value;
+      }
+    });
+    
+    setEditableNutrients(adjusted);
+    setPortionMultiplier(multiplier);
+  };
+
+  // Parse serving size and extract numeric value for portion calculation
+  const parseServingSize = (servingString) => {
+    // Extract number from serving size (e.g., "1 cup" -> 1, "100g" -> 100)
+    const match = servingString.match(/(\d+(?:\.\d+)?)/);
+    return match ? parseFloat(match[1]) : 1;
   };
 
   const getIconBackgroundStyle = (color) => ({
@@ -992,6 +1026,79 @@ const MeasureScreen = ({ navigation }) => {
       color: colors.secondary,
       fontFamily: 'monospace',
     },
+    /* Portion Size Adjustment Styles */
+    portionSection: {
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      padding: 20,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    portionAdjustmentContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginVertical: 16,
+      gap: 12,
+    },
+    portionButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 8,
+      width: 48,
+      height: 48,
+      justifyContent: 'center',
+      alignItems: 'center',
+      elevation: 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 3.84,
+    },
+    portionInputContainer: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    portionInput: {
+      borderWidth: 2,
+      borderColor: colors.primary,
+      borderRadius: 8,
+      padding: 10,
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: colors.primary,
+      backgroundColor: colors.background,
+      textAlign: 'center',
+      width: '100%',
+    },
+    portionLabel: {
+      fontSize: 12,
+      color: colors.secondary,
+      marginTop: 4,
+      fontWeight: '500',
+    },
+    portionHints: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 16,
+      paddingTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    hintItem: {
+      alignItems: 'center',
+      flex: 1,
+    },
+    hintLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.primary,
+      marginBottom: 2,
+    },
+    hintText: {
+      fontSize: 11,
+      color: colors.secondary,
+    },
   });
 
   return (
@@ -1244,6 +1351,66 @@ const MeasureScreen = ({ navigation }) => {
                   </View>
                 </View>
               )}
+
+              {/* Portion Size Adjustment */}
+              <View style={styles.portionSection}>
+                <Text style={styles.sectionTitle}>Adjust Portion Size</Text>
+                <Text style={styles.nutrientSubtitle}>
+                  Original serving: {mealDetails.servingSize}
+                </Text>
+                
+                <View style={styles.portionAdjustmentContainer}>
+                  <TouchableOpacity 
+                    style={styles.portionButton}
+                    onPress={() => recalculateNutrients(Math.max(0.25, portionMultiplier - 0.25))}
+                  >
+                    <Icon name="minus" size={20} color="white" />
+                  </TouchableOpacity>
+                  
+                  <View style={styles.portionInputContainer}>
+                    <TextInput
+                      style={styles.portionInput}
+                      value={portionMultiplier.toFixed(2)}
+                      onChangeText={(text) => {
+                        const value = parseFloat(text);
+                        if (!isNaN(value) && value > 0) {
+                          recalculateNutrients(value);
+                        }
+                      }}
+                      keyboardType="decimal-pad"
+                      placeholder="1"
+                      placeholderTextColor={colors.secondary}
+                    />
+                    <Text style={styles.portionLabel}>x portion</Text>
+                  </View>
+                  
+                  <TouchableOpacity 
+                    style={styles.portionButton}
+                    onPress={() => recalculateNutrients(portionMultiplier + 0.25)}
+                  >
+                    <Icon name="plus" size={20} color="white" />
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={styles.portionHints}>
+                  <View style={styles.hintItem}>
+                    <Text style={styles.hintLabel}>0.5x</Text>
+                    <Text style={styles.hintText}>Half</Text>
+                  </View>
+                  <View style={styles.hintItem}>
+                    <Text style={styles.hintLabel}>1.0x</Text>
+                    <Text style={styles.hintText}>Normal</Text>
+                  </View>
+                  <View style={styles.hintItem}>
+                    <Text style={styles.hintLabel}>1.5x</Text>
+                    <Text style={styles.hintText}>1.5x</Text>
+                  </View>
+                  <View style={styles.hintItem}>
+                    <Text style={styles.hintLabel}>2.0x</Text>
+                    <Text style={styles.hintText}>Double</Text>
+                  </View>
+                </View>
+              </View>
               </>
             )}
 
@@ -1259,6 +1426,17 @@ const MeasureScreen = ({ navigation }) => {
                     placeholder="e.g., Chicken Caesar Salad"
                     value={mealDetails.mealName}
                     onChangeText={(text) => setMealDetails(prev => ({ ...prev, mealName: text }))}
+                    placeholderTextColor={colors.secondary}
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Serving Size</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g., 1 cup, 100g"
+                    value={mealDetails.servingSize}
+                    onChangeText={(text) => setMealDetails(prev => ({ ...prev, servingSize: text }))}
                     placeholderTextColor={colors.secondary}
                   />
                 </View>
