@@ -32,6 +32,7 @@ messaging().setBackgroundMessageHandler(async (remoteMessage) => {
 });
 
 function AppContent() {
+  const navigationRef = React.useRef();
   const [showIntro, setShowIntro] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -79,8 +80,11 @@ function AppContent() {
   };
 
   return (
-    <NavigationContainer
-      theme={{
+    <>
+      <FCMHandler navigationRef={navigationRef} />
+      <NavigationContainer
+        ref={navigationRef}
+        theme={{
         dark: isDarkMode,
         colors: {
           primary: theme.primary,
@@ -134,6 +138,7 @@ function AppContent() {
         )}
       </Stack.Navigator>
     </NavigationContainer>
+    </>
   );
 }
 
@@ -193,8 +198,101 @@ const setupFCMWithAuth = async (isAuthenticated) => {
   }
 };
 
-function FCMHandler() {
+function FCMHandler({ navigationRef }) {
   const { isAuthenticated } = useAuth();
+
+  const handleNotificationNavigation = (remoteMessage) => {
+    if (!remoteMessage || !navigationRef?.current || !isAuthenticated) {
+      console.log('Cannot navigate - navigation not ready or not authenticated');
+      return;
+    }
+
+    const data = remoteMessage.data;
+    console.log('Handling notification navigation:', data);
+
+    // Handle different notification types
+    switch (data?.type) {
+      case 'chat_message':
+        // Navigate to chat screen with patient
+        if (data.conversation_id) {
+          const patientId = data.patient_id;
+          const patientName = data.patient_name || 'Patient';
+          const relationshipId = data.relationship_id;
+          const patientAvatarUrl = data.patient_avatar_url; // Avatar URL from notification
+          
+          // Parse patient name
+          const nameParts = patientName.split(' ');
+          const firstName = nameParts[0] || 'Patient';
+          const lastName = nameParts.slice(1).join(' ') || '';
+          
+          // Construct avatar object if URL exists
+          const avatar = patientAvatarUrl ? { url: patientAvatarUrl } : null;
+          
+          const patient = {
+            _id: patientId,
+            id: patientId,
+            first_name: firstName,
+            last_name: lastName,
+            avatar: avatar, // Avatar from notification or null (screen has fallback to initials)
+          };
+          
+          const relationship = {
+            id: relationshipId,
+            _id: relationshipId,
+            patient: patient
+          };
+          
+          navigationRef.current.navigate('PatientChat', { patient, relationship });
+        }
+        break;
+
+      case 'appointment':
+        // Navigate to schedule/appointments screen
+        navigationRef.current.navigate('Main', {
+          screen: 'Schedule'
+        });
+        break;
+
+      case 'consultation':
+        // Navigate to consultations/telehealth screen
+        navigationRef.current.navigate('Main', {
+          screen: 'Consultations'
+        });
+        break;
+
+      case 'patient_alert':
+        // Navigate to patients list or specific patient
+        if (data.patient_id) {
+          navigationRef.current.navigate('Main', {
+            screen: 'Patients'
+          });
+        } else {
+          navigationRef.current.navigate('Main', {
+            screen: 'Patients'
+          });
+        }
+        break;
+
+      case 'prescription':
+        // Navigate to patients screen to manage prescriptions
+        navigationRef.current.navigate('Main', {
+          screen: 'Patients'
+        });
+        break;
+
+      case 'general':
+      default:
+        // For general notifications or if screen is specified in data
+        if (data.screen) {
+          const params = data.params ? JSON.parse(data.params) : {};
+          navigationRef.current.navigate(data.screen, params);
+        } else {
+          // Default to home/dashboard
+          navigationRef.current.navigate('Main');
+        }
+        break;
+    }
+  };
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -221,27 +319,23 @@ function FCMHandler() {
     // Handle notification that opened the app from quit state
     getInitialNotification(messaging()).then(async (remoteMessage) => {
       if (remoteMessage) {
-        console.log(
-          'Notification caused app to open from quit state:',
-          remoteMessage.notification
-        );
+        console.log('Notification caused app to open from quit state:', remoteMessage.notification);
+        // Delay to ensure navigation is ready
+        setTimeout(() => handleNotificationNavigation(remoteMessage), 1000);
       }
     });
 
     // Handle notification that opened the app from background state
     const unsubscribeOnNotificationOpenedApp = onNotificationOpenedApp(messaging(), (remoteMessage) => {
-      console.log(
-        'Notification caused app to open from background state:',
-        remoteMessage.notification
-      );
+      console.log('Notification caused app to open from background state:', remoteMessage.notification);
+      handleNotificationNavigation(remoteMessage);
     });
 
     // Handle foreground messages
     const unsubscribeOnMessage = onMessage(messaging(), async (remoteMessage) => {
-      Alert.alert(
-        'A new FCM message arrived!',
-        JSON.stringify(remoteMessage)
-      );
+      console.log('A new FCM message arrived in foreground!', remoteMessage);
+      // For foreground messages, show a toast or alert, but don't auto-navigate
+      // User can tap the in-app notification to navigate if needed
     });
 
     // Cleanup subscriptions
@@ -250,7 +344,7 @@ function FCMHandler() {
       unsubscribeOnNotificationOpenedApp();
       unsubscribeOnMessage();
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, navigationRef]);
 
   return null;
 }
@@ -262,7 +356,6 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <ToastProvider position="top">
-            <FCMHandler />
             <AppContent />
           </ToastProvider>
         </AuthProvider>

@@ -390,20 +390,23 @@ def register_socket_events(socketio):
             # Send push notification to recipient
             try:
                 # Determine recipient based on sender role
+                sender_avatar_url = None
                 if sender_role == 'patient':
                     recipient_id = conversation.physician_id
                     recipient_role = 'physician'
-                    # Get sender name from users collection
+                    # Get sender name and avatar from users collection
                     sender = User.find_by_id(sender_id)
                     sender_name = f"{sender.first_name} {sender.last_name}" if sender else "Patient"
+                    sender_avatar_url = sender.avatar.get('url') if sender and sender.avatar else None
                 else:
                     recipient_id = conversation.patient_id
                     recipient_role = 'patient'
-                    # Get sender name from physicians collection
+                    # Get sender name and avatar from physicians collection
                     physician = Physician.find_by_user_id(sender_id)
                     if physician:
                         sender_user = User.find_by_id(physician.user_id)
                         sender_name = f"Dr. {sender_user.first_name} {sender_user.last_name}" if sender_user else "Physician"
+                        sender_avatar_url = sender_user.avatar.get('url') if sender_user and sender_user.avatar else None
                     else:
                         sender_name = "Physician"
                 
@@ -413,7 +416,10 @@ def register_socket_events(socketio):
                     sender_name=sender_name,
                     message_content=content if message_type == 'text' else '[Image]',
                     conversation_id=conversation_id,
-                    recipient_role=recipient_role
+                    recipient_role=recipient_role,
+                    relationship_id=str(conversation.relationship_id) if hasattr(conversation, 'relationship_id') else None,
+                    sender_id=str(sender_id),
+                    sender_avatar_url=sender_avatar_url
                 )
                 if result.get('success'):
                     logging.info(f"📲 Push notification sent to {recipient_role} for new message: {result.get('message')}")
@@ -586,7 +592,9 @@ def send_image_message():
                         sender_name=sender_name,
                         message_content="Sent an image",
                         conversation_id=conversation_id,
-                        recipient_role=recipient_role
+                        recipient_role=recipient_role,
+                        relationship_id=str(conversation.relationship_id) if hasattr(conversation, 'relationship_id') else None,
+                        sender_id=str(current_user._id)
                     )
                     if result.get('success'):
                         logging.info(f"📲 Push notification sent for image message: {result.get('message')}")

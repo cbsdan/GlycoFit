@@ -62,6 +62,7 @@ const UniversalScreenWrapper = ({ children }) => {
 function AppNavigator() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const { colors, isDarkMode } = useTheme();
+  const navigationRef = React.useRef();
   const [showWelcome, setShowWelcome] = useState(false);
   const [isCheckingWelcome, setIsCheckingWelcome] = useState(true);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
@@ -224,6 +225,7 @@ function AppNavigator() {
 
   return (
     <NavigationContainer
+      ref={navigationRef}
       theme={{
         colors: {
           primary: colors.primary,
@@ -253,6 +255,7 @@ function AppNavigator() {
         },
       }}
     >
+      <FCMHandler navigationRef={navigationRef} />
       <StatusBar 
         style={isDarkMode ? 'light' : 'dark'} 
       />
@@ -525,8 +528,121 @@ const setupFCMWithAuth = async (isAuthenticated) => {
   }
 };
 
-function FCMHandler() {
+function FCMHandler({ navigationRef }) {
   const { isAuthenticated } = useAuth();
+
+  const handleNotificationNavigation = (remoteMessage) => {
+    if (!remoteMessage || !navigationRef?.current || !isAuthenticated) {
+      console.log('Cannot navigate - navigation not ready or not authenticated');
+      return;
+    }
+
+    const data = remoteMessage.data;
+    console.log('Handling notification navigation:', data);
+
+    // Handle different notification types
+    switch (data?.type) {
+      case 'chat_message':
+        // Navigate to chat screen
+        if (data.conversation_id) {
+          const relationshipId = data.relationship_id;
+          const physicianUserId = data.physician_id; // This is the user_id from users collection
+          const physicianName = data.physician_name || 'Physician';
+          const physicianAvatarUrl = data.physician_avatar_url; // Avatar URL from notification
+          
+          // Parse physician name (handle "Dr. FirstName LastName" format)
+          let firstName = 'Physician';
+          let lastName = '';
+          
+          if (physicianName) {
+            // Remove "Dr." prefix if present and trim
+            const cleanName = physicianName.replace(/^Dr\.\s*/i, '').trim();
+            const nameParts = cleanName.split(' ');
+            if (nameParts.length > 0) {
+              firstName = nameParts[0];
+              lastName = nameParts.slice(1).join(' ');
+            }
+          }
+          
+          // Construct avatar object if URL exists
+          const avatar = physicianAvatarUrl ? { url: physicianAvatarUrl } : null;
+          
+          // Construct relationship object matching the structure from getMyPhysician API
+          const relationship = {
+            id: relationshipId,
+            _id: relationshipId,
+            relationship: {
+              id: relationshipId,
+              _id: relationshipId
+            },
+            physician: {
+              _id: physicianUserId, // Physician document ID (for display)
+              id: physicianUserId,
+              user_id: physicianUserId, // User ID (needed for conversation)
+              first_name: firstName,
+              last_name: lastName,
+              full_name: physicianName,
+              user: {
+                _id: physicianUserId,
+                first_name: firstName,
+                last_name: lastName,
+                avatar: avatar // Avatar from notification or null (screen has fallback to initials)
+              }
+            }
+          };
+          
+          navigationRef.current.navigate('PhysicianMessages', { relationship });
+        }
+        break;
+
+      case 'appointment':
+        // Navigate to physician communication (where appointments are managed)
+        navigationRef.current.navigate('PhysicianCommunication');
+        break;
+
+      case 'prescription':
+        // Navigate to physician communication to view prescriptions
+        navigationRef.current.navigate('PhysicianCommunication');
+        break;
+
+      case 'assessment_reminder':
+        // Navigate to diabetes risk assessment
+        navigationRef.current.navigate('DiabetesRiskAssessment');
+        break;
+
+      case 'health_metrics':
+        // Navigate to health data screen via Settings tab
+        navigationRef.current.navigate('Main', {
+          screen: 'Settings',
+          params: {
+            screen: 'HealthData'
+          }
+        });
+        break;
+
+      case 'meal_log':
+        // Navigate to meal history
+        navigationRef.current.navigate('MealHistory');
+        break;
+
+      case 'chatbot':
+        // Navigate to chatbot screen
+        navigationRef.current.navigate('ChatBot');
+        break;
+
+      case 'general':
+      default:
+        // For general notifications or if screen is specified in data
+        if (data.screen) {
+          const params = data.params ? JSON.parse(data.params) : {};
+          navigationRef.current.navigate(data.screen, params);
+        } else {
+          // Default to home screen
+          navigationRef.current.navigate('Main');
+        }
+        break;
+    }
+  };
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -553,27 +669,23 @@ function FCMHandler() {
     // Handle notification that opened the app from quit state
     messaging().getInitialNotification().then(async (remoteMessage) => {
       if (remoteMessage) {
-        console.log(
-          'Notification caused app to open from quit state:',
-          remoteMessage.notification
-        );
+        console.log('Notification caused app to open from quit state:', remoteMessage.notification);
+        // Delay to ensure navigation is ready
+        setTimeout(() => handleNotificationNavigation(remoteMessage), 1000);
       }
     });
 
     // Handle notification that opened the app from background state
     const unsubscribeOnNotificationOpenedApp = messaging().onNotificationOpenedApp((remoteMessage) => {
-      console.log(
-        'Notification caused app to open from background state:',
-        remoteMessage.notification
-      );
+      console.log('Notification caused app to open from background state:', remoteMessage.notification);
+      handleNotificationNavigation(remoteMessage);
     });
 
     // Handle foreground messages
     const unsubscribeOnMessage = messaging().onMessage(async (remoteMessage) => {
-      Alert.alert(
-        'A new FCM message arrived!',
-        JSON.stringify(remoteMessage)
-      );
+      console.log('A new FCM message arrived in foreground!', remoteMessage);
+      // For foreground messages, show a toast or alert, but don't auto-navigate
+      // User can tap the in-app notification to navigate
     });
 
     // Cleanup subscriptions
@@ -582,7 +694,7 @@ function FCMHandler() {
       unsubscribeOnNotificationOpenedApp();
       unsubscribeOnMessage();
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, navigationRef]);
 
   return null;
 }
@@ -595,7 +707,6 @@ export default function App() {
         <ThemeProvider>
           <ToastProvider>
             <AuthProvider>
-              <FCMHandler />
               <AppNavigator />
             </AuthProvider>
           </ToastProvider>
