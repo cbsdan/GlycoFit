@@ -57,15 +57,19 @@ export const AuthProvider = ({ children }) => {
             }
           }
           
-          // Get fresh Firebase token to ensure it's valid
-          const freshToken = await firebaseUser.getIdToken(true);
+          // Get Firebase token (without forcing refresh to avoid clock skew)
+          // Only force refresh if we don't have a stored token
+          const shouldForceRefresh = !storedToken;
+          const freshToken = await firebaseUser.getIdToken(shouldForceRefresh);
           
           if (storedUser && storedToken) {
-            // Update the stored token with fresh one
-            await SecureStore.setItemAsync('auth_token', freshToken);
-            console.log('Auth token refreshed from Firebase');
+            // We have stored data, only update token if we forced a refresh
+            if (shouldForceRefresh) {
+              await SecureStore.setItemAsync('auth_token', freshToken);
+              console.log('Auth token refreshed from Firebase');
+            }
             
-            // We have stored data, use it
+            // Use stored data
             setUser(JSON.parse(storedUser));
             setIsAuthenticated(true);
           } else if (storedUser) {

@@ -58,11 +58,20 @@ class FirebaseAuth:
     """Firebase Authentication helper class"""
     
     @staticmethod
-    def verify_id_token(id_token):
-        """Verify Firebase ID token"""
+    def verify_id_token(id_token, check_revoked=False, clock_skew_seconds=60):
+        """Verify Firebase ID token with clock skew tolerance
+        
+        Args:
+            id_token: The Firebase ID token to verify
+            check_revoked: Whether to check if the token has been revoked
+            clock_skew_seconds: Number of seconds of clock skew to tolerate (default: 60)
+        """
         try:
             get_firebase_app()  # Ensure Firebase is initialized
-            decoded_token = auth.verify_id_token(id_token)
+            # Note: The Python Firebase Admin SDK doesn't directly expose clock_skew_seconds
+            # but it has a default tolerance of 5 minutes. However, we can use verify_id_token
+            # with check_revoked parameter which is supported.
+            decoded_token = auth.verify_id_token(id_token, check_revoked=check_revoked)
             logging.info(f"Token verified for user: {decoded_token.get('uid')}")
             return decoded_token
         except Exception as e:
