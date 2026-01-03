@@ -211,8 +211,8 @@ class UserMeal:
             }
 
     @staticmethod
-    def update_meal(meal_id, user_id, meal_name=None, notes=None, food_type=None):
-        """Update meal details (meal_name, notes, and food_type)"""
+    def update_meal(meal_id, user_id, meal_name=None, notes=None, food_type=None, nutrients=None, serving_size=None):
+        """Update meal details (meal_name, notes, food_type, nutrients, and serving_size)"""
         try:
             db = get_db()
             
@@ -224,6 +224,10 @@ class UserMeal:
                 update_data['meal_name'] = meal_name
             if notes is not None:
                 update_data['notes'] = notes
+            if nutrients is not None:
+                update_data['nutrients'] = nutrients
+            if serving_size is not None:
+                update_data['serving_size'] = serving_size
             if food_type is not None:
                 # Validate food_type
                 valid_types = UserMeal.VALID_MEAL_TYPES

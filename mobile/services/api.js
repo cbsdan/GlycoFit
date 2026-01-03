@@ -490,12 +490,14 @@ const getMealById = async (mealId) => {
   }
 };
 
-const updateMeal = async (mealId, mealName = null, notes = null, foodType = null) => {
+const updateMeal = async (mealId, mealName = null, notes = null, foodType = null, nutrients = null, servingSize = null) => {
   try {
     const updateData = {};
     if (mealName !== null) updateData.meal_name = mealName;
     if (notes !== null) updateData.notes = notes;
     if (foodType !== null) updateData.food_type = foodType;
+    if (nutrients !== null) updateData.nutrients = nutrients;
+    if (servingSize !== null) updateData.serving_size = servingSize;
 
     const response = await api.put(`/users/meals/${mealId}`, updateData);
     return response.data;

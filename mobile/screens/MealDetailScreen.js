@@ -30,6 +30,10 @@ const MealDetailScreen = ({ route, navigation }) => {
   const [editedFoodType, setEditedFoodType] = useState(meal.food_type || 'unlabeled');
   const [showFoodTypeModal, setShowFoodTypeModal] = useState(false);
   const [imageLayout, setImageLayout] = useState({ width: 0, height: 0 });
+  const [baseNutrients, setBaseNutrients] = useState(meal.nutrients || null);
+  const [portionMultiplier, setPortionMultiplier] = useState(1);
+  const [editableNutrients, setEditableNutrients] = useState(meal.nutrients || {});
+  const [originalServingSize, setOriginalServingSize] = useState(null);
 
   // Valid food types from backend model
   const foodTypes = [
@@ -157,11 +161,19 @@ const MealDetailScreen = ({ route, navigation }) => {
 
     setIsLoading(true);
     try {
+      // Calculate updated serving size based on original serving size
+      let updatedServingSize = originalServingSize || meal.serving_size;
+      if (portionMultiplier !== 1 && updatedServingSize) {
+        updatedServingSize = `${portionMultiplier.toFixed(2)}× (${originalServingSize || meal.serving_size})`;
+      }
+
       const response = await api.updateMeal(
         meal.id,
         editedMealName.trim(),
         editedNotes.trim(),
-        editedFoodType
+        editedFoodType,
+        editableNutrients,
+        updatedServingSize
       );
 
       if (response.success) {
@@ -169,8 +181,11 @@ const MealDetailScreen = ({ route, navigation }) => {
           ...prev,
           meal_name: editedMealName.trim(),
           notes: editedNotes.trim(),
-          food_type: editedFoodType
+          food_type: editedFoodType,
+          nutrients: editableNutrients,
+          serving_size: updatedServingSize
         }));
+        setBaseNutrients(editableNutrients);
         setIsEditing(false);
         toast.success('Meal updated successfully');
       } else {
@@ -221,7 +236,48 @@ const MealDetailScreen = ({ route, navigation }) => {
     setEditedMealName(meal.meal_name);
     setEditedNotes(meal.notes || '');
     setEditedFoodType(meal.food_type || 'unlabeled');
+    setEditableNutrients(meal.nutrients || {});
+    setPortionMultiplier(1);
     setIsEditing(false);
+  };
+
+  // Initialize base nutrients when meal changes
+  React.useEffect(() => {
+    if (meal.nutrients) {
+      setBaseNutrients(meal.nutrients);
+      setEditableNutrients(meal.nutrients);
+      setPortionMultiplier(1);
+    }
+    
+    // Extract original serving size (remove any existing multiplier)
+    if (meal.serving_size) {
+      // Check if serving_size has the pattern "X.XX× (original)"
+      const match = meal.serving_size.match(/^[\d.]+×\s*\((.+)\)$/);
+      if (match) {
+        // Extract the original from inside parentheses
+        setOriginalServingSize(match[1]);
+      } else {
+        // No multiplier, this is the original
+        setOriginalServingSize(meal.serving_size);
+      }
+    }
+  }, [meal.id]);
+
+  // Recalculate nutrients based on portion multiplier
+  const recalculateNutrients = (multiplier) => {
+    if (!baseNutrients) return;
+
+    const recalculated = {};
+    Object.entries(baseNutrients).forEach(([key, value]) => {
+      if (typeof value === 'number') {
+        recalculated[key] = value * multiplier;
+      } else {
+        recalculated[key] = value;
+      }
+    });
+
+    setEditableNutrients(recalculated);
+    setPortionMultiplier(multiplier);
   };
 
   const foodTypeInfo = getFoodTypeInfo(meal.food_type);
@@ -473,6 +529,12 @@ const MealDetailScreen = ({ route, navigation }) => {
       color: colors.text,
       marginBottom: 16,
     },
+    nutrientSubtitle: {
+      fontSize: 14,
+      color: colors.secondary,
+      marginBottom: 16,
+      fontStyle: 'italic',
+    },
     nutrientsGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -642,6 +704,79 @@ const MealDetailScreen = ({ route, navigation }) => {
       color: 'white',
       fontSize: 16,
       fontWeight: '600',
+    },
+    portionSection: {
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      padding: 20,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginHorizontal: 16,
+    },
+    portionAdjustmentContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginVertical: 16,
+      gap: 12,
+    },
+    portionButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 8,
+      width: 48,
+      height: 48,
+      justifyContent: 'center',
+      alignItems: 'center',
+      elevation: 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 3.84,
+    },
+    portionInputContainer: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    portionInput: {
+      borderWidth: 2,
+      borderColor: colors.primary,
+      borderRadius: 8,
+      padding: 10,
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: colors.primary,
+      backgroundColor: colors.background,
+      textAlign: 'center',
+      width: '100%',
+    },
+    portionLabel: {
+      fontSize: 12,
+      color: colors.secondary,
+      marginTop: 4,
+      fontWeight: '500',
+    },
+    portionHints: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 16,
+      paddingTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    hintItem: {
+      alignItems: 'center',
+      flex: 1,
+    },
+    hintLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.primary,
+      marginBottom: 2,
+    },
+    hintText: {
+      fontSize: 11,
+      color: colors.secondary,
     },
   });
 
@@ -862,12 +997,79 @@ const MealDetailScreen = ({ route, navigation }) => {
           </View>
         </View>
 
+        {/* Portion Adjustment Section - Only in Edit Mode */}
+        {isEditing && meal.nutrients && Object.keys(meal.nutrients).length > 0 && (
+          <View style={styles.portionSection}>
+            <Text style={styles.sectionTitle}>Adjust Portion Size</Text>
+            <View style={styles.portionAdjustmentContainer}>
+              <TouchableOpacity
+                style={styles.portionButton}
+                onPress={() => {
+                  const newMultiplier = Math.max(0.25, portionMultiplier - 0.25);
+                  recalculateNutrients(newMultiplier);
+                }}
+              >
+                <Icon name="minus" size={24} color="white" />
+              </TouchableOpacity>
+
+              <View style={styles.portionInputContainer}>
+                <TextInput
+                  style={styles.portionInput}
+                  value={portionMultiplier.toFixed(2)}
+                  onChangeText={(text) => {
+                    const value = parseFloat(text);
+                    if (!isNaN(value) && value > 0) {
+                      recalculateNutrients(value);
+                    }
+                  }}
+                  keyboardType="decimal-pad"
+                />
+                <Text style={styles.portionLabel}>Portion Multiplier</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.portionButton}
+                onPress={() => {
+                  const newMultiplier = portionMultiplier + 0.25;
+                  recalculateNutrients(newMultiplier);
+                }}
+              >
+                <Icon name="plus" size={24} color="white" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.portionHints}>
+              <View style={styles.hintItem}>
+                <Text style={styles.hintLabel}>0.5×</Text>
+                <Text style={styles.hintText}>Half</Text>
+              </View>
+              <View style={styles.hintItem}>
+                <Text style={styles.hintLabel}>1.0×</Text>
+                <Text style={styles.hintText}>Original</Text>
+              </View>
+              <View style={styles.hintItem}>
+                <Text style={styles.hintLabel}>1.5×</Text>
+                <Text style={styles.hintText}>1.5 Times</Text>
+              </View>
+              <View style={styles.hintItem}>
+                <Text style={styles.hintLabel}>2.0×</Text>
+                <Text style={styles.hintText}>Double</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Nutrients Section */}
         {meal.nutrients && Object.keys(meal.nutrients).length > 0 && (
           <View style={styles.nutrientsSection}>
             <Text style={styles.sectionTitle}>Nutritional Information</Text>
+            {isEditing && portionMultiplier !== 1 && (
+              <Text style={styles.nutrientSubtitle}>
+                Adjusted for {portionMultiplier.toFixed(2)}× portion size
+              </Text>
+            )}
             <View style={styles.nutrientsGrid}>
-              {Object.entries(meal.nutrients).map(([key, value]) => {
+              {Object.entries(isEditing ? editableNutrients : meal.nutrients).map(([key, value]) => {
                 const nutrientInfo = getNutrientIcon(key);
                 return (
                   <View key={key} style={styles.nutrientCard}>

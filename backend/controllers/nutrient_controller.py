@@ -411,10 +411,10 @@ class NutrientController:
     @firebase_auth_required
     def update_meal(meal_id):
         """
-        Update meal details (meal_name, notes, and food_type)
+        Update meal details (meal_name, notes, food_type, nutrients, and serving_size)
         
         Expected request:
-        - JSON body with optional 'meal_name', 'notes', and 'food_type' fields
+        - JSON body with optional 'meal_name', 'notes', 'food_type', 'nutrients', and 'serving_size' fields
         
         Returns:
         - JSON response with update status
@@ -432,12 +432,14 @@ class NutrientController:
             meal_name = data.get('meal_name')
             notes = data.get('notes')
             food_type = data.get('food_type')
+            nutrients = data.get('nutrients')
+            serving_size = data.get('serving_size')
             
             # At least one field should be provided
-            if meal_name is None and notes is None and food_type is None:
+            if meal_name is None and notes is None and food_type is None and nutrients is None and serving_size is None:
                 return jsonify({
                     'success': False,
-                    'error': 'At least one field (meal_name, notes, or food_type) must be provided'
+                    'error': 'At least one field (meal_name, notes, food_type, nutrients, or serving_size) must be provided'
                 }), 400
             
             result = UserMeal.update_meal(
@@ -445,7 +447,9 @@ class NutrientController:
                 user_id=user_id,
                 meal_name=meal_name,
                 notes=notes,
-                food_type=food_type
+                food_type=food_type,
+                nutrients=nutrients,
+                serving_size=serving_size
             )
             
             if result['success']:
