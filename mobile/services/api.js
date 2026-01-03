@@ -1232,6 +1232,54 @@ export const updateHealthMetrics = async (metrics) => {
   }
 };
 
+// Profile Management APIs
+export const getProfile = async () => {
+  try {
+    const response = await api.get('/users/profile');
+    return response.data;
+  } catch (error) {
+    console.error('Error getting profile:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+export const updateProfile = async (profileData) => {
+  try {
+    const formData = new FormData();
+    
+    // Add basic fields
+    if (profileData.first_name) formData.append('first_name', profileData.first_name);
+    if (profileData.last_name) formData.append('last_name', profileData.last_name);
+    if (profileData.age !== undefined) formData.append('age', profileData.age);
+    if (profileData.sex) formData.append('sex', profileData.sex);
+    if (profileData.height !== undefined) formData.append('height', profileData.height);
+    if (profileData.weight !== undefined) formData.append('weight', profileData.weight);
+    
+    // Handle avatar upload if provided
+    if (profileData.avatar && profileData.avatar.uri) {
+      const uriParts = profileData.avatar.uri.split('.');
+      const fileType = uriParts[uriParts.length - 1];
+      
+      formData.append('avatar', {
+        uri: profileData.avatar.uri,
+        name: `avatar.${fileType}`,
+        type: `image/${fileType}`,
+      });
+    }
+    
+    const response = await api.put('/users/profile', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error updating profile:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
 export const sendChatbotMessage = async (message) => {
   try {
     const response = await api.post('/chatbot/message', { message });
@@ -1308,6 +1356,8 @@ api.saveFCMToken = saveFCMToken;
 api.deleteFCMToken = deleteFCMToken;
 api.getHealthMetrics = getHealthMetrics;
 api.updateHealthMetrics = updateHealthMetrics;
+api.getProfile = getProfile;
+api.updateProfile = updateProfile;
 api.sendChatbotMessage = sendChatbotMessage;
 api.getChatbotHistory = getChatbotHistory;
 

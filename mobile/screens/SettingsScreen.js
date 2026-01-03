@@ -118,7 +118,7 @@ const SettingsScreen = ({ navigation }) => {
           title: 'Profile Information',
           subtitle: 'Update your personal details',
           icon: 'account',
-          action: () => handleSettingPress('Profile'),
+          action: () => navigation.navigate('Profile'),
           showArrow: true,
         },
         {

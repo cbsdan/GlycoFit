@@ -44,8 +44,7 @@ def before_user_request():
 # Profile Routes
 @user_bp.route('/profile', methods=['GET'])
 def get_profile():
-    # This will be handled by JWT middleware
-    pass
+    return AuthController.get_my_profile()
 
 @user_bp.route('/profile', methods=['PUT'])
 def update_profile():

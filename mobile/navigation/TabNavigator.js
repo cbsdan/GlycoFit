@@ -14,6 +14,7 @@ import SettingsScreen from '../screens/SettingsScreen';
 import HealthDataScreen from '../screens/HealthDataScreen';
 import SyncedHealthDataScreen from '../screens/SyncedHealthDataScreen';
 import StepCounterScreen from '../screens/StepCounterScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -33,6 +34,7 @@ const SettingsStack = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="SettingsMain" component={SettingsScreen} />
+      <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="HealthData" component={HealthDataScreen} />
       <Stack.Screen name="SyncedHealthData" component={SyncedHealthDataScreen} />
     </Stack.Navigator>
