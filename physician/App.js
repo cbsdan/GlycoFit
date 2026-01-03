@@ -177,7 +177,7 @@ const setupFCMWithAuth = async (isAuthenticated) => {
       console.log('FCM Token:', token);
       
       // Save token to backend
-      await api.physicianAPI.saveFCMToken(token);
+      await api.saveFCMToken(token);
       console.log('FCM token saved to backend successfully');
       
       // Save preference that notifications are enabled
