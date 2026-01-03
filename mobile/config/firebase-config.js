@@ -54,27 +54,23 @@ if (getApps().length === 0) {
   console.log("Retrieved existing Firebase app:", app.name);
 }
 
-// Initialize auth with proper initialization check
+// Initialize auth with AsyncStorage persistence
+// Must use initializeAuth on first call, not getAuth, to set up persistence
 let auth;
 try {
-  console.log("Checking for existing Firebase auth instance");
-  // First try to get the existing auth instance
-  auth = getAuth(app);
-  
-  // If we get here, auth was successfully retrieved
-  console.log("Existing Firebase auth instance found");
+  console.log("Initializing Firebase auth with AsyncStorage persistence");
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage)
+  });
+  console.log("Firebase auth initialized successfully with persistence");
 } catch (error) {
-  console.log("No existing auth instance found, initializing with persistence");
-  try {
-    // Only initialize auth with persistence if it doesn't exist yet
-    auth = initializeAuth(app, {
-      persistence: getReactNativePersistence(AsyncStorage)
-    });
-    console.log("Firebase auth initialized with persistence");
-  } catch (initError) {
-    console.error("Error during auth initialization:", initError);
-    // Last resort fallback
+  // If already initialized, just get the existing instance
+  if (error.code === 'auth/already-initialized') {
+    console.log("Auth already initialized, getting existing instance");
     auth = getAuth(app);
+  } else {
+    console.error("Error during auth initialization:", error);
+    throw error;
   }
 }
 

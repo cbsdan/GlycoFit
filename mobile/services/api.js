@@ -82,8 +82,29 @@ api.interceptors.response.use(
 );
 
 const storeUserData = async (authToken, userData) => {
+  const loginTimestamp = Date.now();
   await SecureStore.setItemAsync('auth_token', authToken);
+  await SecureStore.setItemAsync('login_timestamp', loginTimestamp.toString());
   await AsyncStorage.setItem('user', JSON.stringify(userData));
+};
+
+// Check if login has expired (3 months = 90 days)
+const isLoginExpired = async () => {
+  try {
+    const loginTimestamp = await SecureStore.getItemAsync('login_timestamp');
+    if (!loginTimestamp) {
+      return true; // No timestamp means expired/not logged in
+    }
+    
+    const threeMonthsInMs = 90 * 24 * 60 * 60 * 1000; // 90 days in milliseconds
+    const currentTime = Date.now();
+    const loginTime = parseInt(loginTimestamp, 10);
+    
+    return (currentTime - loginTime) > threeMonthsInMs;
+  } catch (error) {
+    console.error('Error checking login expiration:', error);
+    return true; // On error, treat as expired for security
+  }
 };
 
 export const authService = {
@@ -321,6 +342,7 @@ export const authService = {
       }
       await auth.signOut();
       await SecureStore.deleteItemAsync('auth_token');
+      await SecureStore.deleteItemAsync('login_timestamp');
       await AsyncStorage.removeItem('user');
     } catch (error) {
       console.log("Logout error:", error);
@@ -357,7 +379,18 @@ export const authService = {
     try {
       const token = await SecureStore.getItemAsync('auth_token');
       const user = await AsyncStorage.getItem('user');
-      return !!token && !!user;
+      const expired = await isLoginExpired();
+      
+      // If login has expired, clear stored data
+      if (expired && token) {
+        console.log('Login session expired (3 months), clearing data');
+        await SecureStore.deleteItemAsync('auth_token');
+        await SecureStore.deleteItemAsync('login_timestamp');
+        await AsyncStorage.removeItem('user');
+        return false;
+      }
+      
+      return !!token && !!user && !expired;
     } catch (error) {
       console.log("Auth check error:", error);
       return false;

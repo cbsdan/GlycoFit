@@ -10,7 +10,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import messaging, { getToken, onTokenRefresh, onMessage, getInitialNotification, onNotificationOpenedApp } from '@react-native-firebase/messaging';
+import messaging from '@react-native-firebase/messaging';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
@@ -473,8 +473,8 @@ function AppNavigator() {
 const requestUserPermission = async () => {
   const authStatus = await messaging().requestPermission();
   const enabled =
-    authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-    authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+    authStatus === 1 || // AuthorizationStatus.AUTHORIZED
+    authStatus === 2;   // AuthorizationStatus.PROVISIONAL
 
   if (enabled) {
     console.log('Authorization status:', authStatus);
@@ -505,7 +505,7 @@ const setupFCMWithAuth = async (isAuthenticated) => {
   
   if (hasPermission) {
     try {
-      const token = await getToken(messaging());
+      const token = await messaging().getToken();
       console.log('FCM Token:', token);
       
       // Save token to backend
@@ -538,7 +538,7 @@ function FCMHandler() {
     setupFCMWithAuth(isAuthenticated);
 
     // Listen for token refresh
-    const unsubscribeTokenRefresh = onTokenRefresh(messaging(), async (token) => {
+    const unsubscribeTokenRefresh = messaging().onTokenRefresh(async (token) => {
       console.log('FCM Token refreshed:', token);
       if (isAuthenticated) {
         try {
@@ -551,7 +551,7 @@ function FCMHandler() {
     });
 
     // Handle notification that opened the app from quit state
-    getInitialNotification(messaging()).then(async (remoteMessage) => {
+    messaging().getInitialNotification().then(async (remoteMessage) => {
       if (remoteMessage) {
         console.log(
           'Notification caused app to open from quit state:',
@@ -561,7 +561,7 @@ function FCMHandler() {
     });
 
     // Handle notification that opened the app from background state
-    const unsubscribeOnNotificationOpenedApp = onNotificationOpenedApp(messaging(), (remoteMessage) => {
+    const unsubscribeOnNotificationOpenedApp = messaging().onNotificationOpenedApp((remoteMessage) => {
       console.log(
         'Notification caused app to open from background state:',
         remoteMessage.notification
@@ -569,7 +569,7 @@ function FCMHandler() {
     });
 
     // Handle foreground messages
-    const unsubscribeOnMessage = onMessage(messaging(), async (remoteMessage) => {
+    const unsubscribeOnMessage = messaging().onMessage(async (remoteMessage) => {
       Alert.alert(
         'A new FCM message arrived!',
         JSON.stringify(remoteMessage)
