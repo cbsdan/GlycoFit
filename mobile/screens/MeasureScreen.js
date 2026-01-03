@@ -34,6 +34,8 @@ const MeasureScreen = ({ navigation }) => {
   const [focusedNutrient, setFocusedNutrient] = useState(null);
   const [recipes, setRecipes] = useState([]);
   const [imageLayout, setImageLayout] = useState({ width: 0, height: 0 });
+  const [foodDescription, setFoodDescription] = useState('');
+  const [showAnalyzeButton, setShowAnalyzeButton] = useState(false);
   
   // Meal details state
   const [mealDetails, setMealDetails] = useState({
@@ -81,14 +83,22 @@ const MeasureScreen = ({ navigation }) => {
       'fat_g': { icon: 'water-outline', color: '#9B59B6' },
       'total_fat': { icon: 'water-outline', color: '#9B59B6' },
       'saturated_fat': { icon: 'water-alert', color: '#8E44AD' },
+      'saturated_fat_g': { icon: 'water-alert', color: '#8E44AD' },
+      'unsaturated_fat': { icon: 'oil', color: '#A569BD' },
+      'unsaturated_fat_g': { icon: 'oil', color: '#A569BD' },
       'fiber': { icon: 'leaf', color: '#27AE60' },
       'fiber_g': { icon: 'leaf', color: '#27AE60' },
       'sugar': { icon: 'cube-outline', color: '#E91E63' },
       'added_sugars': { icon: 'cube-outline', color: '#E91E63' },
       'added_sugars_g': { icon: 'cube-outline', color: '#E91E63' },
       
+      // Glycemic Load
+      'glycemic_load': { icon: 'chart-line', color: '#FF6347' },
+      'glycemic_index': { icon: 'chart-bell-curve', color: '#FF7F50' },
+      
       // Minerals
       'sodium': { icon: 'shaker-outline', color: '#95A5A6' },
+      'sodium_mg': { icon: 'shaker-outline', color: '#95A5A6' },
       'calcium': { icon: 'bone', color: '#ECF0F1' },
       'iron': { icon: 'anvil', color: '#34495E' },
       'potassium': { icon: 'lightning-bolt', color: '#F1C40F' },
@@ -202,6 +212,8 @@ const MeasureScreen = ({ navigation }) => {
     setPortionMultiplier(1);
     setFocusedNutrient(null);
     setRecipes([]);
+    setFoodDescription('');
+    setShowAnalyzeButton(false);
     setMealDetails({
       mealName: '',
       foodType: 'unlabeled',
@@ -263,7 +275,7 @@ const MeasureScreen = ({ navigation }) => {
 
       if (!result.canceled && result.assets[0]) {
         setCapturedImage(result.assets[0].uri);
-        await processImage(result.assets[0].uri);
+        setShowAnalyzeButton(true);
       } else {
         setShowFoodScanner(false);
       }
@@ -295,7 +307,7 @@ const MeasureScreen = ({ navigation }) => {
 
       if (!result.canceled && result.assets[0]) {
         setCapturedImage(result.assets[0].uri);
-        await processImage(result.assets[0].uri);
+        setShowAnalyzeButton(true);
       } else {
         setShowFoodScanner(false);
       }
@@ -310,10 +322,12 @@ const MeasureScreen = ({ navigation }) => {
   const processImage = async (imageUri) => {
     setIsProcessing(true);
     setProcessingMessage('Analyzing food image...');
+    setShowAnalyzeButton(false);
     
     try {
       console.log('Starting image processing...');
-      const response = await api.predictNutrientsOnly(imageUri);
+      console.log('Food description:', foodDescription);
+      const response = await api.predictNutrientsOnly(imageUri, foodDescription);
       console.log('API response:', response);
       
       // Check if food was successfully detected
@@ -707,6 +721,77 @@ const MeasureScreen = ({ navigation }) => {
     retakeButtonText: {
       color: 'white',
       fontWeight: '600',
+    },
+    
+    // Food Description Section
+    foodDescriptionSection: {
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      padding: 20,
+      marginBottom: 24,
+      marginTop: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    foodDescriptionHint: {
+      fontSize: 14,
+      color: colors.secondary,
+      marginBottom: 12,
+      lineHeight: 20,
+    },
+    foodDescriptionInput: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      padding: 12,
+      fontSize: 16,
+      color: colors.text,
+      backgroundColor: colors.background,
+      minHeight: 80,
+      marginBottom: 16,
+      textAlignVertical: 'top',
+    },
+    descriptionActions: {
+      flexDirection: 'row',
+      gap: 12,
+      alignItems: 'center',
+    },
+    retakeSmallButton: {
+      backgroundColor: colors.background,
+      borderRadius: 8,
+      padding: 14,
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: colors.border,
+      flex: 1,
+    },
+    retakeSmallButtonText: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: '600',
+      marginLeft: 8,
+    },
+    analyzeButton: {
+      backgroundColor: '#27AE60',
+      borderRadius: 8,
+      padding: 14,
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'center',
+      elevation: 3,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      flex: 2,
+    },
+    analyzeButtonText: {
+      color: 'white',
+      fontSize: 16,
+      fontWeight: '600',
+      marginLeft: 8,
     },
     
     // Loading section
@@ -1224,6 +1309,45 @@ const MeasureScreen = ({ navigation }) => {
                     disabled={isProcessing}
                   >
                     <Text style={styles.retakeButtonText}>Retake Photo</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* Step 2.5: Food Description Input (shown after image capture, before analysis) */}
+            {capturedImage && showAnalyzeButton && !isProcessing && !predictionData && (
+              <View style={styles.foodDescriptionSection}>
+                <Text style={styles.sectionTitle}>Describe Your Food (Optional)</Text>
+                <Text style={styles.foodDescriptionHint}>
+                  Provide details about your food for better nutrient analysis (e.g., "grilled chicken breast", "chocolate chip cookie", "large pizza slice")
+                </Text>
+                <TextInput
+                  style={styles.foodDescriptionInput}
+                  value={foodDescription}
+                  onChangeText={setFoodDescription}
+                  placeholder="e.g., grilled salmon with vegetables"
+                  placeholderTextColor={colors.secondary}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+                <View style={styles.descriptionActions}>
+                  <TouchableOpacity 
+                    style={styles.retakeSmallButton}
+                    onPress={() => {
+                      setShowImagePickerModal(true);
+                      setFoodDescription('');
+                    }}
+                  >
+                    <Icon name="camera-retake" size={20} color={colors.text} />
+                    <Text style={styles.retakeSmallButtonText}>Change Photo</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.analyzeButton}
+                    onPress={() => processImage(capturedImage)}
+                  >
+                    <Icon name="magnify-scan" size={22} color="white" />
+                    <Text style={styles.analyzeButtonText}>Analyze Food</Text>
                   </TouchableOpacity>
                 </View>
               </View>

@@ -376,7 +376,7 @@ export const authService = {
 };
 
 // Nutrient Prediction APIs (Using Gemini AI)
-const predictNutrientsOnly = async (imageUri) => {
+const predictNutrientsOnly = async (imageUri, note = '') => {
   try {
     const formData = new FormData();
     formData.append('image', {
@@ -384,6 +384,11 @@ const predictNutrientsOnly = async (imageUri) => {
       type: 'image/jpeg',
       name: 'food_image.jpg',
     });
+    
+    // Add optional note for food description
+    if (note && note.trim()) {
+      formData.append('note', note.trim());
+    }
 
     const response = await api.post('/gemini/analyze', formData, {
       headers: {
@@ -452,11 +457,12 @@ const getMealById = async (mealId) => {
   }
 };
 
-const updateMeal = async (mealId, mealName = null, notes = null) => {
+const updateMeal = async (mealId, mealName = null, notes = null, foodType = null) => {
   try {
     const updateData = {};
     if (mealName !== null) updateData.meal_name = mealName;
     if (notes !== null) updateData.notes = notes;
+    if (foodType !== null) updateData.food_type = foodType;
 
     const response = await api.put(`/users/meals/${mealId}`, updateData);
     return response.data;

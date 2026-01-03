@@ -336,11 +336,23 @@ class UserMeal:
                         'total_protein': {'$sum': '$nutrients.Protein (g)'},
                         'total_carbs': {'$sum': '$nutrients.Carbs (g)'},
                         'total_fat': {'$sum': '$nutrients.Fat (g)'},
+                        'total_added_sugars': {'$sum': '$nutrients.Added Sugars (g)'},
+                        'total_fiber': {'$sum': '$nutrients.Fiber (g)'},
+                        'total_saturated_fat': {'$sum': '$nutrients.Saturated Fat (g)'},
+                        'total_unsaturated_fat': {'$sum': '$nutrients.Unsaturated Fat (g)'},
+                        'total_sodium': {'$sum': '$nutrients.Sodium (mg)'},
+                        'total_glycemic_load': {'$sum': '$nutrients.Glycemic Load'},
                         'meal_count': {'$sum': 1},
                         'avg_calories': {'$avg': '$nutrients.Calories'},
                         'avg_protein': {'$avg': '$nutrients.Protein (g)'},
                         'avg_carbs': {'$avg': '$nutrients.Carbs (g)'},
-                        'avg_fat': {'$avg': '$nutrients.Fat (g)'}
+                        'avg_fat': {'$avg': '$nutrients.Fat (g)'},
+                        'avg_added_sugars': {'$avg': '$nutrients.Added Sugars (g)'},
+                        'avg_fiber': {'$avg': '$nutrients.Fiber (g)'},
+                        'avg_saturated_fat': {'$avg': '$nutrients.Saturated Fat (g)'},
+                        'avg_unsaturated_fat': {'$avg': '$nutrients.Unsaturated Fat (g)'},
+                        'avg_sodium': {'$avg': '$nutrients.Sodium (mg)'},
+                        'avg_glycemic_load': {'$avg': '$nutrients.Glycemic Load'}
                     }
                 }
             ]
@@ -356,13 +368,25 @@ class UserMeal:
                             'calories': round(summary.get('total_calories', 0), 2),
                             'protein': round(summary.get('total_protein', 0), 2),
                             'carbs': round(summary.get('total_carbs', 0), 2),
-                            'fat': round(summary.get('total_fat', 0), 2)
+                            'fat': round(summary.get('total_fat', 0), 2),
+                            'added_sugars': round(summary.get('total_added_sugars', 0), 2),
+                            'fiber': round(summary.get('total_fiber', 0), 2),
+                            'saturated_fat': round(summary.get('total_saturated_fat', 0), 2),
+                            'unsaturated_fat': round(summary.get('total_unsaturated_fat', 0), 2),
+                            'sodium': round(summary.get('total_sodium', 0), 2),
+                            'glycemic_load': round(summary.get('total_glycemic_load', 0), 2)
                         },
                         'average_nutrients': {
                             'calories': round(summary.get('avg_calories', 0), 2),
                             'protein': round(summary.get('avg_protein', 0), 2),
                             'carbs': round(summary.get('avg_carbs', 0), 2),
-                            'fat': round(summary.get('avg_fat', 0), 2)
+                            'fat': round(summary.get('avg_fat', 0), 2),
+                            'added_sugars': round(summary.get('avg_added_sugars', 0), 2),
+                            'fiber': round(summary.get('avg_fiber', 0), 2),
+                            'saturated_fat': round(summary.get('avg_saturated_fat', 0), 2),
+                            'unsaturated_fat': round(summary.get('avg_unsaturated_fat', 0), 2),
+                            'sodium': round(summary.get('avg_sodium', 0), 2),
+                            'glycemic_load': round(summary.get('avg_glycemic_load', 0), 2)
                         },
                         'meal_count': summary.get('meal_count', 0)
                     }
@@ -371,8 +395,16 @@ class UserMeal:
                 return {
                     'success': True,
                     'summary': {
-                        'total_nutrients': {'calories': 0, 'protein': 0, 'carbs': 0, 'fat': 0},
-                        'average_nutrients': {'calories': 0, 'protein': 0, 'carbs': 0, 'fat': 0},
+                        'total_nutrients': {
+                            'calories': 0, 'protein': 0, 'carbs': 0, 'fat': 0,
+                            'added_sugars': 0, 'fiber': 0, 'saturated_fat': 0,
+                            'unsaturated_fat': 0, 'sodium': 0, 'glycemic_load': 0
+                        },
+                        'average_nutrients': {
+                            'calories': 0, 'protein': 0, 'carbs': 0, 'fat': 0,
+                            'added_sugars': 0, 'fiber': 0, 'saturated_fat': 0,
+                            'unsaturated_fat': 0, 'sodium': 0, 'glycemic_load': 0
+                        },
                         'meal_count': 0
                     }
                 }
@@ -488,11 +520,23 @@ class UserMeal:
                         'total_protein': {'$sum': '$nutrients.Protein (g)'},
                         'total_carbs': {'$sum': '$nutrients.Carbs (g)'},
                         'total_fat': {'$sum': '$nutrients.Fat (g)'},
+                        'total_added_sugars': {'$sum': '$nutrients.Added Sugars (g)'},
+                        'total_fiber': {'$sum': '$nutrients.Fiber (g)'},
+                        'total_saturated_fat': {'$sum': '$nutrients.Saturated Fat (g)'},
+                        'total_unsaturated_fat': {'$sum': '$nutrients.Unsaturated Fat (g)'},
+                        'total_sodium': {'$sum': '$nutrients.Sodium (mg)'},
+                        'total_glycemic_load': {'$sum': '$nutrients.Glycemic Load'},
                         'meal_count': {'$sum': 1},
                         'avg_calories': {'$avg': '$nutrients.Calories'},
                         'avg_protein': {'$avg': '$nutrients.Protein (g)'},
                         'avg_carbs': {'$avg': '$nutrients.Carbs (g)'},
-                        'avg_fat': {'$avg': '$nutrients.Fat (g)'}
+                        'avg_fat': {'$avg': '$nutrients.Fat (g)'},
+                        'avg_added_sugars': {'$avg': '$nutrients.Added Sugars (g)'},
+                        'avg_fiber': {'$avg': '$nutrients.Fiber (g)'},
+                        'avg_saturated_fat': {'$avg': '$nutrients.Saturated Fat (g)'},
+                        'avg_unsaturated_fat': {'$avg': '$nutrients.Unsaturated Fat (g)'},
+                        'avg_sodium': {'$avg': '$nutrients.Sodium (mg)'},
+                        'avg_glycemic_load': {'$avg': '$nutrients.Glycemic Load'}
                     }
                 },
                 {'$sort': {'meal_count': -1}}  # Sort by meal count descending
@@ -508,13 +552,25 @@ class UserMeal:
                         'calories': round(item.get('total_calories', 0), 2),
                         'protein': round(item.get('total_protein', 0), 2),
                         'carbs': round(item.get('total_carbs', 0), 2),
-                        'fat': round(item.get('total_fat', 0), 2)
+                        'fat': round(item.get('total_fat', 0), 2),
+                        'added_sugars': round(item.get('total_added_sugars', 0), 2),
+                        'fiber': round(item.get('total_fiber', 0), 2),
+                        'saturated_fat': round(item.get('total_saturated_fat', 0), 2),
+                        'unsaturated_fat': round(item.get('total_unsaturated_fat', 0), 2),
+                        'sodium': round(item.get('total_sodium', 0), 2),
+                        'glycemic_load': round(item.get('total_glycemic_load', 0), 2)
                     },
                     'average_nutrients': {
                         'calories': round(item.get('avg_calories', 0), 2),
                         'protein': round(item.get('avg_protein', 0), 2),
                         'carbs': round(item.get('avg_carbs', 0), 2),
-                        'fat': round(item.get('avg_fat', 0), 2)
+                        'fat': round(item.get('avg_fat', 0), 2),
+                        'added_sugars': round(item.get('avg_added_sugars', 0), 2),
+                        'fiber': round(item.get('avg_fiber', 0), 2),
+                        'saturated_fat': round(item.get('avg_saturated_fat', 0), 2),
+                        'unsaturated_fat': round(item.get('avg_unsaturated_fat', 0), 2),
+                        'sodium': round(item.get('avg_sodium', 0), 2),
+                        'glycemic_load': round(item.get('avg_glycemic_load', 0), 2)
                     },
                     'meal_count': item.get('meal_count', 0)
                 }

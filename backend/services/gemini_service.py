@@ -31,12 +31,13 @@ class GeminiService:
         """Check if Gemini service is ready"""
         return self.model is not None
     
-    def analyze_food_image(self, image_data):
+    def analyze_food_image(self, image_data, note=None):
         """
         Analyze food image and return nutritional information
         
         Args:
             image_data: Binary image data
+            note: Optional user note for more specific food description
             
         Returns:
             dict: Nutritional information including:
@@ -52,8 +53,10 @@ class GeminiService:
             image = Image.open(io.BytesIO(image_data))
             
             # Create the prompt for nutritional analysis
-            prompt = """
-You are a nutrition estimation model that identifies food from images and predicts nutritional values using realistic data referenced from common nutrition databases such as USDA, FDA, MyFitnessPal, or standard food labels.
+            user_note_context = f"\n\nUser's additional note about the food: {note}\nPlease use this information to improve the accuracy of your analysis." if note else ""
+            
+            prompt = f"""
+You are a nutrition estimation model that identifies food from images and predicts nutritional values using realistic data referenced from common nutrition databases such as USDA, FDA, MyFitnessPal, or standard food labels.{user_note_context}
 
 STRONG RULES TO FOLLOW:
 1. Identify the food in the image with the most likely meal or product name.
@@ -63,42 +66,47 @@ STRONG RULES TO FOLLOW:
 5. Rate your confidence (0–100%) based on image clarity and recognition certainty.
 6. Detect individual ingredients/components in the food and provide bounding box coordinates for each detected item.
 7. Bounding boxes should use pixel coordinates in the format [x_min, y_min, x_max, y_max] where coordinates represent the rectangle containing each food item.
-8. If no food can be identified or the image is unclear, return:
-{
+8. Calculate Glycemic Load using the formula: GL = (GI × Carbs) / 100, where GI is the Glycemic Index of the food.
+9. If no food can be identified or the image is unclear, return:
+{{
   "success": false,
   "error": "Unable to identify the food from the image"
-}
-9. Return your response **ONLY** as a valid JSON object with no extra text.
+}}
+10. Return your response **ONLY** as a valid JSON object with no extra text.
 
 For valid food images, use exactly this JSON format:
-{
+{{
     "success": true,
     "meal_name": "Name of the food/meal",
     "serving_size": "Specific serving size",
-    "nutrients": {
+    "nutrients": {{
         "Calories": <number>,
         "Carbs (g)": <number>,
         "Added Sugars (g)": <number>,
         "Fiber (g)": <number>,
         "Protein (g)": <number>,
-        "Fat (g)": <number>
-    },
+        "Fat (g)": <number>,
+        "Saturated Fat (g)": <number>,
+        "Unsaturated Fat (g)": <number>,
+        "Sodium (mg)": <number>,
+        "Glycemic Load": <number>
+    }},
     "confidence_percentage": <number between 0-100>,
     "recipes": [
-        {
+        {{
             "box_2d": [x_min, y_min, x_max, y_max],
             "label": "Ingredient or component name"
-        }
+        }}
     ]
-}
+}}
 
 For non-food images or unclear images, use this exact JSON format:
-{
+{{
     "success": false,
     "error": "Cannot detect food in the image",
     "message": "Please upload a clear image of food",
     "confidence_percentage": 0
-}
+}}
 
 Bounding box guidelines:
 - Use pixel coordinates in format [x_min, y_min, x_max, y_max]
@@ -152,7 +160,9 @@ Provide realistic nutritional estimates based on typical serving sizes. Return O
                     
                     # Ensure all required nutrients are present
                     required_nutrients = ['Calories', 'Carbs (g)', 'Added Sugars (g)', 
-                                        'Fiber (g)', 'Protein (g)', 'Fat (g)']
+                                        'Fiber (g)', 'Protein (g)', 'Fat (g)', 
+                                        'Saturated Fat (g)', 'Unsaturated Fat (g)', 
+                                        'Sodium (mg)', 'Glycemic Load']
                     for nutrient in required_nutrients:
                         if nutrient not in result['nutrients']:
                             result['nutrients'][nutrient] = 0.0

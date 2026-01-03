@@ -18,6 +18,7 @@ class GeminiController:
         
         Expected request:
         - Multipart form data with 'image' file
+        - Optional 'note' field for user's food description
         
         Returns:
         - JSON response with meal name and nutrient values
@@ -32,6 +33,11 @@ class GeminiController:
                 }), 400
             
             image_file = request.files['image']
+            
+            # Get optional note from form data
+            note = request.form.get('note', '').strip()
+            if note:
+                logging.info(f"User provided food description: {note}")
             
             # Check if file is actually selected
             if image_file.filename == '':
@@ -72,7 +78,7 @@ class GeminiController:
                     }), 503
                 
                 logging.info("Analyzing food image with Gemini AI")
-                analysis_result = gemini_service.analyze_food_image(image_data)
+                analysis_result = gemini_service.analyze_food_image(image_data, note if note else None)
                 
                 if not analysis_result.get('success'):
                     # Food not detected

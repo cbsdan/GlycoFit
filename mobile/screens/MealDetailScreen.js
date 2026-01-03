@@ -27,7 +27,21 @@ const MealDetailScreen = ({ route, navigation }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedMealName, setEditedMealName] = useState(meal.meal_name);
   const [editedNotes, setEditedNotes] = useState(meal.notes || '');
+  const [editedFoodType, setEditedFoodType] = useState(meal.food_type || 'unlabeled');
+  const [showFoodTypeModal, setShowFoodTypeModal] = useState(false);
   const [imageLayout, setImageLayout] = useState({ width: 0, height: 0 });
+
+  // Valid food types from backend model
+  const foodTypes = [
+    { label: 'Unlabeled', value: 'unlabeled' },
+    { label: 'Breakfast', value: 'breakfast' },
+    { label: 'Lunch', value: 'lunch' },
+    { label: 'Dinner', value: 'dinner' },
+    { label: 'Snacks', value: 'snacks' },
+    { label: 'Drinks', value: 'drinks' },
+    { label: 'Dessert', value: 'dessert' },
+    { label: 'Other', value: 'other' },
+  ];
 
   // Merge duplicate recipes (same label, different boxes)
   const mergeRecipes = (recipesList) => {
@@ -146,14 +160,16 @@ const MealDetailScreen = ({ route, navigation }) => {
       const response = await api.updateMeal(
         meal.id,
         editedMealName.trim(),
-        editedNotes.trim()
+        editedNotes.trim(),
+        editedFoodType
       );
 
       if (response.success) {
         setMeal(prev => ({
           ...prev,
           meal_name: editedMealName.trim(),
-          notes: editedNotes.trim()
+          notes: editedNotes.trim(),
+          food_type: editedFoodType
         }));
         setIsEditing(false);
         toast.success('Meal updated successfully');
@@ -204,6 +220,7 @@ const MealDetailScreen = ({ route, navigation }) => {
   const handleCancelEdit = () => {
     setEditedMealName(meal.meal_name);
     setEditedNotes(meal.notes || '');
+    setEditedFoodType(meal.food_type || 'unlabeled');
     setIsEditing(false);
   };
 
@@ -339,6 +356,16 @@ const MealDetailScreen = ({ route, navigation }) => {
       flexDirection: 'row',
       alignItems: 'center',
       marginBottom: 16,
+    },
+    foodTypeSelector: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      padding: 12,
     },
     foodTypeIcon: {
       padding: 8,
@@ -560,6 +587,62 @@ const MealDetailScreen = ({ route, navigation }) => {
       color: colors.secondary,
       fontFamily: 'monospace',
     },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-end',
+    },
+    modalContent: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      padding: 20,
+      maxHeight: '70%',
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: 'bold',
+      color: colors.text,
+      marginBottom: 16,
+      textAlign: 'center',
+    },
+    modalOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 16,
+      borderRadius: 8,
+      marginBottom: 8,
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    modalOptionSelected: {
+      borderColor: colors.primary,
+      borderWidth: 2,
+      backgroundColor: `${colors.primary}10`,
+    },
+    modalOptionIcon: {
+      padding: 8,
+      borderRadius: 20,
+      marginRight: 12,
+    },
+    modalOptionText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    modalCloseButton: {
+      backgroundColor: colors.secondary,
+      borderRadius: 8,
+      padding: 16,
+      alignItems: 'center',
+      marginTop: 12,
+    },
+    modalCloseText: {
+      color: 'white',
+      fontSize: 16,
+      fontWeight: '600',
+    },
   });
 
   return (
@@ -695,13 +778,31 @@ const MealDetailScreen = ({ route, navigation }) => {
           </View>
           
           <View style={styles.foodTypeContainer}>
-            <View style={[
-              styles.foodTypeIcon,
-              { backgroundColor: `${foodTypeInfo.color}15` }
-            ]}>
-              <Icon name={foodTypeInfo.icon} size={20} color={foodTypeInfo.color} />
-            </View>
-            <Text style={styles.foodTypeText}>{foodTypeInfo.label}</Text>
+            {isEditing ? (
+              <TouchableOpacity 
+                style={styles.foodTypeSelector}
+                onPress={() => setShowFoodTypeModal(true)}
+              >
+                <View style={[
+                  styles.foodTypeIcon,
+                  { backgroundColor: `${getFoodTypeInfo(editedFoodType).color}15` }
+                ]}>
+                  <Icon name={getFoodTypeInfo(editedFoodType).icon} size={20} color={getFoodTypeInfo(editedFoodType).color} />
+                </View>
+                <Text style={styles.foodTypeText}>{getFoodTypeInfo(editedFoodType).label}</Text>
+                <Icon name="chevron-down" size={20} color={colors.secondary} style={{ marginLeft: 'auto' }} />
+              </TouchableOpacity>
+            ) : (
+              <>
+                <View style={[
+                  styles.foodTypeIcon,
+                  { backgroundColor: `${foodTypeInfo.color}15` }
+                ]}>
+                  <Icon name={foodTypeInfo.icon} size={20} color={foodTypeInfo.color} />
+                </View>
+                <Text style={styles.foodTypeText}>{foodTypeInfo.label}</Text>
+              </>
+            )}
           </View>
 
           {/* Serving Size Section */}
@@ -814,6 +915,59 @@ const MealDetailScreen = ({ route, navigation }) => {
           </View>
         )}
       </ScrollView>
+
+      {/* Food Type Selection Modal */}
+      <Modal
+        visible={showFoodTypeModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowFoodTypeModal(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowFoodTypeModal(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select Meal Type</Text>
+            <ScrollView>
+              {foodTypes.map((type) => {
+                const typeInfo = getFoodTypeInfo(type.value);
+                return (
+                  <TouchableOpacity
+                    key={type.value}
+                    style={[
+                      styles.modalOption,
+                      editedFoodType === type.value && styles.modalOptionSelected
+                    ]}
+                    onPress={() => {
+                      setEditedFoodType(type.value);
+                      setShowFoodTypeModal(false);
+                    }}
+                  >
+                    <View style={[
+                      styles.modalOptionIcon,
+                      { backgroundColor: `${typeInfo.color}15` }
+                    ]}>
+                      <Icon name={typeInfo.icon} size={24} color={typeInfo.color} />
+                    </View>
+                    <Text style={styles.modalOptionText}>{type.label}</Text>
+                    {editedFoodType === type.value && (
+                      <Icon name="check" size={24} color={colors.primary} style={{ marginLeft: 'auto' }} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowFoodTypeModal(false)}
+            >
+              <Text style={styles.modalCloseText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Loading Overlay */}
       {isLoading && (
