@@ -24,6 +24,7 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
   const [sex, setSex] = useState('');
   const [height, setHeight] = useState('');
   const [weight, setWeight] = useState('');
+  const [diagnosisStatus, setDiagnosisStatus] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -89,6 +90,10 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
       newErrors.weight = 'Please enter a valid weight in kg (10-500)';
     }
 
+    if (!diagnosisStatus) {
+      newErrors.diagnosisStatus = 'Please select your diagnosis status';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -102,12 +107,13 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
     try {
       setIsLoading(true);
       
-      const response = await api.updateHealthMetrics({
-        age: parseInt(age),
-        sex: sex.toLowerCase(),
-        height: parseFloat(height),
-        weight: parseFloat(weight),
-      });
+      const response = await api.updateHealthMetrics(
+        parseInt(age),
+        sex.toLowerCase(),
+        parseFloat(height),
+        parseFloat(weight),
+        diagnosisStatus
+      );
 
       if (response.success) {
         const bmi = response.bmi;
@@ -336,6 +342,95 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
             )}
           </View>
 
+          {/* Diagnosis Status Selection */}
+          <View style={styles.inputContainer}>
+            <Text style={[styles.label, { color: theme.text }]}>Diagnosis Status</Text>
+            <View style={styles.diagnosisButtonsContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.diagnosisButton,
+                  {
+                    backgroundColor: diagnosisStatus === 'not_diagnosed' ? theme.primary : theme.inputBackground,
+                    borderColor: errors.diagnosisStatus ? theme.error : (diagnosisStatus === 'not_diagnosed' ? theme.primary : theme.inputBorder),
+                  },
+                ]}
+                onPress={() => {
+                  setDiagnosisStatus('not_diagnosed');
+                  if (errors.diagnosisStatus) setErrors({ ...errors, diagnosisStatus: null });
+                }}
+              >
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={24}
+                  color={diagnosisStatus === 'not_diagnosed' ? '#FFFFFF' : theme.secondary}
+                />
+                <Text style={[
+                  styles.diagnosisButtonText,
+                  { color: diagnosisStatus === 'not_diagnosed' ? '#FFFFFF' : theme.text }
+                ]}>
+                  I am not diagnosed
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.diagnosisButton,
+                  {
+                    backgroundColor: diagnosisStatus === 'prediabetes' ? theme.primary : theme.inputBackground,
+                    borderColor: errors.diagnosisStatus ? theme.error : (diagnosisStatus === 'prediabetes' ? theme.primary : theme.inputBorder),
+                  },
+                ]}
+                onPress={() => {
+                  setDiagnosisStatus('prediabetes');
+                  if (errors.diagnosisStatus) setErrors({ ...errors, diagnosisStatus: null });
+                }}
+              >
+                <Ionicons
+                  name="warning-outline"
+                  size={24}
+                  color={diagnosisStatus === 'prediabetes' ? '#FFFFFF' : theme.secondary}
+                />
+                <Text style={[
+                  styles.diagnosisButtonText,
+                  { color: diagnosisStatus === 'prediabetes' ? '#FFFFFF' : theme.text }
+                ]}>
+                  I am diagnosed with Prediabetes
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.diagnosisButton,
+                  {
+                    backgroundColor: diagnosisStatus === 'type2_diabetes' ? theme.primary : theme.inputBackground,
+                    borderColor: errors.diagnosisStatus ? theme.error : (diagnosisStatus === 'type2_diabetes' ? theme.primary : theme.inputBorder),
+                  },
+                ]}
+                onPress={() => {
+                  setDiagnosisStatus('type2_diabetes');
+                  if (errors.diagnosisStatus) setErrors({ ...errors, diagnosisStatus: null });
+                }}
+              >
+                <Ionicons
+                  name="medical-outline"
+                  size={24}
+                  color={diagnosisStatus === 'type2_diabetes' ? '#FFFFFF' : theme.secondary}
+                />
+                <Text style={[
+                  styles.diagnosisButtonText,
+                  { color: diagnosisStatus === 'type2_diabetes' ? '#FFFFFF' : theme.text }
+                ]}>
+                  I am diagnosed with Type 2 Diabetes
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {errors.diagnosisStatus && (
+              <Text style={[styles.errorText, { color: theme.error }]}>
+                {errors.diagnosisStatus}
+              </Text>
+            )}
+          </View>
+
           {/* Info Box */}
           <View style={[styles.infoBox, { backgroundColor: theme.primary + '10', borderColor: theme.primary + '30' }]}>
             <Ionicons name="information-circle" size={20} color={theme.primary} />
@@ -510,6 +605,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginTop: 5,
+  },
+  diagnosisButtonsContainer: {
+    gap: 12,
+  },
+  diagnosisButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    borderWidth: 2,
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 15,
+  },
+  diagnosisButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 12,
+    flex: 1,
+    textAlign: 'left',
   },
   infoBox: {
     flexDirection: 'row',

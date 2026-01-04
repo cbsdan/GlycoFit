@@ -518,6 +518,17 @@ class UserInfoController:
                 else:
                     update_data['weight'] = None
             
+            # Diagnosis status validation
+            if 'diagnosis_status' in data:
+                diagnosis_status = data.get('diagnosis_status')
+                if diagnosis_status is not None:
+                    valid_statuses = ['not_diagnosed', 'prediabetes', 'type2_diabetes']
+                    if diagnosis_status not in valid_statuses:
+                        return jsonify({'error': f'Diagnosis status must be one of: {", ".join(valid_statuses)}'}), 400
+                    update_data['diagnosis_status'] = diagnosis_status
+                else:
+                    update_data['diagnosis_status'] = None
+            
             if not update_data:
                 return jsonify({'error': 'No valid fields to update'}), 400
             
@@ -580,7 +591,8 @@ class UserInfoController:
                 'height': user.height,
                 'weight': user.weight,
                 'bmi': bmi,
-                'bmi_category': bmi_category
+                'bmi_category': bmi_category,
+                'diagnosis_status': getattr(user, 'diagnosis_status', 'not_diagnosed')
             }
             
             logging.info(f"Health metrics retrieved successfully for user: {user_id}")

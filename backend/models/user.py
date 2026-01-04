@@ -42,6 +42,7 @@ class User:
         self.sex = None  # male/female/other
         self.height = None  # in cm
         self.weight = None  # in kg
+        self.diagnosis_status = 'not_diagnosed'  # not_diagnosed/prediabetes/type2_diabetes
         self.created_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
 
@@ -64,6 +65,7 @@ class User:
             'sex': self.sex,
             'height': self.height,
             'weight': self.weight,
+            'diagnosis_status': self.diagnosis_status,
             'created_at': self.created_at,
             'updated_at': self.updated_at
         }
@@ -89,6 +91,7 @@ class User:
         user.sex = data.get('sex')
         user.height = data.get('height')
         user.weight = data.get('weight')
+        user.diagnosis_status = data.get('diagnosis_status', 'not_diagnosed')
         user.created_at = data.get('created_at', datetime.utcnow())
         user.updated_at = data.get('updated_at', datetime.utcnow())
         return user
@@ -291,7 +294,7 @@ class User:
 
     def update_profile(self, **kwargs):
         """Update user profile fields"""
-        allowed_fields = ['first_name', 'last_name', 'avatar', 'enable_push_notifications', 'permission_token', 'disclaimer_accepted', 'age', 'sex', 'height', 'weight']
+        allowed_fields = ['first_name', 'last_name', 'avatar', 'enable_push_notifications', 'permission_token', 'disclaimer_accepted', 'age', 'sex', 'height', 'weight', 'diagnosis_status']
         
         for field, value in kwargs.items():
             if field in allowed_fields:
@@ -316,6 +319,7 @@ class User:
             'sex': self.sex,
             'height': self.height,
             'weight': self.weight,
+            'diagnosis_status': getattr(self, 'diagnosis_status', 'not_diagnosed'),
             'is_disabled': self.is_currently_disabled(),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None

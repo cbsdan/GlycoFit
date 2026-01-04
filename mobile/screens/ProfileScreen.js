@@ -38,6 +38,7 @@ const ProfileScreen = ({ navigation }) => {
     sex: '',
     height: '',
     weight: '',
+    diagnosis_status: '',
     avatar: null,
   });
 
@@ -62,6 +63,7 @@ const ProfileScreen = ({ navigation }) => {
           sex: userData.sex || '',
           height: userData.height?.toString() || '',
           weight: userData.weight?.toString() || '',
+          diagnosis_status: userData.diagnosis_status || 'not_diagnosed',
           avatar: userData.avatar || null,
         });
         
@@ -146,6 +148,9 @@ const ProfileScreen = ({ navigation }) => {
       if (profileData.sex) updateData.sex = profileData.sex;
       if (profileData.height) updateData.height = parseFloat(profileData.height);
       if (profileData.weight) updateData.weight = parseFloat(profileData.weight);
+      if (profileData.diagnosis_status !== undefined && profileData.diagnosis_status !== '') {
+        updateData.diagnosis_status = profileData.diagnosis_status;
+      }
       
       // Add avatar if changed
       if (profileData.avatar?.uri) {
@@ -398,6 +403,32 @@ const ProfileScreen = ({ navigation }) => {
       color: colors.primary,
       fontWeight: '600',
     },
+    diagnosisOptions: {
+      gap: 8,
+    },
+    diagnosisOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 12,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      gap: 8,
+    },
+    diagnosisOptionActive: {
+      backgroundColor: `${colors.primary}15`,
+      borderColor: colors.primary,
+    },
+    diagnosisOptionText: {
+      fontSize: 14,
+      color: colors.secondary,
+      flex: 1,
+    },
+    diagnosisOptionTextActive: {
+      color: colors.primary,
+      fontWeight: '600',
+    },
     emptyValue: {
       fontSize: 16,
       color: colors.secondary,
@@ -622,6 +653,74 @@ const ProfileScreen = ({ navigation }) => {
                     </TouchableOpacity>
                   </View>
                 </View>
+
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>Diagnosis Status</Text>
+                  <View style={styles.diagnosisOptions}>
+                    <TouchableOpacity
+                      style={[
+                        styles.diagnosisOption,
+                        profileData.diagnosis_status === 'not_diagnosed' && styles.diagnosisOptionActive,
+                      ]}
+                      onPress={() => setProfileData({ ...profileData, diagnosis_status: 'not_diagnosed' })}
+                      disabled={isSaving}
+                    >
+                      <Icon 
+                        name="check-circle-outline" 
+                        size={20} 
+                        color={profileData.diagnosis_status === 'not_diagnosed' ? colors.primary : colors.secondary} 
+                      />
+                      <Text style={[
+                        styles.diagnosisOptionText,
+                        profileData.diagnosis_status === 'not_diagnosed' && styles.diagnosisOptionTextActive,
+                      ]}>
+                        Not Diagnosed
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.diagnosisOption,
+                        profileData.diagnosis_status === 'prediabetes' && styles.diagnosisOptionActive,
+                      ]}
+                      onPress={() => setProfileData({ ...profileData, diagnosis_status: 'prediabetes' })}
+                      disabled={isSaving}
+                    >
+                      <Icon 
+                        name="alert-circle-outline" 
+                        size={20} 
+                        color={profileData.diagnosis_status === 'prediabetes' ? colors.primary : colors.secondary} 
+                      />
+                      <Text style={[
+                        styles.diagnosisOptionText,
+                        profileData.diagnosis_status === 'prediabetes' && styles.diagnosisOptionTextActive,
+                      ]}>
+                        Prediabetes
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.diagnosisOption,
+                        profileData.diagnosis_status === 'type2_diabetes' && styles.diagnosisOptionActive,
+                      ]}
+                      onPress={() => setProfileData({ ...profileData, diagnosis_status: 'type2_diabetes' })}
+                      disabled={isSaving}
+                    >
+                      <Icon 
+                        name="medical-bag" 
+                        size={20} 
+                        color={profileData.diagnosis_status === 'type2_diabetes' ? colors.primary : colors.secondary} 
+                      />
+                      <Text style={[
+                        styles.diagnosisOptionText,
+                        profileData.diagnosis_status === 'type2_diabetes' && styles.diagnosisOptionTextActive,
+                      ]}>
+                        Type 2 Diabetes
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </>
             ) : (
               <>
@@ -710,6 +809,16 @@ const ProfileScreen = ({ navigation }) => {
                       {profileData.weight ? `${profileData.weight} kg` : '-'}
                     </Text>
                   </View>
+                </View>
+
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>Diagnosis Status</Text>
+                  <Text style={styles.fieldValue}>
+                    {profileData.diagnosis_status === 'not_diagnosed' && 'Not Diagnosed'}
+                    {profileData.diagnosis_status === 'prediabetes' && 'Prediabetes'}
+                    {profileData.diagnosis_status === 'type2_diabetes' && 'Type 2 Diabetes'}
+                    {!profileData.diagnosis_status && '-'}
+                  </Text>
                 </View>
               </>
             )}

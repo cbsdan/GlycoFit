@@ -443,7 +443,7 @@ function AppNavigator() {
               )}
             </Stack.Screen>
             <Stack.Screen 
-              name="Disclaimer" 
+              name="DisclaimerView" 
               options={{ 
                 headerShown: false,
                 presentation: 'modal'

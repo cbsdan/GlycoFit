@@ -221,7 +221,7 @@ const SettingsScreen = ({ navigation }) => {
           title: 'Terms & Disclaimer',
           subtitle: 'Review app terms and disclaimer',
           icon: 'file-document',
-          action: () => navigation.navigate('Disclaimer'),
+          action: () => navigation.navigate('DisclaimerView'),
           showArrow: true,
         },
         {

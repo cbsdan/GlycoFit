@@ -446,6 +446,12 @@ class AuthController:
                 except (ValueError, TypeError):
                     pass
             
+            if 'diagnosis_status' in data:
+                # Validate diagnosis_status
+                valid_statuses = ['not_diagnosed', 'prediabetes', 'type2_diabetes']
+                if data['diagnosis_status'] in valid_statuses:
+                    update_data['diagnosis_status'] = data['diagnosis_status']
+            
             if 'enablePushNotifications' in data:
                 update_data['enable_push_notifications'] = data['enablePushNotifications']
             elif 'enable_push_notifications' in data:

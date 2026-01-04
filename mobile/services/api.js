@@ -1224,9 +1224,13 @@ export const getHealthMetrics = async () => {
   }
 };
 
-export const updateHealthMetrics = async (age, sex, height, weight) => {
+export const updateHealthMetrics = async (age, sex, height, weight, diagnosis_status = null) => {
   try {
-    const response = await api.put('/users/health-metrics', { age, sex, height, weight });
+    const payload = { age, sex, height, weight };
+    if (diagnosis_status !== null) {
+      payload.diagnosis_status = diagnosis_status;
+    }
+    const response = await api.put('/users/health-metrics', payload);
     return response.data;
   } catch (error) {
     console.error('Error updating health metrics:', error.response?.data || error.message);
@@ -1267,6 +1271,7 @@ export const updateProfile = async (profileData) => {
     if (profileData.sex) formData.append('sex', profileData.sex);
     if (profileData.height !== undefined) formData.append('height', profileData.height);
     if (profileData.weight !== undefined) formData.append('weight', profileData.weight);
+    if (profileData.diagnosis_status) formData.append('diagnosis_status', profileData.diagnosis_status);
     
     // Handle avatar upload if provided
     if (profileData.avatar && profileData.avatar.uri) {
