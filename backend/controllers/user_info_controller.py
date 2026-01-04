@@ -592,3 +592,37 @@ class UserInfoController:
         except Exception as e:
             log_error(e, 'Error getting health metrics')
             return jsonify({'error': 'Internal server error'}), 500
+    
+    @staticmethod
+    def update_disclaimer_status():
+        """Update user's disclaimer acceptance status"""
+        try:
+            user_id = request.current_user_id
+            data = request.get_json()
+            
+            if not data or 'accepted' not in data:
+                return jsonify({'error': 'Disclaimer acceptance status is required'}), 400
+            
+            accepted = data.get('accepted')
+            
+            logging.info(f"Updating disclaimer status for user {user_id}: {accepted}")
+            
+            # Find user
+            user = User.find_by_id(user_id)
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            # Update disclaimer status
+            user.update_profile(disclaimer_accepted=accepted)
+            user.save()
+            
+            logging.info(f"Disclaimer status updated successfully for user: {user_id}")
+            return jsonify({
+                'success': True,
+                'message': 'Disclaimer status updated successfully',
+                'disclaimer_accepted': user.disclaimer_accepted
+            }), 200
+            
+        except Exception as e:
+            log_error(e, 'Error updating disclaimer status')
+            return jsonify({'error': 'Internal server error'}), 500

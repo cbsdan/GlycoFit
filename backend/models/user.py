@@ -36,6 +36,7 @@ class User:
         self.permission_token = None
         self.multi_factor_enabled = False
         self.disable_history = []
+        self.disclaimer_accepted = None  # None = not shown, True = accepted, False = declined
         # Health metrics
         self.age = None
         self.sex = None  # male/female/other
@@ -58,6 +59,7 @@ class User:
             'permission_token': self.permission_token,
             'multi_factor_enabled': self.multi_factor_enabled,
             'disable_history': self.disable_history,
+            'disclaimer_accepted': self.disclaimer_accepted,
             'age': self.age,
             'sex': self.sex,
             'height': self.height,
@@ -82,6 +84,7 @@ class User:
         user.permission_token = data.get('permission_token')
         user.multi_factor_enabled = data.get('multi_factor_enabled', False)
         user.disable_history = data.get('disable_history', [])
+        user.disclaimer_accepted = data.get('disclaimer_accepted')
         user.age = data.get('age')
         user.sex = data.get('sex')
         user.height = data.get('height')
@@ -288,7 +291,7 @@ class User:
 
     def update_profile(self, **kwargs):
         """Update user profile fields"""
-        allowed_fields = ['first_name', 'last_name', 'avatar', 'enable_push_notifications', 'permission_token', 'age', 'sex', 'height', 'weight']
+        allowed_fields = ['first_name', 'last_name', 'avatar', 'enable_push_notifications', 'permission_token', 'disclaimer_accepted', 'age', 'sex', 'height', 'weight']
         
         for field, value in kwargs.items():
             if field in allowed_fields:
@@ -308,6 +311,7 @@ class User:
             'avatar': self.avatar,
             'enable_push_notifications': self.enable_push_notifications,
             'multi_factor_enabled': self.multi_factor_enabled,
+            'disclaimer_accepted': self.disclaimer_accepted,
             'age': self.age,
             'sex': self.sex,
             'height': self.height,

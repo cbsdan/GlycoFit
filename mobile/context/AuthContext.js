@@ -250,6 +250,20 @@ export const AuthProvider = ({ children }) => {
     AsyncStorage.setItem('user', JSON.stringify(userData));
   };
 
+  const refreshUserData = async () => {
+    try {
+      const result = await authService.getCurrentUser();
+      if (result) {
+        setUser(result);
+        await AsyncStorage.setItem('user', JSON.stringify(result));
+        return result;
+      }
+    } catch (error) {
+      console.error('Error refreshing user data:', error);
+      throw error;
+    }
+  };
+
   const value = {
     user,
     isAuthenticated,
@@ -260,6 +274,7 @@ export const AuthProvider = ({ children }) => {
     googleSignIn,
     logout,
     updateUserData,
+    refreshUserData,
     setIsLoading
   };
 

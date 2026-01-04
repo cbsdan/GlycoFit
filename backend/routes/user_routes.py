@@ -224,3 +224,9 @@ def get_health_metrics():
 def update_health_metrics():
     """Update user health metrics (age, sex, height, weight)"""
     return UserInfoController.update_health_metrics()
+
+# Disclaimer Routes
+@user_bp.route('/disclaimer', methods=['PUT'])
+def update_disclaimer_status():
+    """Update user disclaimer acceptance status"""
+    return UserInfoController.update_disclaimer_status()

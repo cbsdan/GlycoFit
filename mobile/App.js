@@ -30,7 +30,7 @@ import HealthMetricsSetupScreen from './screens/HealthMetricsSetupScreen';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingScreen from './components/LoadingScreen';
 import WelcomeScreen from './screens/WelcomeScreen';
-import DisclaimerScreen, { DISCLAIMER_ACCEPTED_KEY } from './screens/DisclaimerScreen';
+import DisclaimerScreen from './screens/DisclaimerScreen';
 
 const Stack = createStackNavigator();
 const WELCOME_SHOWN_KEY = '@welcome_shown';
@@ -60,7 +60,7 @@ const UniversalScreenWrapper = ({ children }) => {
 
 // Navigation component that handles auth state
 function AppNavigator() {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading, user, refreshUserData } = useAuth();
   const { colors, isDarkMode } = useTheme();
   const navigationRef = React.useRef();
   const [showWelcome, setShowWelcome] = useState(false);
@@ -71,6 +71,7 @@ function AppNavigator() {
   const [isCheckingAssessment, setIsCheckingAssessment] = useState(false);
   const [showHealthMetrics, setShowHealthMetrics] = useState(false);
   const [isCheckingHealthMetrics, setIsCheckingHealthMetrics] = useState(false);
+  const lastCheckedUserId = React.useRef(null);
 
   useEffect(() => {
     checkWelcomeStatus();
@@ -78,7 +79,14 @@ function AppNavigator() {
 
   useEffect(() => {
     if (isAuthenticated && user) {
-      checkDisclaimerStatus();
+      // Only check disclaimer status once per user login session
+      // This prevents re-checking when user data is refreshed after disclaimer acceptance
+      if (lastCheckedUserId.current !== user.uid) {
+        checkDisclaimerStatus();
+      }
+    } else {
+      // Reset when user logs out
+      lastCheckedUserId.current = null;
     }
   }, [isAuthenticated, user]);
 
@@ -107,10 +115,17 @@ function AppNavigator() {
   const checkDisclaimerStatus = async () => {
     try {
       setIsCheckingDisclaimer(true);
-      const disclaimerAccepted = await AsyncStorage.getItem(DISCLAIMER_ACCEPTED_KEY);
-      const shouldShowDisclaimer = disclaimerAccepted !== 'true';
+      
+      // Check from user object if disclaimer has been accepted
+      const disclaimerAccepted = user?.disclaimer_accepted;
+      
+      // Show disclaimer if not accepted (null or false)
+      const shouldShowDisclaimer = disclaimerAccepted !== true;
       
       setShowDisclaimer(shouldShowDisclaimer);
+      
+      // Mark this user as checked after we've determined the status
+      lastCheckedUserId.current = user?.uid;
       
       // If disclaimer already accepted, proceed to check health metrics
       if (!shouldShowDisclaimer) {
@@ -119,13 +134,24 @@ function AppNavigator() {
     } catch (error) {
       console.log('Error checking disclaimer status:', error);
       setShowDisclaimer(true);
+      // Still mark as checked even on error to prevent infinite loops
+      lastCheckedUserId.current = user?.uid;
     } finally {
       setIsCheckingDisclaimer(false);
     }
   };
 
   const handleDisclaimerComplete = async () => {
+    // First hide the disclaimer screen
     setShowDisclaimer(false);
+    
+    // Refresh user data to get updated disclaimer_accepted status
+    try {
+      await refreshUserData();
+    } catch (error) {
+      console.error('Error refreshing user data:', error);
+    }
+    
     // After disclaimer is accepted, check health metrics
     await checkHealthMetricsStatus();
   };

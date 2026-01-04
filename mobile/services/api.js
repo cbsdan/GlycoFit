@@ -1219,17 +1219,28 @@ export const getHealthMetrics = async () => {
     const response = await api.get('/users/health-metrics');
     return response.data;
   } catch (error) {
-    console.error('Error getting health metrics:', error.response?.data || error.message);
+    console.error('Error fetching health metrics:', error.response?.data || error.message);
     throw error;
   }
 };
 
-export const updateHealthMetrics = async (metrics) => {
+export const updateHealthMetrics = async (age, sex, height, weight) => {
   try {
-    const response = await api.put('/users/health-metrics', metrics);
+    const response = await api.put('/users/health-metrics', { age, sex, height, weight });
     return response.data;
   } catch (error) {
     console.error('Error updating health metrics:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+// Disclaimer Management
+export const updateDisclaimerStatus = async (accepted) => {
+  try {
+    const response = await api.put('/users/disclaimer', { accepted });
+    return response.data;
+  } catch (error) {
+    console.error('Error updating disclaimer status:', error.response?.data || error.message);
     throw error;
   }
 };

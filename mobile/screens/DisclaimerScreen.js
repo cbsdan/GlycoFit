@@ -13,15 +13,15 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { globalStyles } from '../styles/globalStyles';
 import { buttonStyles } from '../styles/components/buttonStyles';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialIcons } from '@expo/vector-icons';
+import { updateDisclaimerStatus } from '../services/api';
 
 const { width, height } = Dimensions.get('window');
-const DISCLAIMER_ACCEPTED_KEY = '@disclaimer_accepted';
 
 const DisclaimerScreen = ({ navigation, onComplete }) => {
   const [hasRead, setHasRead] = useState(false);
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const { colors, isDarkMode } = useTheme();
   const { logout } = useAuth();
 
@@ -45,13 +45,18 @@ const DisclaimerScreen = ({ navigation, onComplete }) => {
     }
 
     try {
-      await AsyncStorage.setItem(DISCLAIMER_ACCEPTED_KEY, 'true');
+      setIsLoading(true);
+      // Save acceptance to backend
+      await updateDisclaimerStatus(true);
+      
       if (onComplete) {
         onComplete();
       }
     } catch (error) {
       console.error('Error saving disclaimer acceptance:', error);
       Alert.alert('Error', 'Failed to save your acceptance. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -69,10 +74,20 @@ const DisclaimerScreen = ({ navigation, onComplete }) => {
           text: 'Log Out',
           onPress: async () => {
             try {
+              setIsLoading(true);
+              // Save declined status to backend before logging out
+              try {
+                await updateDisclaimerStatus(false);
+              } catch (apiError) {
+                console.error('Error saving disclaimer decline:', apiError);
+                // Continue with logout even if API call fails
+              }
               await logout();
             } catch (error) {
               console.error('Error logging out:', error);
               Alert.alert('Error', 'Failed to log out. Please try again.');
+            } finally {
+              setIsLoading(false);
             }
           },
           style: 'destructive',
@@ -326,19 +341,22 @@ const DisclaimerScreen = ({ navigation, onComplete }) => {
           style={[
             styles.acceptButton,
             {
-              opacity: hasRead && isScrolledToBottom ? 1 : 0.5,
+              opacity: hasRead && isScrolledToBottom && !isLoading ? 1 : 0.5,
             },
           ]}
           onPress={handleAccept}
-          disabled={!hasRead || !isScrolledToBottom}
+          disabled={!hasRead || !isScrolledToBottom || isLoading}
           activeOpacity={0.7}
         >
-          <Text style={styles.primaryText}>I Accept & Understand</Text>
+          <Text style={styles.primaryText}>
+            {isLoading ? 'Saving...' : 'I Accept & Understand'}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.declineButton}
           onPress={handleDecline}
+          disabled={isLoading}
           activeOpacity={0.7}
         >
           <Text style={styles.declineText}>Log Out</Text>
@@ -349,4 +367,3 @@ const DisclaimerScreen = ({ navigation, onComplete }) => {
 };
 
 export default DisclaimerScreen;
-export { DISCLAIMER_ACCEPTED_KEY };
