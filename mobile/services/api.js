@@ -1323,6 +1323,69 @@ export const getChatbotHistory = async (skip = 0, limit = 20) => {
   }
 };
 
+// ==================== Smoking Intake Management ====================
+
+/**
+ * Save smoking intake record
+ * @param {Object} smokingData - Smoking intake data
+ * @returns {Promise<Object>} Saved smoking record
+ */
+export const saveSmokingIntake = async (smokingData) => {
+  try {
+    const response = await api.post('/smoking-intake', smokingData);
+    return response;
+  } catch (error) {
+    console.error('Error saving smoking intake:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get smoking intake history
+ * @param {number} limit - Number of records to retrieve (optional)
+ * @returns {Promise<Object>} List of smoking intake records
+ */
+export const getSmokingIntakeHistory = async (limit = 50) => {
+  try {
+    const response = await api.get('/smoking-intake/history', {
+      params: { limit },
+    });
+    return response;
+  } catch (error) {
+    console.error('Error fetching smoking history:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get latest smoking intake record
+ * @returns {Promise<Object>} Latest smoking intake record
+ */
+/**
+ * Delete a smoking session
+ * @param {string} sessionId - Session ID to delete
+ * @returns {Promise<Object>} Delete response
+ */
+export const deleteSmokingSession = async (sessionId) => {
+  try {
+    const response = await api.delete(`/smoking-intake/session/${sessionId}`);
+    return response;
+  } catch (error) {
+    console.error('Error deleting smoking session:', error);
+    throw error;
+  }
+};
+
+export const getLatestSmokingIntake = async () => {
+  try {
+    const response = await api.get('/smoking-intake/latest');
+    return response;
+  } catch (error) {
+    console.error('Error fetching latest smoking intake:', error);
+    throw error;
+  }
+};
+
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
 api.saveMeal = saveMeal;
@@ -1378,5 +1441,9 @@ api.getProfile = getProfile;
 api.updateProfile = updateProfile;
 api.sendChatbotMessage = sendChatbotMessage;
 api.getChatbotHistory = getChatbotHistory;
+api.saveSmokingIntake = saveSmokingIntake;
+api.getSmokingIntakeHistory = getSmokingIntakeHistory;
+api.getLatestSmokingIntake = getLatestSmokingIntake;
+api.deleteSmokingSession = deleteSmokingSession;
 
 export default api;

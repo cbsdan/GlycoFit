@@ -16,6 +16,7 @@ import SyncedHealthDataScreen from '../screens/SyncedHealthDataScreen';
 import StepCounterScreen from '../screens/StepCounterScreen';
 import FoodScannerScreen from '../screens/FoodScannerScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import SmokingIntakeScreen from '../screens/SmokingIntakeScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -27,6 +28,7 @@ const MeasureStack = () => {
       <Stack.Screen name="MeasureMain" component={MeasureScreen} />
       <Stack.Screen name="StepCounter" component={StepCounterScreen} />
       <Stack.Screen name="FoodScanner" component={FoodScannerScreen} />
+      <Stack.Screen name="SmokingIntake" component={SmokingIntakeScreen} />
     </Stack.Navigator>
   );
 };

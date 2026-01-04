@@ -30,6 +30,14 @@ const MeasureScreen = ({ navigation }) => {
       color: '#F39C12',
       action: () => navigation.navigate('StepCounter'),
     },
+    {
+      id: 'smoking-intake',
+      title: 'Smoking Intake',
+      subtitle: 'Track your smoking history',
+      icon: 'smoking',
+      color: '#E74C3C',
+      action: () => navigation.navigate('SmokingIntake'),
+    },
   ];
 
   const getIconBackgroundStyle = (color) => ({

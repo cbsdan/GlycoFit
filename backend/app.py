@@ -22,6 +22,7 @@ from routes.health_data_routes import health_data_bp
 from routes.diabetes_assessment_routes import diabetes_assessment_bp
 from routes.chat_routes import chat_bp
 from routes.chatbot_routes import chatbot_bp
+from routes.smoking_intake_routes import smoking_intake_bp
 from controllers.chat_controller import register_socket_events
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
@@ -154,6 +155,7 @@ def create_app():
     app.register_blueprint(diabetes_assessment_bp, url_prefix='/api/v1/diabetes-assessment')
     app.register_blueprint(chat_bp, url_prefix='/api/v1/chat')
     app.register_blueprint(chatbot_bp, url_prefix='/api/v1/chatbot')
+    app.register_blueprint(smoking_intake_bp, url_prefix='/api/v1/smoking-intake')
 
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])
