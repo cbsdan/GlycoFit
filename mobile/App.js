@@ -31,6 +31,7 @@ import TabNavigator from './navigation/TabNavigator';
 import LoadingScreen from './components/LoadingScreen';
 import WelcomeScreen from './screens/WelcomeScreen';
 import DisclaimerScreen from './screens/DisclaimerScreen';
+import AboutScreen from './screens/AboutScreen';
 
 const Stack = createStackNavigator();
 const WELCOME_SHOWN_KEY = '@welcome_shown';
@@ -438,6 +439,35 @@ function AppNavigator() {
               {(props) => (
                 <UniversalScreenWrapper>
                   <ChatBotScreen {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="Disclaimer" 
+              options={{ 
+                headerShown: false,
+                presentation: 'modal'
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <DisclaimerScreen 
+                    {...props}
+                    readOnly={true}
+                  />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="About" 
+              options={{ 
+                headerShown: false,
+                presentation: 'modal'
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <AboutScreen {...props} />
                 </UniversalScreenWrapper>
               )}
             </Stack.Screen>

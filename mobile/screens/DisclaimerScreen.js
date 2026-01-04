@@ -18,12 +18,18 @@ import { updateDisclaimerStatus } from '../services/api';
 
 const { width, height } = Dimensions.get('window');
 
-const DisclaimerScreen = ({ navigation, onComplete }) => {
+const DisclaimerScreen = ({ navigation, onComplete, readOnly = false }) => {
   const [hasRead, setHasRead] = useState(false);
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { colors, isDarkMode } = useTheme();
   const { logout } = useAuth();
+
+  const handleGoBack = () => {
+    if (navigation && navigation.canGoBack()) {
+      navigation.goBack();
+    }
+  };
 
   const handleScroll = (event) => {
     const paddingToBottom = 20;
@@ -105,9 +111,22 @@ const DisclaimerScreen = ({ navigation, onComplete }) => {
       backgroundColor: colors.primary,
       paddingVertical: 20,
       paddingHorizontal: 20,
-      alignItems: 'center',
       flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    backButton: {
+      padding: 4,
+      width: 40,
+    },
+    headerContent: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
       justifyContent: 'center',
+    },
+    headerSpacer: {
+      width: 40,
     },
     headerIcon: {
       marginRight: 10,
@@ -206,13 +225,29 @@ const DisclaimerScreen = ({ navigation, onComplete }) => {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <MaterialIcons
-          name="info"
-          size={24}
-          color="#FFFFFF"
-          style={styles.headerIcon}
-        />
-        <Text style={styles.headerText}>Important Disclaimer</Text>
+        {readOnly && (
+          <TouchableOpacity 
+            onPress={handleGoBack}
+            style={styles.backButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <MaterialIcons
+              name="arrow-back"
+              size={24}
+              color="#FFFFFF"
+            />
+          </TouchableOpacity>
+        )}
+        <View style={styles.headerContent}>
+          <MaterialIcons
+            name="info"
+            size={24}
+            color="#FFFFFF"
+            style={styles.headerIcon}
+          />
+          <Text style={styles.headerText}>Important Disclaimer</Text>
+        </View>
+        {readOnly && <View style={styles.headerSpacer} />}
       </View>
 
       {/* Scrollable Content */}
@@ -320,48 +355,50 @@ const DisclaimerScreen = ({ navigation, onComplete }) => {
         </View>
       </ScrollView>
 
-      {/* Checkbox and Buttons */}
-      <View style={styles.buttonContainer}>
-        {/* Confirmation Checkbox */}
-        <View style={styles.checkboxContainer}>
-          <Switch
-            value={hasRead}
-            onValueChange={setHasRead}
-            trackColor={{ false: colors.border, true: colors.primary + '80' }}
-            thumbColor={hasRead ? colors.primary : colors.surface}
-            ios_backgroundColor={colors.border}
-          />
-          <Text style={styles.checkboxText}>
-            I have read and understand this disclaimer
-          </Text>
+      {/* Checkbox and Buttons - Only show when not in read-only mode */}
+      {!readOnly && (
+        <View style={styles.buttonContainer}>
+          {/* Confirmation Checkbox */}
+          <View style={styles.checkboxContainer}>
+            <Switch
+              value={hasRead}
+              onValueChange={setHasRead}
+              trackColor={{ false: colors.border, true: colors.primary + '80' }}
+              thumbColor={hasRead ? colors.primary : colors.surface}
+              ios_backgroundColor={colors.border}
+            />
+            <Text style={styles.checkboxText}>
+              I have read and understand this disclaimer
+            </Text>
+          </View>
+
+          {/* Buttons */}
+          <TouchableOpacity
+            style={[
+              styles.acceptButton,
+              {
+                opacity: hasRead && isScrolledToBottom && !isLoading ? 1 : 0.5,
+              },
+            ]}
+            onPress={handleAccept}
+            disabled={!hasRead || !isScrolledToBottom || isLoading}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.primaryText}>
+              {isLoading ? 'Saving...' : 'I Accept & Understand'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.declineButton}
+            onPress={handleDecline}
+            disabled={isLoading}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.declineText}>Log Out</Text>
+          </TouchableOpacity>
         </View>
-
-        {/* Buttons */}
-        <TouchableOpacity
-          style={[
-            styles.acceptButton,
-            {
-              opacity: hasRead && isScrolledToBottom && !isLoading ? 1 : 0.5,
-            },
-          ]}
-          onPress={handleAccept}
-          disabled={!hasRead || !isScrolledToBottom || isLoading}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.primaryText}>
-            {isLoading ? 'Saving...' : 'I Accept & Understand'}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.declineButton}
-          onPress={handleDecline}
-          disabled={isLoading}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.declineText}>Log Out</Text>
-        </TouchableOpacity>
-      </View>
+      )}
     </View>
   );
 };
