@@ -38,6 +38,14 @@ const MeasureScreen = ({ navigation }) => {
       color: '#E74C3C',
       action: () => navigation.navigate('SmokingIntake'),
     },
+    {
+      id: 'alcohol-intake',
+      title: 'Alcohol Intake',
+      subtitle: 'Track alcohol consumption patterns',
+      icon: 'glass-wine',
+      color: '#9B59B6',
+      action: () => navigation.navigate('AlcoholIntake'),
+    },
   ];
 
   const getIconBackgroundStyle = (color) => ({

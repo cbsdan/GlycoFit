@@ -1386,6 +1386,79 @@ export const getLatestSmokingIntake = async () => {
   }
 };
 
+// ==================== Alcohol Intake Management ====================
+
+/**
+ * Save or update alcohol intake record
+ * @param {Object} alcoholData - Alcohol intake data
+ * @returns {Promise<Object>} Saved alcohol intake record with risk assessment
+ */
+export const saveAlcoholIntake = async (alcoholData) => {
+  try {
+    const response = await api.post('/alcohol-intake/', alcoholData);
+    return response.data;
+  } catch (error) {
+    console.error('Error saving alcohol intake:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get current alcohol intake record
+ * @returns {Promise<Object>} Current alcohol intake record
+ */
+export const getAlcoholIntake = async () => {
+  try {
+    const response = await api.get('/alcohol-intake/');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching alcohol intake:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get alcohol intake history
+ * @returns {Promise<Object>} Current and historical alcohol intake data
+ */
+export const getAlcoholIntakeHistory = async () => {
+  try {
+    const response = await api.get('/alcohol-intake/history');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching alcohol intake history:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get comprehensive risk assessment based on alcohol intake
+ * @returns {Promise<Object>} Risk assessment with recommendations and trend analysis
+ */
+export const getAlcoholRiskAssessment = async () => {
+  try {
+    const response = await api.get('/alcohol-intake/risk-assessment');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching alcohol risk assessment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete alcohol intake record
+ * @returns {Promise<Object>} Delete confirmation
+ */
+export const deleteAlcoholIntake = async () => {
+  try {
+    const response = await api.delete('/alcohol-intake/');
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting alcohol intake:', error);
+    throw error;
+  }
+};
+
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
 api.saveMeal = saveMeal;

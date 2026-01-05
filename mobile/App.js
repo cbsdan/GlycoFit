@@ -27,6 +27,7 @@ import PhysicianCommunicationScreen from './screens/PhysicianCommunicationScreen
 import PhysicianMessagesScreen from './screens/PhysicianMessagesScreen';
 import ChatBotScreen from './screens/ChatBotScreen';
 import HealthMetricsSetupScreen from './screens/HealthMetricsSetupScreen';
+import AlcoholIntakeScreen from './screens/AlcoholIntakeScreen';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingScreen from './components/LoadingScreen';
 import WelcomeScreen from './screens/WelcomeScreen';
@@ -468,6 +469,18 @@ function AppNavigator() {
               {(props) => (
                 <UniversalScreenWrapper>
                   <AboutScreen {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="AlcoholIntake" 
+              options={{ 
+                headerShown: false
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <AlcoholIntakeScreen {...props} />
                 </UniversalScreenWrapper>
               )}
             </Stack.Screen>
