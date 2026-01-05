@@ -78,8 +78,29 @@ api.interceptors.response.use(
 );
 
 const storeUserData = async (authToken, userData) => {
+  const loginTimestamp = Date.now();
   await SecureStore.setItemAsync('auth_token', authToken);
+  await SecureStore.setItemAsync('login_timestamp', loginTimestamp.toString());
   await AsyncStorage.setItem('user', JSON.stringify(userData));
+};
+
+// Check if login has expired (3 months = 90 days)
+const isLoginExpired = async () => {
+  try {
+    const loginTimestamp = await SecureStore.getItemAsync('login_timestamp');
+    if (!loginTimestamp) {
+      return true; // No timestamp means expired/not logged in
+    }
+    
+    const threeMonthsInMs = 90 * 24 * 60 * 60 * 1000; // 90 days in milliseconds
+    const currentTime = Date.now();
+    const loginTime = parseInt(loginTimestamp, 10);
+    
+    return (currentTime - loginTime) > threeMonthsInMs;
+  } catch (error) {
+    console.error('Error checking login expiration:', error);
+    return true; // On error, treat as expired for security
+  }
 };
 
 export const authService = {
@@ -144,8 +165,18 @@ export const authService = {
 
   logout: async () => {
     try {
+      // Delete FCM token from backend before signing out
+      try {
+        await api.delete('/physician/fcm-token');
+        console.log('FCM token deleted from backend');
+      } catch (fcmError) {
+        console.log('Warning: Failed to delete FCM token:', fcmError);
+        // Continue with logout even if FCM deletion fails
+      }
+      
       await auth.signOut();
       await SecureStore.deleteItemAsync('auth_token');
+      await SecureStore.deleteItemAsync('login_timestamp');
       await AsyncStorage.removeItem('user');
       return { success: true };
     } catch (error) {
@@ -275,6 +306,30 @@ export const physicianAPI = {
       return response.data;
     } catch (error) {
       console.error('Upload profile picture error:', error);
+      throw error;
+    }
+  },
+
+  saveFCMToken: async (fcmToken) => {
+    try {
+      const response = await api.post('/physician/fcm-token', { fcmToken });
+      console.log('FCM token saved to backend:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error saving FCM token:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  deleteFCMToken: async (fcmToken) => {
+    try {
+      const response = await api.delete('/physician/fcm-token', {
+        data: { fcmToken }
+      });
+      console.log('FCM token deleted from backend:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting FCM token:', error.response?.data || error.message);
       throw error;
     }
   },
@@ -551,5 +606,202 @@ export const appointmentAPI = {
     }
   },
 };
+
+// ========== CHAT SERVICE ==========
+export const chatService = {
+  // Get or create a conversation
+  getOrCreateConversation: async (patientId, physicianId, relationshipId) => {
+    try {
+      const response = await api.post('/chat/conversation', {
+        patient_id: patientId,
+        physician_id: physicianId,
+        relationship_id: relationshipId
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error creating/getting conversation:', error);
+      throw error;
+    }
+  },
+
+  // Get all conversations for the physician
+  getConversations: async () => {
+    try {
+      const response = await api.get('/chat/conversations', {
+        params: { role: 'physician' }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error getting conversations:', error);
+      throw error;
+    }
+  },
+
+  // Get messages for a conversation
+  getMessages: async (conversationId, limit = 50, skip = 0) => {
+    try {
+      const response = await api.get(`/chat/conversation/${conversationId}/messages`, {
+        params: { role: 'physician', limit, skip }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error getting messages:', error);
+      throw error;
+    }
+  },
+
+  // Send a message (HTTP fallback)
+  sendMessage: async (conversationId, content, messageType = 'text') => {
+    try {
+      const response = await api.post('/chat/message', {
+        conversation_id: conversationId,
+        content,
+        sender_role: 'physician',
+        message_type: messageType
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error sending message:', error);
+      throw error;
+    }
+  },
+
+  // Mark messages as read
+  markMessagesAsRead: async (conversationId) => {
+    try {
+      const response = await api.put(`/chat/conversation/${conversationId}/read`, null, {
+        params: { role: 'physician' }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error marking messages as read:', error);
+      throw error;
+    }
+  },
+
+  // Send image message
+  sendImageMessage: async (conversationId, imageUri) => {
+    try {
+      const formData = new FormData();
+      formData.append('conversation_id', conversationId);
+      formData.append('sender_role', 'physician');
+      formData.append('message_type', 'image');
+      
+      // Get filename from URI
+      const filename = imageUri.split('/').pop();
+      
+      formData.append('image', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: filename || 'image.jpg',
+      });
+
+      const response = await api.post('/chat/message/image', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error sending image message:', error);
+      throw error;
+    }
+  },
+};
+
+// export const availabilityService = {
+//   create: async (data) => {
+//     try {
+//       const response = await api.post('/physician/availability-schedule', data);
+//       return response.data;
+//     } catch (error) {
+//       console.error('Create availability error:', error);
+//       throw error;
+//     }
+//   },
+
+//   getAll: async (params) => {
+//     try {
+//       const response = await api.get('/physician/availability-schedule', { params });
+//       return response.data;
+//     } catch (error) {
+//       console.error('Get availability error:', error);
+//       throw error;
+//     }
+//   },
+
+//   update: async (id, data) => {
+//     try {
+//       const response = await api.put(`/physician/availability-schedule/${id}`, data);
+//       return response.data;
+//     } catch (error) {
+//       console.error('Update availability error:', error);
+//       throw error;
+//     }
+//   },
+
+//   delete: async (id) => {
+//     try {
+//       const response = await api.delete(`/physician/availability-schedule/${id}`);
+//       return response.data;
+//     } catch (error) {
+//       console.error('Delete availability error:', error);
+//       throw error;
+//     }
+//   },
+// ========== FCM TOKEN MANAGEMENT ==========
+
+const saveFCMToken = async (fcmToken) => {
+  try {
+    const response = await api.post('/physician/fcm-token', { fcmToken });
+    console.log('FCM token saved to backend:', response.data);
+    
+    // Also store locally for logout purposes
+    try {
+      await SecureStore.setItemAsync('fcm_token', fcmToken);
+    } catch (storageError) {
+      console.warn('Failed to store FCM token locally:', storageError);
+      // Don't throw - backend save is successful
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error saving FCM token:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+const deleteFCMToken = async (fcmToken = null) => {
+  try {
+    // If no token provided, retrieve from secure storage
+    let tokenToDelete = fcmToken;
+    if (!tokenToDelete) {
+      try {
+        tokenToDelete = await SecureStore.getItemAsync('fcm_token');
+      } catch (error) {
+        console.warn('Failed to retrieve FCM token from storage:', error);
+      }
+    }
+
+    const response = await api.post('/physician/fcm-token/delete', { fcmToken: tokenToDelete });
+    console.log('FCM token deleted from backend:', response.data);
+    
+    // Clear from local storage
+    try {
+      await SecureStore.deleteItemAsync('fcm_token');
+    } catch (storageError) {
+      console.warn('Failed to delete FCM token from storage:', storageError);
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting FCM token:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+// Add FCM functions to api object
+api.saveFCMToken = saveFCMToken;
+api.deleteFCMToken = deleteFCMToken;
 
 export default api;

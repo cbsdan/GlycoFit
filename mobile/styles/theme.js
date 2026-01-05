@@ -29,6 +29,7 @@ export const lightTheme = {
   text: "#000000",
   primary: COMMON_COLORS.primary,
   secondary: "#777777",
+  textSecondary: "#777777", // Alias for secondary
   accent: "#ff6600",
   surface: "#f5f5f5",
   card: "#ffffff",
@@ -78,6 +79,7 @@ export const darkTheme = {
   text: "#ffffff",
   primary: "#0259b0", // Lighter blue for dark mode
   secondary: "#a0a0a0",
+  textSecondary: "#a0a0a0", // Alias for secondary
   accent: "#ff9900",
   surface: "#1e1e1e",
   card: "#2c2c2c",

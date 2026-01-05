@@ -5,7 +5,7 @@ const environments = {
     deviceLocal: "http://192.168.1.19:4000/api/v1",
    
   },
-  production: "https://glycofit.com/api",
+  production: "https://glycofit.onrender.com/api/v1",
 };
 
 const getBaseUrl = () => {

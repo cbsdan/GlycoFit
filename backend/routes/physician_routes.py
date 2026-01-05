@@ -3,7 +3,9 @@ from controllers.physician_controller import (
     get_physician_profile,
     update_physician_profile,
     update_availability,
-    get_physician_stats
+    get_physician_stats,
+    save_physician_fcm_token,
+    delete_physician_fcm_token
 )
 from controllers.patient_management_controller import (
     get_patient_requests,
@@ -37,6 +39,12 @@ from controllers.appointment_controller import (
     cancel_appointment as cancel_appointment_controller,
     reschedule_appointment,
     complete_appointment
+)
+from controllers.availability_controller import (
+    create_availability,
+    get_availability,
+    update_availability as update_availability_schedule,
+    delete_availability
 )
 from middleware.firebase_auth import firebase_auth_required
 from flask import g
@@ -215,3 +223,39 @@ def appointment_reschedule(appointment_id):
 def appointment_complete_route(appointment_id):
     """Complete appointment"""
     return complete_appointment(appointment_id)
+
+# ============================================
+# AVAILABILITY SCHEDULE ROUTES
+# ============================================
+@physician_bp.route('/availability-schedule', methods=['POST'])
+def availability_schedule_create():
+    """Create availability schedule"""
+    return create_availability()
+
+@physician_bp.route('/availability-schedule', methods=['GET'])
+def availability_schedule_get():
+    """Get availability schedules"""
+    return get_availability()
+
+@physician_bp.route('/availability-schedule/<availability_id>', methods=['PUT'])
+def availability_schedule_update(availability_id):
+    """Update availability schedule"""
+    return update_availability_schedule(availability_id)
+
+@physician_bp.route('/availability-schedule/<availability_id>', methods=['DELETE'])
+def availability_schedule_delete(availability_id):
+    """Delete availability schedule"""
+    return delete_availability(availability_id)
+
+# ============================================
+# FCM TOKEN MANAGEMENT ROUTES
+# ============================================
+@physician_bp.route('/fcm-token', methods=['POST'])
+def save_fcm_token():
+    """Save FCM token for push notifications"""
+    return save_physician_fcm_token()
+
+@physician_bp.route('/fcm-token', methods=['DELETE'])
+def delete_fcm_token():
+    """Delete FCM token (e.g., on logout)"""
+    return delete_physician_fcm_token()

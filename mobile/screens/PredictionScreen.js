@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,14 @@ import {
   StyleSheet,
   SafeAreaView,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
+import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { getMyAssessment } from '../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -18,114 +22,99 @@ const PredictionScreen = ({ navigation }) => {
   const { colors } = useTheme();
   const toast = useToast();
   const [selectedPeriod, setSelectedPeriod] = useState('week');
+  const [assessment, setAssessment] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadAssessment();
+    }, [])
+  );
+
+  const loadAssessment = async () => {
+    try {
+      setLoading(true);
+      const result = await getMyAssessment();
+      if (result && result.assessment) {
+        setAssessment(result.assessment);
+      } else {
+        setAssessment(null);
+      }
+    } catch (error) {
+      console.log('Error loading assessment:', error);
+      setAssessment(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getRiskConfig = (riskLevel) => {
+    switch (riskLevel) {
+      case 'low':
+        return {
+          title: 'Low Risk',
+          color: '#27AE60',
+          icon: 'check-circle',
+          message: 'Your diabetes risk is currently low',
+        };
+      case 'moderate':
+        return {
+          title: 'Moderate Risk',
+          color: '#F39C12',
+          icon: 'alert-circle',
+          message: 'You have a moderate risk of diabetes',
+        };
+      case 'high':
+        return {
+          title: 'High Risk',
+          color: '#E74C3C',
+          icon: 'alert-octagon',
+          message: 'Your diabetes risk is high',
+        };
+      default:
+        return {
+          title: 'Unknown',
+          color: colors.secondary,
+          icon: 'help-circle',
+          message: 'Risk level unknown',
+        };
+    }
+  };
 
   const predictionCards = [
     {
-      id: 'glucose-trend',
-      title: 'Glucose Trend',
-      subtitle: 'Predicted blood sugar levels',
-      icon: 'trending-up',
+      id: 'diabetes-assessment',
+      title: 'Diabetes Risk Assessment',
+      subtitle: 'Evaluate your diabetes risk factors',
+      icon: 'clipboard-text',
       color: '#E74C3C',
-      status: 'stable',
-      prediction: 'Normal range expected',
-      confidence: 85,
-    },
-    {
-      id: 'risk-assessment',
-      title: 'Risk Assessment',
-      subtitle: 'Diabetes complication risk',
-      icon: 'shield-check',
-      color: '#27AE60',
-      status: 'low',
-      prediction: 'Low risk detected',
-      confidence: 92,
-    },
-    {
-      id: 'lifestyle-impact',
-      title: 'Lifestyle Impact',
-      subtitle: 'Diet and exercise effects',
-      icon: 'heart-pulse',
-      color: '#3498DB',
-      status: 'positive',
-      prediction: 'Positive trend',
-      confidence: 78,
-    },
-    {
-      id: 'medication-timing',
-      title: 'Medication Timing',
-      subtitle: 'Optimal dosage schedule',
-      icon: 'pill',
-      color: '#9B59B6',
-      status: 'optimized',
-      prediction: 'Schedule optimized',
-      confidence: 88,
+      prediction: 'Take a quick assessment to understand your risk level',
     },
   ];
 
-  const insights = [
-    {
-      id: 1,
-      title: 'Morning glucose levels',
-      description: 'Your morning readings have been consistently within target range',
-      type: 'positive',
-      time: '2 hours ago',
-    },
-    {
-      id: 2,
-      title: 'Exercise correlation',
-      description: 'Evening workouts show 15% better glucose control next day',
-      type: 'insight',
-      time: '5 hours ago',
-    },
-    {
-      id: 3,
-      title: 'Sleep quality impact',
-      description: 'Poor sleep nights correlate with higher morning glucose',
-      type: 'warning',
-      time: '1 day ago',
-    },
-  ];
 
-  const timePeriods = [
-    { key: 'day', label: 'Today' },
-    { key: 'week', label: 'This Week' },
-    { key: 'month', label: 'This Month' },
-    { key: 'year', label: 'This Year' },
-  ];
 
-  const handlePredictionTap = (predictionId) => {
-    toast.info('Detailed prediction view coming soon!');
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'stable':
-      case 'low':
-      case 'optimized':
-        return '#27AE60';
-      case 'positive':
-        return '#3498DB';
-      case 'warning':
-        return '#F39C12';
-      case 'high':
-        return '#E74C3C';
-      default:
-        return colors.secondary;
+  const handlePredictionTap = async (predictionId) => {
+    if (predictionId === 'diabetes-assessment') {
+      if (assessment) {
+        // Navigate to results if assessment exists
+        navigation.navigate('AssessmentResults', {
+          prediction: assessment.prediction,
+          isUpdate: true
+        });
+      } else {
+        // Clear the skip flag so assessment can be shown again if needed
+        try {
+          await AsyncStorage.removeItem('@assessment_skipped');
+        } catch (error) {
+          console.log('Error clearing skip flag:', error);
+        }
+        navigation.navigate('DiabetesRiskAssessment');
+      }
     }
   };
 
-  const getInsightIcon = (type) => {
-    switch (type) {
-      case 'positive':
-        return { name: 'trending-up', color: '#27AE60' };
-      case 'warning':
-        return { name: 'alert', color: '#F39C12' };
-      case 'insight':
-        return { name: 'lightbulb-outline', color: '#3498DB' };
-      default:
-        return { name: 'information-outline', color: colors.secondary };
-    }
-  };
+
 
   const styles = StyleSheet.create({
     container: {
@@ -140,7 +129,7 @@ const PredictionScreen = ({ navigation }) => {
       marginBottom: 24,
     },
     title: {
-      fontSize: 24,
+      fontSize: 22,
       fontWeight: '700',
       color: colors.text,
       marginBottom: 8,
@@ -150,31 +139,7 @@ const PredictionScreen = ({ navigation }) => {
       color: colors.secondary,
       lineHeight: 22,
     },
-    periodSelector: {
-      flexDirection: 'row',
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      padding: 4,
-      marginBottom: 24,
-    },
-    periodButton: {
-      flex: 1,
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      borderRadius: 8,
-      alignItems: 'center',
-    },
-    periodButtonActive: {
-      backgroundColor: colors.primary,
-    },
-    periodText: {
-      fontSize: 14,
-      fontWeight: '500',
-      color: colors.secondary,
-    },
-    periodTextActive: {
-      color: '#FFFFFF',
-    },
+
     predictionsGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -225,44 +190,32 @@ const PredictionScreen = ({ navigation }) => {
       color: colors.secondary,
     },
     predictionContent: {
-      marginBottom: 12,
-    },
-    predictionText: {
-      fontSize: 13,
-      color: colors.text,
-      marginBottom: 8,
-    },
-    confidenceContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    statusBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 12,
-      alignSelf: 'flex-start',
-    },
-    statusText: {
-      fontSize: 10,
-      fontWeight: '600',
-      color: '#FFFFFF',
-      textTransform: 'uppercase',
-    },
-    confidenceText: {
-      fontSize: 12,
-      color: colors.secondary,
-    },
-    insightsSection: {
-      marginTop: 8,
-    },
-    sectionTitle: {
-      fontSize: 20,
-      fontWeight: '600',
-      color: colors.text,
       marginBottom: 16,
     },
-    insightCard: {
+    predictionText: {
+      fontSize: 14,
+      color: colors.secondary,
+      lineHeight: 20,
+    },
+    actionButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: 10,
+      gap: 8,
+    },
+    actionButtonText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: '#FFFFFF',
+    },
+    infoSection: {
+      marginTop: 8,
+    },
+    infoCard: {
       backgroundColor: colors.card,
       borderRadius: 12,
       padding: 16,
@@ -271,40 +224,123 @@ const PredictionScreen = ({ navigation }) => {
       borderColor: colors.border,
       flexDirection: 'row',
       alignItems: 'flex-start',
+      gap: 12,
     },
-    insightIconContainer: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: 12,
-      marginTop: 2,
-    },
-    insightContent: {
+    infoContent: {
       flex: 1,
     },
-    insightHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      marginBottom: 4,
-    },
-    insightTitle: {
+    infoTitle: {
       fontSize: 16,
       fontWeight: '600',
       color: colors.text,
-      flex: 1,
-      marginRight: 8,
+      marginBottom: 6,
     },
-    insightTime: {
-      fontSize: 12,
-      color: colors.secondary,
-    },
-    insightDescription: {
+    infoDescription: {
       fontSize: 14,
       color: colors.secondary,
       lineHeight: 20,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: 60,
+    },
+    resultSection: {
+      marginBottom: 24,
+    },
+    resultCard: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      padding: 20,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      elevation: 3,
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 3,
+      },
+      shadowOpacity: 0.15,
+      shadowRadius: 4.65,
+    },
+    resultHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    resultIconContainer: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 16,
+    },
+    resultInfo: {
+      flex: 1,
+    },
+    resultLabel: {
+      fontSize: 13,
+      color: colors.secondary,
+      marginBottom: 4,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    resultTitle: {
+      fontSize: 22,
+      fontWeight: '700',
+    },
+    resultMessage: {
+      fontSize: 15,
+      lineHeight: 22,
+      marginBottom: 20,
+    },
+    resultStats: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      paddingVertical: 16,
+      borderTopWidth: 1,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+      marginBottom: 16,
+    },
+    resultStat: {
+      alignItems: 'center',
+    },
+    resultStatLabel: {
+      fontSize: 12,
+      marginBottom: 6,
+    },
+    resultStatValue: {
+      fontSize: 20,
+      fontWeight: '700',
+    },
+    resultFooter: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    resultFooterText: {
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    retakeButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.card,
+      paddingVertical: 14,
+      paddingHorizontal: 20,
+      borderRadius: 12,
+      borderWidth: 1,
+      gap: 8,
+    },
+    retakeButtonText: {
+      fontSize: 15,
+      fontWeight: '600',
     },
   });
 
@@ -312,93 +348,141 @@ const PredictionScreen = ({ navigation }) => {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.header}>
-          <Text style={styles.title}>Health Predictions</Text>
+          <Text style={styles.title}>Diabetes Risk Assessment</Text>
           <Text style={styles.subtitle}>
-            AI-powered insights based on your health data and patterns.
+            Understand your diabetes risk and get personalized recommendations.
           </Text>
         </View>
 
-        <View style={styles.periodSelector}>
-          {timePeriods.map((period) => (
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : assessment ? (
+          <View style={styles.resultSection}>
             <TouchableOpacity
-              key={period.key}
-              style={[
-                styles.periodButton,
-                selectedPeriod === period.key && styles.periodButtonActive,
-              ]}
-              onPress={() => setSelectedPeriod(period.key)}
-            >
-              <Text
-                style={[
-                  styles.periodText,
-                  selectedPeriod === period.key && styles.periodTextActive,
-                ]}
-              >
-                {period.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <View style={styles.predictionsGrid}>
-          {predictionCards.map((prediction) => (
-            <TouchableOpacity
-              key={prediction.id}
-              style={styles.predictionCard}
-              onPress={() => handlePredictionTap(prediction.id)}
+              style={styles.resultCard}
+              onPress={() => handlePredictionTap('diabetes-assessment')}
               activeOpacity={0.7}
             >
-              <View style={styles.predictionHeader}>
-                <View style={[styles.predictionIcon, { backgroundColor: `${prediction.color}15` }]}>
-                  <Icon name={prediction.icon} size={20} color={prediction.color} />
+              <View style={styles.resultHeader}>
+                <View style={[styles.resultIconContainer, { backgroundColor: `${getRiskConfig(assessment.prediction.risk_level).color}15` }]}>
+                  <Icon name={getRiskConfig(assessment.prediction.risk_level).icon} size={32} color={getRiskConfig(assessment.prediction.risk_level).color} />
                 </View>
-                <View style={styles.predictionInfo}>
-                  <Text style={styles.predictionTitle}>{prediction.title}</Text>
-                  <Text style={styles.predictionSubtitle}>{prediction.subtitle}</Text>
+                <View style={styles.resultInfo}>
+                  <Text style={styles.resultLabel}>Your Assessment Result</Text>
+                  <Text style={[styles.resultTitle, { color: getRiskConfig(assessment.prediction.risk_level).color }]}>
+                    {getRiskConfig(assessment.prediction.risk_level).title}
+                  </Text>
                 </View>
               </View>
               
-              <View style={styles.predictionContent}>
-                <Text style={styles.predictionText}>{prediction.prediction}</Text>
-              </View>
-
-              <View style={styles.confidenceContainer}>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(prediction.status) }]}>
-                  <Text style={styles.statusText}>{prediction.status}</Text>
+              <Text style={[styles.resultMessage, { color: colors.secondary }]}>
+                {getRiskConfig(assessment.prediction.risk_level).message}
+              </Text>
+              
+              <View style={styles.resultStats}>
+                <View style={styles.resultStat}>
+                  <Text style={[styles.resultStatLabel, { color: colors.secondary }]}>Risk Percentage</Text>
+                  <Text style={[styles.resultStatValue, { color: colors.text }]}>
+                    {(assessment.prediction.percentage).toFixed(2)}%
+                  </Text>
                 </View>
-                <Text style={styles.confidenceText}>{prediction.confidence}% confidence</Text>
+                <View style={styles.resultStat}>
+                  <Text style={[styles.resultStatLabel, { color: colors.secondary }]}>Confidence</Text>
+                  <Text style={[styles.resultStatValue, { color: colors.text }]}>
+                    {(assessment.prediction.confidence).toFixed(2)}%
+                  </Text>
+                </View>
+              </View>
+              
+              <View style={styles.resultFooter}>
+                <Text style={[styles.resultFooterText, { color: colors.primary }]}>View Full Report</Text>
+                <Icon name="arrow-right" size={20} color={colors.primary} />
               </View>
             </TouchableOpacity>
-          ))}
-        </View>
-
-        <View style={styles.insightsSection}>
-          <Text style={styles.sectionTitle}>Recent Insights</Text>
-          
-          {insights.map((insight) => {
-            const insightIcon = getInsightIcon(insight.type);
-            return (
-              <TouchableOpacity
-                key={insight.id}
-                style={styles.insightCard}
-                onPress={() => toast.info('Detailed insight coming soon!')}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.insightIconContainer, { backgroundColor: `${insightIcon.color}15` }]}>
-                  <Icon name={insightIcon.name} size={16} color={insightIcon.color} />
-                </View>
-                
-                <View style={styles.insightContent}>
-                  <View style={styles.insightHeader}>
-                    <Text style={styles.insightTitle}>{insight.title}</Text>
-                    <Text style={styles.insightTime}>{insight.time}</Text>
+            
+            <TouchableOpacity
+              style={[styles.retakeButton, { borderColor: colors.border }]}
+              onPress={async () => {
+                try {
+                  await AsyncStorage.removeItem('@assessment_skipped');
+                } catch (error) {
+                  console.log('Error clearing skip flag:', error);
+                }
+                navigation.navigate('DiabetesRiskAssessment');
+              }}
+              activeOpacity={0.7}
+            >
+              <Icon name="refresh" size={20} color={colors.text} />
+              <Text style={[styles.retakeButtonText, { color: colors.text }]}>Retake Assessment</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <View style={styles.predictionsGrid}>
+              {predictionCards.map((prediction) => (
+                <TouchableOpacity
+                  key={prediction.id}
+                  style={styles.predictionCard}
+                  onPress={() => handlePredictionTap(prediction.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.predictionHeader}>
+                    <View style={[styles.predictionIcon, { backgroundColor: `${prediction.color}15` }]}>
+                      <Icon name={prediction.icon} size={20} color={prediction.color} />
+                    </View>
+                    <View style={styles.predictionInfo}>
+                      <Text style={styles.predictionTitle}>{prediction.title}</Text>
+                      <Text style={styles.predictionSubtitle}>{prediction.subtitle}</Text>
+                    </View>
                   </View>
-                  <Text style={styles.insightDescription}>{insight.description}</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+                  
+                  <View style={styles.predictionContent}>
+                    <Text style={styles.predictionText}>{prediction.prediction}</Text>
+                  </View>
+
+                  <View style={styles.actionButton}>
+                    <Text style={styles.actionButtonText}>Start Assessment</Text>
+                    <Icon name="arrow-right" size={20} color="#FFFFFF" />
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.infoSection}>
+          <View style={styles.infoCard}>
+            <Icon name="information" size={24} color={colors.primary} />
+            <View style={styles.infoContent}>
+              <Text style={styles.infoTitle}>Why Take This Assessment?</Text>
+              <Text style={styles.infoDescription}>
+                This comprehensive assessment evaluates multiple risk factors including age, family history, lifestyle habits, and health metrics to provide you with personalized insights about your diabetes risk.
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.infoCard}>
+            <Icon name="clock-outline" size={24} color={colors.primary} />
+            <View style={styles.infoContent}>
+              <Text style={styles.infoTitle}>Takes 5-10 Minutes</Text>
+              <Text style={styles.infoDescription}>
+                The assessment includes questions about your health history, daily activities, and lifestyle choices to give you the most accurate risk evaluation.
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.infoCard}>
+            <Icon name="shield-check" size={24} color={colors.primary} />
+            <View style={styles.infoContent}>
+              <Text style={styles.infoTitle}>Confidential & Secure</Text>
+              <Text style={styles.infoDescription}>
+                Your health information is kept private and secure. Results are only visible to you and can be shared with your healthcare provider if you choose.
+              </Text>
+            </View>
+          </View>
+            </View>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

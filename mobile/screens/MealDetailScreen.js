@@ -27,6 +27,62 @@ const MealDetailScreen = ({ route, navigation }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedMealName, setEditedMealName] = useState(meal.meal_name);
   const [editedNotes, setEditedNotes] = useState(meal.notes || '');
+  const [editedFoodType, setEditedFoodType] = useState(meal.food_type || 'unlabeled');
+  const [showFoodTypeModal, setShowFoodTypeModal] = useState(false);
+  const [imageLayout, setImageLayout] = useState({ width: 0, height: 0 });
+  const [baseNutrients, setBaseNutrients] = useState(meal.nutrients || null);
+  const [portionMultiplier, setPortionMultiplier] = useState(1);
+  const [editableNutrients, setEditableNutrients] = useState(meal.nutrients || {});
+  const [originalServingSize, setOriginalServingSize] = useState(null);
+
+  // Valid food types from backend model
+  const foodTypes = [
+    { label: 'Unlabeled', value: 'unlabeled' },
+    { label: 'Breakfast', value: 'breakfast' },
+    { label: 'Lunch', value: 'lunch' },
+    { label: 'Dinner', value: 'dinner' },
+    { label: 'Snacks', value: 'snacks' },
+    { label: 'Drinks', value: 'drinks' },
+    { label: 'Dessert', value: 'dessert' },
+    { label: 'Other', value: 'other' },
+  ];
+
+  // Merge duplicate recipes (same label, different boxes)
+  const mergeRecipes = (recipesList) => {
+    if (!recipesList || !Array.isArray(recipesList)) return [];
+    const merged = {};
+    recipesList.forEach(recipe => {
+      const label = recipe.label;
+      if (!merged[label]) {
+        merged[label] = {
+          label: label,
+          boxes: [recipe.box_2d]
+        };
+      } else {
+        merged[label].boxes.push(recipe.box_2d);
+      }
+    });
+    return Object.values(merged);
+  };
+
+  // Get merged recipes
+  const getMergedRecipes = () => {
+    return mergeRecipes(meal.recipes || []);
+  };
+
+  // Generate consistent color for each ingredient
+  const getIngredientColor = (label) => {
+    const colors = [
+      '#27AE60', '#3498DB', '#E74C3C', '#F39C12', '#9B59B6',
+      '#1ABC9C', '#E67E22', '#34495E', '#16A085', '#2980B9',
+      '#8E44AD', '#2C3E50', '#D35400', '#C0392B'
+    ];
+    let hash = 0;
+    for (let i = 0; i < label.length; i++) {
+      hash = label.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
 
   // Food type info
   const getFoodTypeInfo = (foodType) => {
@@ -105,18 +161,31 @@ const MealDetailScreen = ({ route, navigation }) => {
 
     setIsLoading(true);
     try {
+      // Calculate updated serving size based on original serving size
+      let updatedServingSize = originalServingSize || meal.serving_size;
+      if (portionMultiplier !== 1 && updatedServingSize) {
+        updatedServingSize = `${portionMultiplier.toFixed(2)}× (${originalServingSize || meal.serving_size})`;
+      }
+
       const response = await api.updateMeal(
         meal.id,
         editedMealName.trim(),
-        editedNotes.trim()
+        editedNotes.trim(),
+        editedFoodType,
+        editableNutrients,
+        updatedServingSize
       );
 
       if (response.success) {
         setMeal(prev => ({
           ...prev,
           meal_name: editedMealName.trim(),
-          notes: editedNotes.trim()
+          notes: editedNotes.trim(),
+          food_type: editedFoodType,
+          nutrients: editableNutrients,
+          serving_size: updatedServingSize
         }));
+        setBaseNutrients(editableNutrients);
         setIsEditing(false);
         toast.success('Meal updated successfully');
       } else {
@@ -166,7 +235,49 @@ const MealDetailScreen = ({ route, navigation }) => {
   const handleCancelEdit = () => {
     setEditedMealName(meal.meal_name);
     setEditedNotes(meal.notes || '');
+    setEditedFoodType(meal.food_type || 'unlabeled');
+    setEditableNutrients(meal.nutrients || {});
+    setPortionMultiplier(1);
     setIsEditing(false);
+  };
+
+  // Initialize base nutrients when meal changes
+  React.useEffect(() => {
+    if (meal.nutrients) {
+      setBaseNutrients(meal.nutrients);
+      setEditableNutrients(meal.nutrients);
+      setPortionMultiplier(1);
+    }
+    
+    // Extract original serving size (remove any existing multiplier)
+    if (meal.serving_size) {
+      // Check if serving_size has the pattern "X.XX× (original)"
+      const match = meal.serving_size.match(/^[\d.]+×\s*\((.+)\)$/);
+      if (match) {
+        // Extract the original from inside parentheses
+        setOriginalServingSize(match[1]);
+      } else {
+        // No multiplier, this is the original
+        setOriginalServingSize(meal.serving_size);
+      }
+    }
+  }, [meal.id]);
+
+  // Recalculate nutrients based on portion multiplier
+  const recalculateNutrients = (multiplier) => {
+    if (!baseNutrients) return;
+
+    const recalculated = {};
+    Object.entries(baseNutrients).forEach(([key, value]) => {
+      if (typeof value === 'number') {
+        recalculated[key] = value * multiplier;
+      } else {
+        recalculated[key] = value;
+      }
+    });
+
+    setEditableNutrients(recalculated);
+    setPortionMultiplier(multiplier);
   };
 
   const foodTypeInfo = getFoodTypeInfo(meal.food_type);
@@ -215,11 +326,45 @@ const MealDetailScreen = ({ route, navigation }) => {
     imageSection: {
       padding: 16,
     },
+    imageContainer: {
+      borderRadius: 12,
+      overflow: 'hidden',
+      borderWidth: 2,
+      borderColor: colors.border,
+      position: 'relative',
+    },
     mealImage: {
       width: '100%',
-      height: 250,
+      aspectRatio: 1,
+      minHeight: 250,
+      maxHeight: 400,
       borderRadius: 12,
       backgroundColor: colors.border,
+    },
+    boundingBoxContainer: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      pointerEvents: 'none',
+    },
+    boundingBox: {
+      position: 'absolute',
+      borderWidth: 2,
+      borderRadius: 4,
+    },
+    boundingBoxLabel: {
+      position: 'absolute',
+      top: -2,
+      left: -2,
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+      borderTopLeftRadius: 4,
+      maxWidth: 120,
+    },
+    boundingBoxText: {
+      color: 'white',
+      fontSize: 8,
+      fontWeight: '600',
     },
     noImageContainer: {
       height: 250,
@@ -268,6 +413,16 @@ const MealDetailScreen = ({ route, navigation }) => {
       alignItems: 'center',
       marginBottom: 16,
     },
+    foodTypeSelector: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      padding: 12,
+    },
     foodTypeIcon: {
       padding: 8,
       borderRadius: 20,
@@ -277,6 +432,55 @@ const MealDetailScreen = ({ route, navigation }) => {
       fontSize: 18,
       fontWeight: '600',
       color: colors.text,
+    },
+    servingSizeContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+      paddingHorizontal: 8,
+      paddingVertical: 8,
+      backgroundColor: '#3498DB10',
+      borderRadius: 8,
+      borderLeftWidth: 3,
+      borderLeftColor: '#3498DB',
+      flexWrap: 'wrap',
+    },
+    servingSizeLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+      marginLeft: 8,
+      marginRight: 4,
+    },
+    servingSizeValue: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: '#3498DB',
+      flex: 1,
+      flexWrap: 'wrap',
+    },
+    confidenceContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 16,
+      paddingHorizontal: 8,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderLeftWidth: 3,
+      flexWrap: 'wrap',
+    },
+    confidenceLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+      marginLeft: 8,
+      marginRight: 4,
+    },
+    confidenceValue: {
+      fontSize: 14,
+      fontWeight: '700',
+      flex: 1,
+      flexWrap: 'wrap',
     },
     notesSection: {
       marginTop: 16,
@@ -324,6 +528,12 @@ const MealDetailScreen = ({ route, navigation }) => {
       fontWeight: '600',
       color: colors.text,
       marginBottom: 16,
+    },
+    nutrientSubtitle: {
+      fontSize: 14,
+      color: colors.secondary,
+      marginBottom: 16,
+      fontStyle: 'italic',
     },
     nutrientsGrid: {
       flexDirection: 'row',
@@ -385,6 +595,189 @@ const MealDetailScreen = ({ route, navigation }) => {
       fontSize: 16,
       color: colors.text,
     },
+    recipesSection: {
+      padding: 16,
+      backgroundColor: colors.card,
+      marginHorizontal: 16,
+      borderRadius: 12,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    recipeSubtitle: {
+      fontSize: 14,
+      color: colors.secondary,
+      marginBottom: 16,
+      fontStyle: 'italic',
+    },
+    recipesList: {
+      gap: 12,
+    },
+    recipeCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.background,
+      borderRadius: 8,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    recipeIconContainer: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: '#27AE6015',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 12,
+    },
+    recipeInfo: {
+      flex: 1,
+    },
+    recipeLabel: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 4,
+    },
+    recipeCount: {
+      fontSize: 12,
+      color: colors.secondary,
+    },
+    recipeBoundingBox: {
+      fontSize: 11,
+      color: colors.secondary,
+      fontFamily: 'monospace',
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-end',
+    },
+    modalContent: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      padding: 20,
+      maxHeight: '70%',
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: 'bold',
+      color: colors.text,
+      marginBottom: 16,
+      textAlign: 'center',
+    },
+    modalOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 16,
+      borderRadius: 8,
+      marginBottom: 8,
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    modalOptionSelected: {
+      borderColor: colors.primary,
+      borderWidth: 2,
+      backgroundColor: `${colors.primary}10`,
+    },
+    modalOptionIcon: {
+      padding: 8,
+      borderRadius: 20,
+      marginRight: 12,
+    },
+    modalOptionText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    modalCloseButton: {
+      backgroundColor: colors.secondary,
+      borderRadius: 8,
+      padding: 16,
+      alignItems: 'center',
+      marginTop: 12,
+    },
+    modalCloseText: {
+      color: 'white',
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    portionSection: {
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      padding: 20,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginHorizontal: 16,
+    },
+    portionAdjustmentContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginVertical: 16,
+      gap: 12,
+    },
+    portionButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 8,
+      width: 48,
+      height: 48,
+      justifyContent: 'center',
+      alignItems: 'center',
+      elevation: 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 3.84,
+    },
+    portionInputContainer: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    portionInput: {
+      borderWidth: 2,
+      borderColor: colors.primary,
+      borderRadius: 8,
+      padding: 10,
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: colors.primary,
+      backgroundColor: colors.background,
+      textAlign: 'center',
+      width: '100%',
+    },
+    portionLabel: {
+      fontSize: 12,
+      color: colors.secondary,
+      marginTop: 4,
+      fontWeight: '500',
+    },
+    portionHints: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 16,
+      paddingTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    hintItem: {
+      alignItems: 'center',
+      flex: 1,
+    },
+    hintLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.primary,
+      marginBottom: 2,
+    },
+    hintText: {
+      fontSize: 11,
+      color: colors.secondary,
+    },
   });
 
   return (
@@ -439,7 +832,57 @@ const MealDetailScreen = ({ route, navigation }) => {
         {/* Meal Image */}
         <View style={styles.imageSection}>
           {meal.image_url ? (
-            <Image source={{ uri: meal.image_url }} style={styles.mealImage} />
+            <View style={styles.imageContainer}>
+              <Image 
+                source={{ uri: meal.image_url }} 
+                style={styles.mealImage} 
+                resizeMode="contain"
+                onLayout={(event) => {
+                  const { width, height } = event.nativeEvent.layout;
+                  setImageLayout({ width, height });
+                }}
+              />
+              {/* Draw bounding boxes on image */}
+              {meal.recipes && meal.recipes.length > 0 && imageLayout.width > 0 && (
+                <View style={[styles.boundingBoxContainer, { width: imageLayout.width, height: imageLayout.height }]}>
+                  {meal.recipes.map((recipe, index) => {
+                    if (!recipe.box_2d || recipe.box_2d.length !== 4) return null;
+                    const [x_min, y_min, x_max, y_max] = recipe.box_2d;
+                    const ingredientColor = getIngredientColor(recipe.label);
+                    // Assume original image is around 1000x1000, scale to actual display size
+                    const scaleX = imageLayout.width / 1000;
+                    const scaleY = imageLayout.height / 1000;
+                    const left = x_min * scaleX;
+                    const top = y_min * scaleY;
+                    const width = (x_max - x_min) * scaleX;
+                    const height = (y_max - y_min) * scaleY;
+                    
+                    return (
+                      <View
+                        key={index}
+                        style={[
+                          styles.boundingBox,
+                          {
+                            left,
+                            top,
+                            width,
+                            height,
+                            borderColor: ingredientColor,
+                            backgroundColor: `${ingredientColor}15`,
+                          }
+                        ]}
+                      >
+                        <View style={[styles.boundingBoxLabel, { backgroundColor: ingredientColor }]}>
+                          <Text style={styles.boundingBoxText} numberOfLines={1}>
+                            {recipe.label}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
           ) : (
             <View style={styles.noImageContainer}>
               <Icon name="image-off" size={48} color={colors.secondary} />
@@ -470,14 +913,69 @@ const MealDetailScreen = ({ route, navigation }) => {
           </View>
           
           <View style={styles.foodTypeContainer}>
-            <View style={[
-              styles.foodTypeIcon,
-              { backgroundColor: `${foodTypeInfo.color}15` }
-            ]}>
-              <Icon name={foodTypeInfo.icon} size={20} color={foodTypeInfo.color} />
-            </View>
-            <Text style={styles.foodTypeText}>{foodTypeInfo.label}</Text>
+            {isEditing ? (
+              <TouchableOpacity 
+                style={styles.foodTypeSelector}
+                onPress={() => setShowFoodTypeModal(true)}
+              >
+                <View style={[
+                  styles.foodTypeIcon,
+                  { backgroundColor: `${getFoodTypeInfo(editedFoodType).color}15` }
+                ]}>
+                  <Icon name={getFoodTypeInfo(editedFoodType).icon} size={20} color={getFoodTypeInfo(editedFoodType).color} />
+                </View>
+                <Text style={styles.foodTypeText}>{getFoodTypeInfo(editedFoodType).label}</Text>
+                <Icon name="chevron-down" size={20} color={colors.secondary} style={{ marginLeft: 'auto' }} />
+              </TouchableOpacity>
+            ) : (
+              <>
+                <View style={[
+                  styles.foodTypeIcon,
+                  { backgroundColor: `${foodTypeInfo.color}15` }
+                ]}>
+                  <Icon name={foodTypeInfo.icon} size={20} color={foodTypeInfo.color} />
+                </View>
+                <Text style={styles.foodTypeText}>{foodTypeInfo.label}</Text>
+              </>
+            )}
           </View>
+
+          {/* Serving Size Section */}
+          {meal.serving_size && (
+            <View style={styles.servingSizeContainer}>
+              <Icon name="bowl" size={16} color="#3498DB" />
+              <Text style={styles.servingSizeLabel}>Serving Size:</Text>
+              <Text style={styles.servingSizeValue}>{meal.serving_size}</Text>
+            </View>
+          )}
+
+          {/* Confidence Rate Section */}
+          {meal.confidence_rate !== undefined && meal.confidence_rate !== null && (
+            <View style={[
+              styles.confidenceContainer,
+              {
+                borderLeftColor: meal.confidence_rate >= 70 ? '#27AE60' :
+                                meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C',
+                backgroundColor: meal.confidence_rate >= 70 ? '#27AE6010' :
+                                meal.confidence_rate >= 50 ? '#F39C1210' : '#E74C3C10',
+              }
+            ]}>
+              <Icon name="shield-check" size={16} color={
+                meal.confidence_rate >= 70 ? '#27AE60' :
+                meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C'
+              } />
+              <Text style={styles.confidenceLabel}>Detection Confidence:</Text>
+              <Text style={[
+                styles.confidenceValue,
+                {
+                  color: meal.confidence_rate >= 70 ? '#27AE60' :
+                         meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C'
+                }
+              ]}>
+                {meal.confidence_rate.toFixed(0)}%
+              </Text>
+            </View>
+          )}
 
           {/* Notes Section */}
           <View style={styles.notesSection}>
@@ -499,12 +997,79 @@ const MealDetailScreen = ({ route, navigation }) => {
           </View>
         </View>
 
+        {/* Portion Adjustment Section - Only in Edit Mode */}
+        {isEditing && meal.nutrients && Object.keys(meal.nutrients).length > 0 && (
+          <View style={styles.portionSection}>
+            <Text style={styles.sectionTitle}>Adjust Portion Size</Text>
+            <View style={styles.portionAdjustmentContainer}>
+              <TouchableOpacity
+                style={styles.portionButton}
+                onPress={() => {
+                  const newMultiplier = Math.max(0.25, portionMultiplier - 0.25);
+                  recalculateNutrients(newMultiplier);
+                }}
+              >
+                <Icon name="minus" size={24} color="white" />
+              </TouchableOpacity>
+
+              <View style={styles.portionInputContainer}>
+                <TextInput
+                  style={styles.portionInput}
+                  value={portionMultiplier.toFixed(2)}
+                  onChangeText={(text) => {
+                    const value = parseFloat(text);
+                    if (!isNaN(value) && value > 0) {
+                      recalculateNutrients(value);
+                    }
+                  }}
+                  keyboardType="decimal-pad"
+                />
+                <Text style={styles.portionLabel}>Portion Multiplier</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.portionButton}
+                onPress={() => {
+                  const newMultiplier = portionMultiplier + 0.25;
+                  recalculateNutrients(newMultiplier);
+                }}
+              >
+                <Icon name="plus" size={24} color="white" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.portionHints}>
+              <View style={styles.hintItem}>
+                <Text style={styles.hintLabel}>0.5×</Text>
+                <Text style={styles.hintText}>Half</Text>
+              </View>
+              <View style={styles.hintItem}>
+                <Text style={styles.hintLabel}>1.0×</Text>
+                <Text style={styles.hintText}>Original</Text>
+              </View>
+              <View style={styles.hintItem}>
+                <Text style={styles.hintLabel}>1.5×</Text>
+                <Text style={styles.hintText}>1.5 Times</Text>
+              </View>
+              <View style={styles.hintItem}>
+                <Text style={styles.hintLabel}>2.0×</Text>
+                <Text style={styles.hintText}>Double</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Nutrients Section */}
         {meal.nutrients && Object.keys(meal.nutrients).length > 0 && (
           <View style={styles.nutrientsSection}>
             <Text style={styles.sectionTitle}>Nutritional Information</Text>
+            {isEditing && portionMultiplier !== 1 && (
+              <Text style={styles.nutrientSubtitle}>
+                Adjusted for {portionMultiplier.toFixed(2)}× portion size
+              </Text>
+            )}
             <View style={styles.nutrientsGrid}>
-              {Object.entries(meal.nutrients).map(([key, value]) => {
+              {Object.entries(isEditing ? editableNutrients : meal.nutrients).map(([key, value]) => {
                 const nutrientInfo = getNutrientIcon(key);
                 return (
                   <View key={key} style={styles.nutrientCard}>
@@ -526,7 +1091,85 @@ const MealDetailScreen = ({ route, navigation }) => {
             </View>
           </View>
         )}
+
+        {/* Recipes/Ingredients Section */}
+        {meal.recipes && meal.recipes.length > 0 && (
+          <View style={styles.recipesSection}>
+            <Text style={styles.sectionTitle}>Detected Ingredients</Text>
+            <Text style={styles.recipeSubtitle}>
+              {getMergedRecipes().length} unique ingredient{getMergedRecipes().length !== 1 ? 's' : ''} detected
+            </Text>
+            <View style={styles.recipesList}>
+              {getMergedRecipes().map((recipe, index) => (
+                <View key={index} style={styles.recipeCard}>
+                  <View style={styles.recipeIconContainer}>
+                    <Icon name="food-variant" size={20} color="#27AE60" />
+                  </View>
+                  <View style={styles.recipeInfo}>
+                    <Text style={styles.recipeLabel}>{recipe.label}</Text>
+                    <Text style={styles.recipeCount}>
+                      {recipe.boxes.length} location{recipe.boxes.length !== 1 ? 's' : ''} detected
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
       </ScrollView>
+
+      {/* Food Type Selection Modal */}
+      <Modal
+        visible={showFoodTypeModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowFoodTypeModal(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowFoodTypeModal(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select Meal Type</Text>
+            <ScrollView>
+              {foodTypes.map((type) => {
+                const typeInfo = getFoodTypeInfo(type.value);
+                return (
+                  <TouchableOpacity
+                    key={type.value}
+                    style={[
+                      styles.modalOption,
+                      editedFoodType === type.value && styles.modalOptionSelected
+                    ]}
+                    onPress={() => {
+                      setEditedFoodType(type.value);
+                      setShowFoodTypeModal(false);
+                    }}
+                  >
+                    <View style={[
+                      styles.modalOptionIcon,
+                      { backgroundColor: `${typeInfo.color}15` }
+                    ]}>
+                      <Icon name={typeInfo.icon} size={24} color={typeInfo.color} />
+                    </View>
+                    <Text style={styles.modalOptionText}>{type.label}</Text>
+                    {editedFoodType === type.value && (
+                      <Icon name="check" size={24} color={colors.primary} style={{ marginLeft: 'auto' }} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowFoodTypeModal(false)}
+            >
+              <Text style={styles.modalCloseText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Loading Overlay */}
       {isLoading && (

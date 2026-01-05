@@ -181,13 +181,16 @@ def update_meal(meal_id):
     """
     PUT /api/v1/nutrients/meals/<meal_id>
     
-    Update meal details (meal_name and notes only)
+    Update meal details (meal_name, notes, food_type, and nutrients)
     
     Request:
     - Content-Type: application/json
     - Body: {
         "meal_name": "Updated Meal Name",
-        "notes": "Updated notes"
+        "notes": "Updated notes",
+        "food_type": "breakfast",
+        "nutrients": {...},
+        "serving_size": "1.5× (1 cup)"
       }
     
     Requires Firebase authentication (Bearer token in Authorization header)

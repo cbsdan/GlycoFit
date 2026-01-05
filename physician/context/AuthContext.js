@@ -34,16 +34,71 @@ export const AuthProvider = ({ children }) => {
       if (firebaseUser) {
         // User is signed in to Firebase
         try {
-          // Get fresh user data from backend (includes role check)
-          const result = await authService.getCurrentUser();
-          if (result) {
-            setUser(result);
+          // Check if we have user data stored locally
+          const storedUser = await AsyncStorage.getItem('user');
+          const storedToken = await SecureStore.getItemAsync('auth_token');
+          const loginTimestamp = await SecureStore.getItemAsync('login_timestamp');
+          
+          // Check if login has expired (3 months = 90 days)
+          if (loginTimestamp) {
+            const threeMonthsInMs = 90 * 24 * 60 * 60 * 1000;
+            const currentTime = Date.now();
+            const loginTime = parseInt(loginTimestamp, 10);
+            
+            if ((currentTime - loginTime) > threeMonthsInMs) {
+              console.log('Login session expired (3 months), signing out');
+              await clearStoredData();
+              await auth.signOut();
+              setUser(null);
+              setIsAuthenticated(false);
+              setIsLoading(false);
+              return;
+            }
+          }
+          
+          // Get Firebase token (without forcing refresh to avoid clock skew)
+          // Only force refresh if we don't have a stored token
+          const shouldForceRefresh = !storedToken;
+          const freshToken = await firebaseUser.getIdToken(shouldForceRefresh);
+          
+          if (storedUser && storedToken) {
+            // We have stored data, only update token if we forced a refresh
+            if (shouldForceRefresh) {
+              await SecureStore.setItemAsync('auth_token', freshToken);
+              console.log('Auth token refreshed from Firebase');
+            }
+            
+            // Parse and verify user has physician role
+            const userData = JSON.parse(storedUser);
+            if (userData.role !== 'physician') {
+              console.log('User does not have physician role, signing out');
+              await clearStoredData();
+              await auth.signOut();
+              setUser(null);
+              setIsAuthenticated(false);
+              setIsLoading(false);
+              return;
+            }
+            
+            setUser(userData);
             setIsAuthenticated(true);
           } else {
-            // User doesn't have physician role or data fetch failed
-            setUser(null);
-            setIsAuthenticated(false);
-            await clearStoredData();
+            // No stored user, get fresh data from backend
+            await SecureStore.setItemAsync('auth_token', freshToken);
+            if (!loginTimestamp) {
+              await SecureStore.setItemAsync('login_timestamp', Date.now().toString());
+            }
+            
+            const result = await authService.getCurrentUser();
+            if (result) {
+              setUser(result);
+              setIsAuthenticated(true);
+            } else {
+              // User doesn't have physician role or data fetch failed
+              setUser(null);
+              setIsAuthenticated(false);
+              await clearStoredData();
+            }
           }
         } catch (error) {
           console.error('Error loading user data:', error);
@@ -68,10 +123,32 @@ export const AuthProvider = ({ children }) => {
     try {
       const storedUser = await AsyncStorage.getItem('user');
       const storedToken = await SecureStore.getItemAsync('auth_token');
+      const loginTimestamp = await SecureStore.getItemAsync('login_timestamp');
+      
+      // Check if login has expired (3 months = 90 days)
+      if (loginTimestamp) {
+        const threeMonthsInMs = 90 * 24 * 60 * 60 * 1000;
+        const currentTime = Date.now();
+        const loginTime = parseInt(loginTimestamp, 10);
+        
+        if ((currentTime - loginTime) > threeMonthsInMs) {
+          console.log('Login session expired (3 months), clearing data');
+          await clearStoredData();
+          setIsLoading(false);
+          return;
+        }
+      }
       
       if (storedUser && storedToken) {
-        setUser(JSON.parse(storedUser));
-        setIsAuthenticated(true);
+        const userData = JSON.parse(storedUser);
+        // Verify user has physician role
+        if (userData.role === 'physician') {
+          setUser(userData);
+          setIsAuthenticated(true);
+        } else {
+          console.log('Stored user does not have physician role');
+          await clearStoredData();
+        }
       }
     } catch (error) {
       console.error('Error checking auth state:', error);
@@ -83,6 +160,7 @@ export const AuthProvider = ({ children }) => {
   const clearStoredData = async () => {
     try {
       await SecureStore.deleteItemAsync('auth_token');
+      await SecureStore.deleteItemAsync('login_timestamp');
       await AsyncStorage.removeItem('user');
     } catch (error) {
       console.error('Error clearing stored data:', error);

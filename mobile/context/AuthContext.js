@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../config/firebase-config';
 import { authService } from '../services/api';
+import { GoogleSignin as RNGoogleSignin } from '@react-native-google-signin/google-signin';
 
 const AuthContext = createContext({});
 
@@ -37,13 +38,56 @@ export const AuthProvider = ({ children }) => {
           // Check if we have user data stored locally
           const storedUser = await AsyncStorage.getItem('user');
           const storedToken = await SecureStore.getItemAsync('auth_token');
+          const loginTimestamp = await SecureStore.getItemAsync('login_timestamp');
+          
+          // Check if login has expired (3 months = 90 days)
+          if (loginTimestamp) {
+            const threeMonthsInMs = 90 * 24 * 60 * 60 * 1000;
+            const currentTime = Date.now();
+            const loginTime = parseInt(loginTimestamp, 10);
+            
+            if ((currentTime - loginTime) > threeMonthsInMs) {
+              console.log('Login session expired (3 months), signing out');
+              await clearStoredData();
+              await auth.signOut();
+              setUser(null);
+              setIsAuthenticated(false);
+              setIsLoading(false);
+              return;
+            }
+          }
+          
+          // Get Firebase token (without forcing refresh to avoid clock skew)
+          // Only force refresh if we don't have a stored token
+          const shouldForceRefresh = !storedToken;
+          const freshToken = await firebaseUser.getIdToken(shouldForceRefresh);
           
           if (storedUser && storedToken) {
-            // We have stored data, use it
+            // We have stored data, only update token if we forced a refresh
+            if (shouldForceRefresh) {
+              await SecureStore.setItemAsync('auth_token', freshToken);
+              console.log('Auth token refreshed from Firebase');
+            }
+            
+            // Use stored data
+            setUser(JSON.parse(storedUser));
+            setIsAuthenticated(true);
+          } else if (storedUser) {
+            // We have user but no token, set the fresh token
+            await SecureStore.setItemAsync('auth_token', freshToken);
+            if (!loginTimestamp) {
+              await SecureStore.setItemAsync('login_timestamp', Date.now().toString());
+            }
             setUser(JSON.parse(storedUser));
             setIsAuthenticated(true);
           } else {
-            // Get fresh user data from backend
+            // No stored user, get fresh data from backend
+            // The fresh token is already available for API calls
+            await SecureStore.setItemAsync('auth_token', freshToken);
+            if (!loginTimestamp) {
+              await SecureStore.setItemAsync('login_timestamp', Date.now().toString());
+            }
+            
             const result = await authService.getCurrentUser();
             if (result) {
               setUser(result);
@@ -70,6 +114,21 @@ export const AuthProvider = ({ children }) => {
     try {
       const storedUser = await AsyncStorage.getItem('user');
       const storedToken = await SecureStore.getItemAsync('auth_token');
+      const loginTimestamp = await SecureStore.getItemAsync('login_timestamp');
+      
+      // Check if login has expired (3 months = 90 days)
+      if (loginTimestamp) {
+        const threeMonthsInMs = 90 * 24 * 60 * 60 * 1000;
+        const currentTime = Date.now();
+        const loginTime = parseInt(loginTimestamp, 10);
+        
+        if ((currentTime - loginTime) > threeMonthsInMs) {
+          console.log('Login session expired (3 months), clearing data');
+          await clearStoredData();
+          setIsLoading(false);
+          return;
+        }
+      }
       
       if (storedUser && storedToken) {
         setUser(JSON.parse(storedUser));
@@ -85,6 +144,7 @@ export const AuthProvider = ({ children }) => {
   const clearStoredData = async () => {
     try {
       await SecureStore.deleteItemAsync('auth_token');
+      await SecureStore.deleteItemAsync('login_timestamp');
       await AsyncStorage.removeItem('user');
     } catch (error) {
       console.error('Error clearing stored data:', error);
@@ -163,6 +223,17 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       setIsLoading(true);
+      
+      // Sign out from Google Sign-in to clear the cached account
+      try {
+        await RNGoogleSignin.signOut();
+        console.log('Signed out from Google Sign-in');
+      } catch (googleError) {
+        console.warn('Google Sign-out warning:', googleError);
+        // Don't throw - continue with logout even if Google sign-out fails
+      }
+      
+      // Sign out from backend/Firebase
       await authService.logout();
       setUser(null);
       setIsAuthenticated(false);
@@ -179,6 +250,20 @@ export const AuthProvider = ({ children }) => {
     AsyncStorage.setItem('user', JSON.stringify(userData));
   };
 
+  const refreshUserData = async () => {
+    try {
+      const result = await authService.getCurrentUser();
+      if (result) {
+        setUser(result);
+        await AsyncStorage.setItem('user', JSON.stringify(result));
+        return result;
+      }
+    } catch (error) {
+      console.error('Error refreshing user data:', error);
+      throw error;
+    }
+  };
+
   const value = {
     user,
     isAuthenticated,
@@ -189,6 +274,7 @@ export const AuthProvider = ({ children }) => {
     googleSignIn,
     logout,
     updateUserData,
+    refreshUserData,
     setIsLoading
   };
 

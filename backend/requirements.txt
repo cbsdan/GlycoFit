@@ -1,14 +1,36 @@
+# Core Flask framework and extensions
 flask==2.3.3
 flask-cors==4.0.0
-pymongo==4.14.1
-python-dotenv==1.0.0
 flask-bcrypt==1.0.1
 flask-jwt-extended==4.5.3
 flask-mail==0.9.1
-cloudinary==1.36.0
+flask-socketio==5.3.6
+python-socketio==5.10.0
+python-engineio==4.8.1
 waitress==3.0.2
+
+# Database
+pymongo==4.14.1
+
+# Authentication
 firebase-admin==6.4.0
+
+# Cloud services
+cloudinary==1.36.0
+
+# Machine Learning / AI
 torch==2.9.1
 torchvision==0.24.1
+google-generativeai==0.8.5
+joblib==1.5.2
+numpy==2.3.5
+pandas==2.3.3
+scikit-learn==1.7.2
+groq>=0.9.0
+
+# Image processing
 pillow==11.3.0
-google-generativeai>=0.3.0
+
+# Utilities
+python-dotenv==1.0.0
+requests==2.32.5

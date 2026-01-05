@@ -152,22 +152,42 @@ class MLModelService:
 
 # Global instance
 ml_service = None
+ml_service_initialized = False
+ml_service_initializing = False
 
 def init_ml_service():
-    """Initialize the ML service"""
-    global ml_service
+    """Initialize the ML service (can be called explicitly or will happen on first use)"""
+    global ml_service, ml_service_initialized, ml_service_initializing
+    
+    # Prevent multiple simultaneous initializations
+    if ml_service_initializing:
+        logging.info("ML Service initialization already in progress...")
+        return False
+    
+    if ml_service_initialized:
+        return True
+    
     try:
+        ml_service_initializing = True
+        logging.info("Starting ML Service initialization (this may take a few minutes on first run)...")
         ml_service = MLModelService()
+        ml_service_initialized = True
+        ml_service_initializing = False
         logging.info("ML Service initialized successfully")
         return True
     except Exception as e:
+        ml_service_initializing = False
         logging.error(f"Failed to initialize ML Service: {str(e)}")
         return False
 
 def get_ml_service():
-    """Get the global ML service instance"""
-    global ml_service
-    if ml_service is None:
+    """Get the global ML service instance (lazy initialization)"""
+    global ml_service, ml_service_initialized
+    
+    # Lazy initialization on first use
+    if not ml_service_initialized and ml_service is None:
+        logging.info("ML Service requested but not initialized. Initializing now...")
         if not init_ml_service():
             raise RuntimeError("ML Service not available")
+    
     return ml_service

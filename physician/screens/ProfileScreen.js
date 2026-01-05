@@ -13,6 +13,8 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import messaging, { getToken } from '@react-native-firebase/messaging';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../context/ThemeContext';
@@ -20,6 +22,8 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { physicianAPI } from '../services/api';
 import EditProfileScreen from './EditProfileScreen';
+
+const NOTIFICATIONS_ENABLED_KEY = '@notifications_enabled';
 
 export default function ProfileScreen() {
   const { colors: theme, isDarkMode, toggleTheme } = useTheme();
@@ -30,10 +34,90 @@ export default function ProfileScreen() {
   const [physicianProfile, setPhysicianProfile] = useState(null);
   const [stats, setStats] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [isTogglingNotifications, setIsTogglingNotifications] = useState(false);
+
+  useEffect(() => {
+    loadNotificationPreference();
+  }, []);
 
   useEffect(() => {
     fetchProfile();
   }, []);
+
+  const loadNotificationPreference = async () => {
+    try {
+      const enabled = await AsyncStorage.getItem(NOTIFICATIONS_ENABLED_KEY);
+      if (enabled !== null) {
+        setNotificationsEnabled(enabled === 'true');
+      }
+    } catch (error) {
+      console.log('Error loading notification preference:', error);
+    }
+  };
+
+  const handleNotificationToggle = async (value) => {
+    if (isTogglingNotifications) return;
+    
+    setIsTogglingNotifications(true);
+    
+    try {
+      if (value) {
+        // Enable notifications
+        const authStatus = await messaging().requestPermission();
+        const enabled =
+          authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+          authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+        if (enabled) {
+          const token = await getToken(messaging());
+          await physicianAPI.saveFCMToken(token);
+          await AsyncStorage.setItem(NOTIFICATIONS_ENABLED_KEY, 'true');
+          setNotificationsEnabled(true);
+          toast.success('Notifications enabled');
+        } else {
+          toast.error('Notification permission denied');
+        }
+      } else {
+        // Disable notifications
+        Alert.alert(
+          'Disable Notifications',
+          'You will no longer receive push notifications. You can re-enable them anytime from settings.',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => setIsTogglingNotifications(false),
+            },
+            {
+              text: 'Disable',
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  const token = await getToken(messaging());
+                  await physicianAPI.deleteFCMToken(token);
+                  await AsyncStorage.setItem(NOTIFICATIONS_ENABLED_KEY, 'false');
+                  setNotificationsEnabled(false);
+                  toast.success('Notifications disabled');
+                } catch (error) {
+                  console.error('Error disabling notifications:', error);
+                  toast.error('Failed to disable notifications');
+                } finally {
+                  setIsTogglingNotifications(false);
+                }
+              },
+            },
+          ]
+        );
+        return;
+      }
+    } catch (error) {
+      console.error('Error toggling notifications:', error);
+      toast.error('Failed to update notification settings');
+    } finally {
+      setIsTogglingNotifications(false);
+    }
+  };
 
   const fetchProfile = async () => {
     try {
@@ -146,13 +230,13 @@ export default function ProfileScreen() {
       items: [
         { icon: 'person-outline', label: 'Edit Profile', action: handleEditProfile },
         { icon: 'lock-closed-outline', label: 'Change Password', action: () => {} },
-        { icon: 'notifications-outline', label: 'Notifications', action: () => {} },
       ],
     },
     {
       title: 'Settings',
       items: [
-        { icon: 'moon-outline', label: 'Dark Mode', action: toggleTheme, toggle: true },
+        { icon: 'notifications-outline', label: 'Push Notifications', action: handleNotificationToggle, toggle: true, value: notificationsEnabled },
+        { icon: 'moon-outline', label: 'Dark Mode', action: toggleTheme, toggle: true, value: isDarkMode },
         { icon: 'language-outline', label: 'Language', action: () => {} },
         { icon: 'shield-checkmark-outline', label: 'Privacy', action: () => {} },
       ],
@@ -393,8 +477,8 @@ export default function ProfileScreen() {
                   </View>
                   {item.toggle ? (
                     <Switch
-                      value={isDarkMode}
-                      onValueChange={toggleTheme}
+                      value={item.value !== undefined ? item.value : isDarkMode}
+                      onValueChange={item.action}
                       trackColor={{
                         false: theme.border,
                         true: theme.primary,

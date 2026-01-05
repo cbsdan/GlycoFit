@@ -31,12 +31,13 @@ class GeminiService:
         """Check if Gemini service is ready"""
         return self.model is not None
     
-    def analyze_food_image(self, image_data):
+    def analyze_food_image(self, image_data, note=None):
         """
         Analyze food image and return nutritional information
         
         Args:
             image_data: Binary image data
+            note: Optional user note for more specific food description
             
         Returns:
             dict: Nutritional information including:
@@ -52,8 +53,10 @@ class GeminiService:
             image = Image.open(io.BytesIO(image_data))
             
             # Create the prompt for nutritional analysis
-            prompt = """
-You are a nutrition estimation model that identifies food from images and predicts nutritional values using realistic data referenced from common nutrition databases such as USDA, FDA, MyFitnessPal, or standard food labels.
+            user_note_context = f"\n\nUser's additional note about the food: {note}\nPlease use this information to improve the accuracy of your analysis." if note else ""
+            
+            prompt = f"""
+You are a nutrition estimation model that identifies food from images and predicts nutritional values using realistic data referenced from common nutrition databases such as USDA, FDA, MyFitnessPal, or standard food labels.{user_note_context}
 
 STRONG RULES TO FOLLOW:
 1. Identify the food in the image with the most likely meal or product name.
@@ -61,36 +64,63 @@ STRONG RULES TO FOLLOW:
 3. Always specify the serving size used.
 4. If the food is clearly a branded or known product, match it to the closest known variant from nutrition databases.
 5. Rate your confidence (0–100%) based on image clarity and recognition certainty.
-6. If no food can be identified or the image is unclear, return:
-{
+6. Detect individual ingredients/components in the food and provide bounding box coordinates for each detected item.
+7. Bounding boxes should use pixel coordinates in the format [x_min, y_min, x_max, y_max] where coordinates represent the rectangle containing each food item.
+8. Calculate Glycemic Load using the formula: GL = (GI × Carbs) / 100, where GI is the Glycemic Index of the food.
+9. If no food can be identified or the image is unclear, return:
+{{
   "success": false,
   "error": "Unable to identify the food from the image"
-}
-7. Return your response **ONLY** as a valid JSON object with no extra text.
+}}
+10. Return your response **ONLY** as a valid JSON object with no extra text.
 
 For valid food images, use exactly this JSON format:
-{
+{{
     "success": true,
     "meal_name": "Name of the food/meal",
     "serving_size": "Specific serving size",
-    "nutrients": {
+    "nutrients": {{
         "Calories": <number>,
         "Carbs (g)": <number>,
         "Added Sugars (g)": <number>,
         "Fiber (g)": <number>,
         "Protein (g)": <number>,
-        "Fat (g)": <number>
-    },
-    "confidence_percentage": <number between 0-100>
-}
+        "Fat (g)": <number>,
+        "Saturated Fat (g)": <number>,
+        "Unsaturated Fat (g)": <number>,
+        "Sodium (mg)": <number>,
+        "Glycemic Load": <number>
+    }},
+    "confidence_percentage": <number between 0-100>,
+    "recipes": [
+        {{
+            "box_2d": [x_min, y_min, x_max, y_max],
+            "label": "Ingredient or component name"
+        }}
+    ]
+}}
 
 For non-food images or unclear images, use this exact JSON format:
-{
+{{
     "success": false,
     "error": "Cannot detect food in the image",
     "message": "Please upload a clear image of food",
     "confidence_percentage": 0
-}
+}}
+
+Bounding box guidelines:
+- Use pixel coordinates in format [x_min, y_min, x_max, y_max]
+- x_min, y_min: top-left corner of the bounding box (in pixels)
+- x_max, y_max: bottom-right corner of the bounding box (in pixels)
+- Each detected food item/ingredient should have its own bounding box
+- Estimate reasonable coordinates based on typical image dimensions (e.g., 1000x1000)
+
+Recipe/Ingredient detection guidelines:
+- List all identifiable ingredients or components visible in the food
+- For complex meals, break down into individual components (e.g., "Braised Pork Cubes", "Steamed White Rice", "Scallion Garnish")
+- For simple foods, list the main item and any visible toppings or accompaniments
+- Provide accurate bounding boxes for each detected component
+- If no distinct components can be identified, return an empty recipes array
 
 Confidence rating guidelines:
 - 90-100%: Very clear image, easily identifiable food, confident in nutritional estimates
@@ -130,7 +160,9 @@ Provide realistic nutritional estimates based on typical serving sizes. Return O
                     
                     # Ensure all required nutrients are present
                     required_nutrients = ['Calories', 'Carbs (g)', 'Added Sugars (g)', 
-                                        'Fiber (g)', 'Protein (g)', 'Fat (g)']
+                                        'Fiber (g)', 'Protein (g)', 'Fat (g)', 
+                                        'Saturated Fat (g)', 'Unsaturated Fat (g)', 
+                                        'Sodium (mg)', 'Glycemic Load']
                     for nutrient in required_nutrients:
                         if nutrient not in result['nutrients']:
                             result['nutrients'][nutrient] = 0.0
@@ -142,7 +174,15 @@ Provide realistic nutritional estimates based on typical serving sizes. Return O
                         # Ensure it's between 0-100
                         result['confidence_percentage'] = max(0, min(100, float(result['confidence_percentage'])))
                     
-                    logging.info(f"Gemini successfully analyzed food: {result['meal_name']} (Confidence: {result['confidence_percentage']}%)")
+                    # Ensure recipes field is present
+                    if 'recipes' not in result:
+                        result['recipes'] = []
+                    
+                    # Validate recipes structure
+                    if not isinstance(result['recipes'], list):
+                        result['recipes'] = []
+                    
+                    logging.info(f"Gemini successfully analyzed food: {result['meal_name']} (Confidence: {result['confidence_percentage']}%, Recipes: {len(result['recipes'])})")
                     return result
                 else:
                     # Food not detected
@@ -163,6 +203,7 @@ Provide realistic nutritional estimates based on typical serving sizes. Return O
         except Exception as e:
             logging.error(f"Error analyzing food image with Gemini: {str(e)}")
             raise
+
 
 # Global instance
 _gemini_service = None

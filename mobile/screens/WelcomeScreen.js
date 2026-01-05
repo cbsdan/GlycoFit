@@ -11,11 +11,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import { useTheme } from '../context/ThemeContext';
 
 const { width, height } = Dimensions.get('window');
 
-const WelcomeScreen = ({ navigation }) => {
+const WelcomeScreen = ({ navigation, onComplete }) => {
+  const { colors, isDarkMode, toggleTheme } = useTheme();
   const [currentPage, setCurrentPage] = useState(0);
   const scrollViewRef = useRef(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -37,15 +38,6 @@ const WelcomeScreen = ({ navigation }) => {
     },
     {
       id: 2,
-      title: 'Smart Blood Sugar Predictions',
-      description: 'Get accurate blood glucose predictions based on your meals and activity',
-      details: 'Our AI-powered system analyzes your food intake and physical activity to provide personalized glucose level forecasts.',
-      icon: 'analytics',
-      gradientColors: ['#2196F3', '#1976D2'],
-      features: ['AI Predictions', 'Meal Analysis', 'Real-time Insights'],
-    },
-    {
-      id: 3,
       title: 'Complete Meal History',
       description: 'Keep track of your meals and see how they affect your glucose levels',
       details: 'Log your meals easily and discover patterns between your diet and blood sugar levels over time.',
@@ -54,7 +46,7 @@ const WelcomeScreen = ({ navigation }) => {
       features: ['Photo Logging', 'Nutrition Info', 'Impact Analysis'],
     },
     {
-      id: 4,
+      id: 3,
       title: 'Personalized Health Insights',
       description: 'View comprehensive health data and get personalized recommendations',
       details: 'Access all your health metrics in one place and receive tailored advice to improve your wellness journey.',
@@ -174,6 +166,9 @@ const WelcomeScreen = ({ navigation }) => {
       duration: 300,
       useNativeDriver: true,
     }).start(() => {
+      if (onComplete) {
+        onComplete();
+      }
       navigation.navigate('Login');
     });
   };
@@ -184,56 +179,39 @@ const WelcomeScreen = ({ navigation }) => {
   });
 
   return (
-    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+    <Animated.View style={[styles.container, { opacity: fadeAnim, backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
       
-      {/* Animated Background Gradient */}
-      <LinearGradient
-        colors={['#FAFAFA', '#F0F0F0', '#FAFAFA']}
-        style={StyleSheet.absoluteFillObject}
-      />
-
-      {/* Floating Decorative Elements */}
-      <Animated.View 
-        style={[
-          styles.floatingCircle1,
-          { 
-            transform: [
-              { translateY: floatAnim },
-              { rotate: spin }
-            ]
-          }
-        ]}
-      >
-        <LinearGradient
-          colors={['rgba(33, 150, 243, 0.1)', 'rgba(33, 150, 243, 0.05)']}
-          style={styles.circleGradient}
-        />
-      </Animated.View>
-
-      <Animated.View 
-        style={[
-          styles.floatingCircle2,
-          { 
-            transform: [
-              { translateY: Animated.multiply(floatAnim, -1) }
-            ]
-          }
-        ]}
-      >
-        <LinearGradient
-          colors={['rgba(76, 175, 80, 0.1)', 'rgba(76, 175, 80, 0.05)']}
-          style={styles.circleGradient}
-        />
-      </Animated.View>
-
-      {/* Enhanced Header with Blur */}
-      <View style={styles.headerWrapper}>
-        <BlurView intensity={20} tint="light" style={styles.headerBlur}>
-          <View style={styles.header}>
-            {/* Header is now empty but maintains spacing */}
-          </View>
-        </BlurView>
+      {/* Modern Header */}
+      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <View style={styles.logoContainer}>
+          <Text style={[styles.logoText, { color: colors.primary }]}>GlycoFit</Text>
+        </View>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={[styles.themeToggle, { backgroundColor: colors.card }]}
+            onPress={toggleTheme}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={isDarkMode ? 'sunny' : 'moon'}
+              size={18}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.skipButton, { backgroundColor: colors.card }]}
+          onPress={() => {
+            if (onComplete) {
+              onComplete();
+            }
+            navigation.navigate('Login');
+          }}
+          >
+            <Text style={[styles.skipText, { color: colors.text }]}>Skip</Text>
+            <Ionicons name="arrow-forward" size={16} color={colors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Scrollable Pages */}
@@ -247,107 +225,36 @@ const WelcomeScreen = ({ navigation }) => {
         style={styles.mainScrollView}
       >
         {pages.map((page, index) => (
-          <View key={page.id} style={styles.pageWrapper}>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.pageScrollContent}
-              bounces={true}
-            >
-              <Animated.View 
-                style={[
-                  styles.page,
-                  {
-                    opacity: currentPage === index ? 1 : 0.5,
-                    transform: [
-                      { scale: currentPage === index ? 1 : 0.95 }
-                    ]
-                  }
-                ]}
+          <View key={page.id} style={styles.page}>
+            {/* Animated Icon with Gradient */}
+            <Animated.View style={{ transform: [{ scale: currentPage === index ? scaleAnim : 0.8 }] }}>
+              <LinearGradient
+                colors={page.gradientColors}
+                style={styles.iconContainer}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
               >
-                {/* Animated Icon with Gradient and Float Effect */}
-                <Animated.View 
-                  style={{ 
-                    transform: [
-                      { scale: currentPage === index ? scaleAnim : 0.8 },
-                      { translateY: currentPage === index ? floatAnim : 0 }
-                    ]
-                  }}
-                >
-                  <LinearGradient
-                    colors={page.gradientColors}
-                    style={styles.iconContainer}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    <Ionicons name={page.icon} size={60} color="#FFF" />
-                    {/* Animated Ring Around Icon */}
-                    <Animated.View 
-                      style={[
-                        styles.iconRing,
-                        {
-                          transform: [{ scale: pulseAnim }],
-                          borderColor: page.gradientColors[0]
-                        }
-                      ]}
-                    />
-                  </LinearGradient>
-                </Animated.View>
+                <Ionicons name={page.icon} size={50} color="#FFF" />
+              </LinearGradient>
+            </Animated.View>
 
-                {/* Enhanced Title & Description */}
-                <Animated.Text 
-                  style={[
-                    styles.title,
-                    { transform: [{ translateY: slideAnim }] }
-                  ]}
-                >
-                  {page.title}
-                </Animated.Text>
-                <Animated.Text 
-                  style={[
-                    styles.description,
-                    { transform: [{ translateY: slideAnim }] }
-                  ]}
-                >
-                  {page.description}
-                </Animated.Text>
+            {/* Title & Description */}
+            <Text style={[styles.title, { color: colors.text }]}>{page.title}</Text>
+            <Text style={[styles.description, { color: colors.secondary }]}>{page.description}</Text>
 
-                {/* Enhanced Details Container with Glassmorphism */}
-                <Animated.View 
-                  style={[
-                    styles.detailsContainer,
-                    { transform: [{ translateY: slideAnim }] }
-                  ]}
-                >
-                  <BlurView intensity={10} tint="light" style={styles.detailsBlur}>
-                    <Text style={styles.detailsText}>{page.details}</Text>
-                  </BlurView>
-                </Animated.View>
+            {/* Detailed Explanation */}
+            <View style={[styles.detailsContainer, { backgroundColor: colors.card }]}>
+              <Text style={[styles.detailsText, { color: colors.text }]}>{page.details}</Text>
+            </View>
 
-                {/* Enhanced Feature Pills with Stagger Animation */}
-                <View style={styles.featuresContainer}>
-                  {page.features.map((feature, idx) => (
-                    <Animated.View
-                      key={idx}
-                      style={[
-                        styles.featurePill,
-                        {
-                          transform: [
-                            { 
-                              translateY: Animated.add(
-                                slideAnim,
-                                new Animated.Value(idx * 20)
-                              )
-                            }
-                          ]
-                        }
-                      ]}
-                    >
-                      <Ionicons name="checkmark-circle" size={16} color={page.gradientColors[0]} />
-                      <Text style={[styles.featureText, { color: page.gradientColors[0] }]}>
-                        {feature}
-                      </Text>
-                    </Animated.View>
-                  ))}
+            {/* Feature Pills */}
+            <View style={styles.featuresContainer}>
+              {page.features.map((feature, idx) => (
+                <View key={idx} style={[styles.featurePill, { backgroundColor: colors.card }]}>
+                  <Ionicons name="checkmark-circle" size={16} color={page.gradientColors[0]} />
+                  <Text style={[styles.featureText, { color: page.gradientColors[0] }]}>
+                    {feature}
+                  </Text>
                 </View>
               </Animated.View>
             </ScrollView>
@@ -429,11 +336,16 @@ const WelcomeScreen = ({ navigation }) => {
 
       {/* Enhanced Footer */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>
+        <Text style={[styles.footerText, { color: colors.secondary }]}>
           Already have an account?{' '}
         </Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-          <Text style={styles.loginLink}>Sign In</Text>
+        <TouchableOpacity onPress={() => {
+          if (onComplete) {
+            onComplete();
+          }
+          navigation.navigate('Login');
+        }}>
+          <Text style={[styles.loginLink, { color: colors.primary }]}>Sign In</Text>
         </TouchableOpacity>
       </View>
     </Animated.View>
@@ -443,210 +355,213 @@ const WelcomeScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
-  },
-  headerWrapper: {
-    paddingTop: (StatusBar.currentHeight || 0) + 10,
-    zIndex: 10,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 20,
+    paddingTop: 35,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
   },
-  headerBlur: {
-    overflow: 'hidden',
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+  logoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  mainScrollView: {
-    flex: 1,
+  logoText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
-  pageWrapper: {
-    width: width,
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  pageScrollContent: {
-    flexGrow: 1,
-    paddingBottom: 40,
+  themeToggle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  skipButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+  },
+  skipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginRight: 4,
   },
   page: {
     width: width,
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingHorizontal: 32,
-    paddingTop: 30,
-    minHeight: height - 350,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 10,
+    paddingBottom: 40,
   },
   iconContainer: {
-    width: 170,
-    height: 170,
-    borderRadius: 85,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 35,
-    marginTop: 20,
+    marginBottom: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 12,
+    shadowRadius: 8,
+    elevation: 8,
   },
   title: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: '800',
-    color: '#1A1A1A',
-    marginBottom: 12,
+    marginBottom: 8,
     textAlign: 'center',
     letterSpacing: 0.3,
     paddingHorizontal: 10,
   },
   description: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 14,
     textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 20,
-    paddingHorizontal: 8,
+    lineHeight: 20,
+    marginBottom: 12,
+    paddingHorizontal: 4,
   },
   detailsContainer: {
-    backgroundColor: '#FFF',
-    padding: 18,
-    borderRadius: 16,
-    marginBottom: 24,
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowRadius: 6,
     elevation: 3,
     width: '100%',
   },
   detailsText: {
-    fontSize: 14,
-    color: '#555',
+    fontSize: 13,
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 19,
   },
   featuresContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 12,
-    paddingHorizontal: 10,
+    gap: 8,
   },
   featurePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF',
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowRadius: 3,
     elevation: 2,
   },
   featureText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
-    marginLeft: 6,
+    marginLeft: 5,
   },
   indicatorContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 16,
-    backgroundColor: '#FAFAFA',
+    paddingVertical: 12,
   },
   indicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: '#DDD',
-    marginHorizontal: 5,
+    marginHorizontal: 4,
   },
   activeIndicator: {
-    width: 32,
-    height: 8,
-    borderRadius: 4,
+    width: 24,
+    height: 7,
+    borderRadius: 3.5,
   },
   bottomContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingBottom: 12,
-    backgroundColor: '#FAFAFA',
+    paddingHorizontal: 20,
+    paddingBottom: 10,
   },
   prevButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: '#FFF',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowRadius: 6,
+    elevation: 3,
   },
   nextButton: {
-    borderRadius: 28,
+    borderRadius: 22,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowRadius: 6,
+    elevation: 4,
   },
   nextButtonInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 32,
+    paddingVertical: 11,
+    paddingHorizontal: 24,
   },
   nextButtonText: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    marginRight: 8,
+    marginRight: 6,
   },
   getStartedButton: {
-    borderRadius: 28,
+    borderRadius: 22,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
   },
   getStartedButtonInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 40,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
   },
   getStartedButtonText: {
     color: '#FFF',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
   },
   footer: {
     flexDirection: 'row',
-    paddingVertical: 16,
+    paddingVertical: 12,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FAFAFA',
   },
   footerText: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 13,
   },
   loginLink: {
-    fontSize: 14,
-    color: '#2196F3',
+    fontSize: 13,
     fontWeight: '700',
   },
   floatingCircle1: {

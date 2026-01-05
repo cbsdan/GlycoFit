@@ -11,11 +11,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import { patientAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 
 export default function PatientsScreen() {
+  const navigation = useNavigation();
   const { colors: theme } = useTheme();
   const { showToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
@@ -337,11 +339,18 @@ export default function PatientsScreen() {
                     {patient.email || 'No email'}
                   </Text>
                 </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color={theme.secondary}
-                />
+                <TouchableOpacity
+                  style={[styles.chatButton, { backgroundColor: theme.primary }]}
+                  onPress={() => navigation.navigate('PatientChat', {
+                    patient: patient,
+                    relationship: {
+                      id: patient.relationship?.id || patient.relationship_id || patient._id,
+                      patient: patient,
+                    }
+                  })}
+                >
+                  <Ionicons name="chatbubble-ellipses" size={18} color="#FFFFFF" />
+                </TouchableOpacity>
               </View>
 
               <View style={styles.metricsContainer}>
@@ -477,6 +486,14 @@ const styles = StyleSheet.create({
   },
   patientDetails: {
     fontSize: 13,
+  },
+  chatButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
   },
   metricsContainer: {
     flexDirection: 'row',

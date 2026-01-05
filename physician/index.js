@@ -1,4 +1,9 @@
 import { registerRootComponent } from 'expo';
+import { enableScreens } from 'react-native-screens';
+
+// Enable react-native-screens before app registration
+// This is required for the new architecture to properly handle screen props
+enableScreens(true);
 
 import App from './App';
 

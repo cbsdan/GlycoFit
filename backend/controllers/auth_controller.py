@@ -379,23 +379,83 @@ class AuthController:
     
     @staticmethod
     @firebase_auth_required
+    def get_my_profile():
+        """Get current user's profile"""
+        try:
+            current_user = get_current_user()
+            logging.info(f"Getting profile for user: {current_user.uid}")
+            
+            return jsonify({
+                'success': True,
+                'user': current_user.to_safe_dict()
+            }), 200
+            
+        except Exception as e:
+            log_error(e, 'Error getting profile')
+            return jsonify({'error': 'Internal server error'}), 500
+
+    @staticmethod
+    @firebase_auth_required
     def update_my_profile():
         """Update current user's profile"""
         try:
             current_user = get_current_user()
-            data = request.get_json()
-            files = request.files
+            
+            # Handle both JSON and multipart form data
+            if request.content_type and 'multipart/form-data' in request.content_type:
+                data = request.form.to_dict()
+                files = request.files
+            else:
+                data = request.get_json() or {}
+                files = request.files
             
             logging.info(f"Updating profile for user: {current_user.uid}")
             
             # Update basic fields
             update_data = {}
-            if 'firstName' in data:
+            
+            # Handle different field name formats (camelCase from mobile, snake_case from web)
+            if 'first_name' in data:
+                update_data['first_name'] = data['first_name'].strip()
+            elif 'firstName' in data:
                 update_data['first_name'] = data['firstName'].strip()
-            if 'lastName' in data:
+                
+            if 'last_name' in data:
+                update_data['last_name'] = data['last_name'].strip()
+            elif 'lastName' in data:
                 update_data['last_name'] = data['lastName'].strip()
+                
+            if 'age' in data:
+                try:
+                    update_data['age'] = int(data['age'])
+                except (ValueError, TypeError):
+                    pass
+                    
+            if 'sex' in data:
+                update_data['sex'] = data['sex']
+                
+            if 'height' in data:
+                try:
+                    update_data['height'] = float(data['height'])
+                except (ValueError, TypeError):
+                    pass
+                    
+            if 'weight' in data:
+                try:
+                    update_data['weight'] = float(data['weight'])
+                except (ValueError, TypeError):
+                    pass
+            
+            if 'diagnosis_status' in data:
+                # Validate diagnosis_status
+                valid_statuses = ['not_diagnosed', 'prediabetes', 'type2_diabetes']
+                if data['diagnosis_status'] in valid_statuses:
+                    update_data['diagnosis_status'] = data['diagnosis_status']
+            
             if 'enablePushNotifications' in data:
                 update_data['enable_push_notifications'] = data['enablePushNotifications']
+            elif 'enable_push_notifications' in data:
+                update_data['enable_push_notifications'] = data['enable_push_notifications']
             
             # Handle avatar update
             if 'avatar' in files:

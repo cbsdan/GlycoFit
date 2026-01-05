@@ -4,6 +4,7 @@ from config.database import get_db
 from models.user import User
 from services.cloudinary_service import CloudinaryService
 from middleware.logging_middleware import log_database_operation, log_error
+from middleware.firebase_auth import firebase_auth_required
 import logging
 from datetime import datetime
 from bson import ObjectId
@@ -362,4 +363,278 @@ class UserInfoController:
             
         except Exception as e:
             log_error(e, 'Error deleting user info')
+            return jsonify({'error': 'Internal server error'}), 500
+
+    @staticmethod
+    @firebase_auth_required
+    def save_fcm_token():
+        """Save or update FCM token for push notifications"""
+        try:
+            user_id = request.current_user_id
+            data = request.get_json()
+            fcm_token = data.get('fcmToken')
+            
+            if not fcm_token:
+                return jsonify({'error': 'FCM token is required'}), 400
+            
+            logging.info(f"Saving FCM token for user: {user_id}")
+            
+            db = get_db()
+            
+            # Check if user exists
+            user = User.find_by_id(user_id)
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            # Update user's push_tokens array (add if not exists, avoid duplicates)
+            result = db.users.update_one(
+                {'_id': ObjectId(user_id)},
+                {
+                    '$addToSet': {'push_tokens': fcm_token},
+                    '$set': {'updated_at': datetime.utcnow()}
+                }
+            )
+            log_database_operation('update_one', 'users', {'fcm_token': fcm_token}, result)
+            
+            logging.info(f"FCM token saved successfully for user: {user_id}")
+            return jsonify({
+                'success': True,
+                'message': 'FCM token saved successfully'
+            }), 200
+            
+        except Exception as e:
+            log_error(e, 'Error saving FCM token')
+            return jsonify({'error': 'Internal server error'}), 500
+
+    @staticmethod
+    @firebase_auth_required
+    def delete_fcm_token():
+        """Delete FCM token (e.g., on logout)"""
+        try:
+            user_id = request.current_user_id
+            data = request.get_json() or {}
+            fcm_token = data.get('fcmToken')
+            
+            logging.info(f"Deleting FCM token for user: {user_id}")
+            
+            db = get_db()
+            
+            # Check if user exists
+            user = User.find_by_id(user_id)
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            # If specific token provided, remove only that token
+            # Otherwise, clear all tokens
+            if fcm_token:
+                result = db.users.update_one(
+                    {'_id': ObjectId(user_id)},
+                    {
+                        '$pull': {'push_tokens': fcm_token},
+                        '$set': {'updated_at': datetime.utcnow()}
+                    }
+                )
+            else:
+                result = db.users.update_one(
+                    {'_id': ObjectId(user_id)},
+                    {
+                        '$set': {
+                            'push_tokens': [],
+                            'updated_at': datetime.utcnow()
+                        }
+                    }
+                )
+            
+            log_database_operation('update_one', 'users', {'delete_fcm_token': True}, result)
+            
+            logging.info(f"FCM token deleted successfully for user: {user_id}")
+            return jsonify({
+                'success': True,
+                'message': 'FCM token deleted successfully'
+            }), 200
+            
+        except Exception as e:
+            log_error(e, 'Error deleting FCM token')
+            return jsonify({'error': 'Internal server error'}), 500
+
+    @staticmethod
+    @firebase_auth_required
+    def update_health_metrics():
+        """Update user health metrics (age, sex, height, weight)"""
+        try:
+            user_id = request.current_user_id
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({'error': 'Request body is required'}), 400
+            
+            logging.info(f"Updating health metrics for user: {user_id}")
+            
+            # Find user
+            user = User.find_by_id(user_id)
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            # Validate and update health metrics
+            update_data = {}
+            
+            # Age validation
+            if 'age' in data:
+                age = data.get('age')
+                if age is not None:
+                    if not isinstance(age, (int, float)) or age < 0 or age > 150:
+                        return jsonify({'error': 'Age must be a number between 0 and 150'}), 400
+                    update_data['age'] = int(age)
+                else:
+                    update_data['age'] = None
+            
+            # Sex/Gender validation
+            if 'sex' in data:
+                sex = data.get('sex')
+                if sex is not None:
+                    if sex.lower() not in ['male', 'female', 'other']:
+                        return jsonify({'error': 'Sex must be male, female, or other'}), 400
+                    update_data['sex'] = sex.lower()
+                else:
+                    update_data['sex'] = None
+            
+            # Height validation (in cm)
+            if 'height' in data:
+                height = data.get('height')
+                if height is not None:
+                    if not isinstance(height, (int, float)) or height < 0 or height > 300:
+                        return jsonify({'error': 'Height must be a number between 0 and 300 cm'}), 400
+                    update_data['height'] = float(height)
+                else:
+                    update_data['height'] = None
+            
+            # Weight validation (in kg)
+            if 'weight' in data:
+                weight = data.get('weight')
+                if weight is not None:
+                    if not isinstance(weight, (int, float)) or weight < 0 or weight > 500:
+                        return jsonify({'error': 'Weight must be a number between 0 and 500 kg'}), 400
+                    update_data['weight'] = float(weight)
+                else:
+                    update_data['weight'] = None
+            
+            # Diagnosis status validation
+            if 'diagnosis_status' in data:
+                diagnosis_status = data.get('diagnosis_status')
+                if diagnosis_status is not None:
+                    valid_statuses = ['not_diagnosed', 'prediabetes', 'type2_diabetes']
+                    if diagnosis_status not in valid_statuses:
+                        return jsonify({'error': f'Diagnosis status must be one of: {", ".join(valid_statuses)}'}), 400
+                    update_data['diagnosis_status'] = diagnosis_status
+                else:
+                    update_data['diagnosis_status'] = None
+            
+            if not update_data:
+                return jsonify({'error': 'No valid fields to update'}), 400
+            
+            # Update user profile
+            user.update_profile(**update_data)
+            user.save()
+            
+            # Calculate BMI if both height and weight are available
+            bmi = None
+            if user.height and user.weight and user.height > 0:
+                height_m = user.height / 100  # Convert cm to meters
+                bmi = round(user.weight / (height_m ** 2), 2)
+            
+            logging.info(f"Health metrics updated successfully for user: {user_id}")
+            return jsonify({
+                'success': True,
+                'message': 'Health metrics updated successfully',
+                'user': user.to_safe_dict(),
+                'bmi': bmi
+            }), 200
+            
+        except Exception as e:
+            log_error(e, 'Error updating health metrics')
+            return jsonify({'error': 'Internal server error'}), 500
+
+    @staticmethod
+    @firebase_auth_required
+    def get_health_metrics():
+        """Get user health metrics including calculated BMI"""
+        try:
+            user_id = request.current_user_id
+            
+            logging.info(f"Getting health metrics for user: {user_id}")
+            
+            # Find user
+            user = User.find_by_id(user_id)
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            # Calculate BMI if both height and weight are available
+            bmi = None
+            bmi_category = None
+            if user.height and user.weight and user.height > 0:
+                height_m = user.height / 100  # Convert cm to meters
+                bmi = round(user.weight / (height_m ** 2), 2)
+                
+                # Determine BMI category
+                if bmi < 18.5:
+                    bmi_category = 'Underweight'
+                elif bmi < 25:
+                    bmi_category = 'Normal weight'
+                elif bmi < 30:
+                    bmi_category = 'Overweight'
+                else:
+                    bmi_category = 'Obese'
+            
+            health_metrics = {
+                'age': user.age,
+                'sex': user.sex,
+                'height': user.height,
+                'weight': user.weight,
+                'bmi': bmi,
+                'bmi_category': bmi_category,
+                'diagnosis_status': getattr(user, 'diagnosis_status', 'not_diagnosed')
+            }
+            
+            logging.info(f"Health metrics retrieved successfully for user: {user_id}")
+            return jsonify({
+                'success': True,
+                'health_metrics': health_metrics
+            }), 200
+            
+        except Exception as e:
+            log_error(e, 'Error getting health metrics')
+            return jsonify({'error': 'Internal server error'}), 500
+    
+    @staticmethod
+    def update_disclaimer_status():
+        """Update user's disclaimer acceptance status"""
+        try:
+            user_id = request.current_user_id
+            data = request.get_json()
+            
+            if not data or 'accepted' not in data:
+                return jsonify({'error': 'Disclaimer acceptance status is required'}), 400
+            
+            accepted = data.get('accepted')
+            
+            logging.info(f"Updating disclaimer status for user {user_id}: {accepted}")
+            
+            # Find user
+            user = User.find_by_id(user_id)
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            # Update disclaimer status
+            user.update_profile(disclaimer_accepted=accepted)
+            user.save()
+            
+            logging.info(f"Disclaimer status updated successfully for user: {user_id}")
+            return jsonify({
+                'success': True,
+                'message': 'Disclaimer status updated successfully',
+                'disclaimer_accepted': user.disclaimer_accepted
+            }), 200
+            
+        except Exception as e:
+            log_error(e, 'Error updating disclaimer status')
             return jsonify({'error': 'Internal server error'}), 500

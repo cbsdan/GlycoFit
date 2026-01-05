@@ -12,7 +12,11 @@ import PredictionScreen from '../screens/PredictionScreen';
 import FindPhysicianScreen from '../screens/FindPhysicianScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import HealthDataScreen from '../screens/HealthDataScreen';
+import SyncedHealthDataScreen from '../screens/SyncedHealthDataScreen';
 import StepCounterScreen from '../screens/StepCounterScreen';
+import FoodScannerScreen from '../screens/FoodScannerScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import SmokingIntakeScreen from '../screens/SmokingIntakeScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -23,6 +27,8 @@ const MeasureStack = () => {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MeasureMain" component={MeasureScreen} />
       <Stack.Screen name="StepCounter" component={StepCounterScreen} />
+      <Stack.Screen name="FoodScanner" component={FoodScannerScreen} />
+      <Stack.Screen name="SmokingIntake" component={SmokingIntakeScreen} />
     </Stack.Navigator>
   );
 };
@@ -32,7 +38,9 @@ const SettingsStack = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="SettingsMain" component={SettingsScreen} />
+      <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="HealthData" component={HealthDataScreen} />
+      <Stack.Screen name="SyncedHealthData" component={SyncedHealthDataScreen} />
     </Stack.Navigator>
   );
 };

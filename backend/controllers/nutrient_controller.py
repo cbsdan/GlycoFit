@@ -184,6 +184,10 @@ class NutrientController:
             # Optional fields
             notes = data.get('notes', '')
             temp_image_public_id = data.get('temp_image_public_id')
+            serving_size = data.get('serving_size')
+            confidence_rate = data.get('confidence_rate')
+            
+            logging.info(f"Saving meal for user {user_id} - temp_image_public_id: {temp_image_public_id}")
             
             # Step 1: Move image from temp folder to permanent folder (if exists)
             image_url = None
@@ -191,36 +195,41 @@ class NutrientController:
             
             if temp_image_public_id:
                 try:
-                    # Get the temp image URL first
-                    temp_image_url = f"https://res.cloudinary.com/{os.getenv('CLOUDINARY_CLOUD_NAME')}/image/upload/{temp_image_public_id}"
+                    # Use Cloudinary's rename method to move image efficiently
+                    new_public_id = f"user_meals/meal_{user_id}_{int(__import__('time').time())}"
                     
-                    # Upload to permanent location
-                    upload_result = CloudinaryService.upload_image(
-                        file_path=temp_image_url,  # Can upload from URL
-                        folder='user_meals',
-                        public_id=f"meal_{user_id}_{int(__import__('time').time())}",
-                        transformation=[
-                            {'width': 800, 'height': 600, 'crop': 'limit'},
-                            {'quality': 'auto', 'fetch_format': 'auto'}
-                        ]
+                    rename_result = CloudinaryService.rename_image(
+                        from_public_id=temp_image_public_id,
+                        to_public_id=new_public_id
                     )
                     
-                    if upload_result['success']:
-                        image_url = upload_result['url']
-                        image_public_id = upload_result['public_id']
+                    if rename_result['success']:
+                        image_url = rename_result['url']
+                        image_public_id = rename_result['public_id']
                         logging.info(f"Image moved to permanent location: {image_public_id}")
-                        
-                        # Delete temp image
-                        try:
-                            CloudinaryService.delete_image(temp_image_public_id)
-                            logging.info(f"Temp image deleted: {temp_image_public_id}")
-                        except Exception as delete_error:
-                            logging.warning(f"Failed to delete temp image: {str(delete_error)}")
                     else:
-                        logging.warning(f"Failed to move image to permanent location: {upload_result.get('error')}")
+                        logging.warning(f"Failed to move image to permanent location: {rename_result.get('error')}")
+                        # If rename fails, try to get the temp image URL directly as fallback
+                        try:
+                            image_info = CloudinaryService.get_image_info(temp_image_public_id)
+                            if image_info['success']:
+                                image_url = image_info['url']
+                                image_public_id = temp_image_public_id
+                                logging.info(f"Using temp image as fallback: {image_public_id}")
+                        except Exception as fallback_error:
+                            logging.error(f"Fallback to temp image also failed: {str(fallback_error)}")
                         
                 except Exception as move_error:
                     logging.error(f"Error moving image to permanent location: {str(move_error)}")
+                    # Try to use temp image as fallback
+                    try:
+                        image_info = CloudinaryService.get_image_info(temp_image_public_id)
+                        if image_info['success']:
+                            image_url = image_info['url']
+                            image_public_id = temp_image_public_id
+                            logging.info(f"Using temp image due to move error: {image_public_id}")
+                    except Exception as fallback_error:
+                        logging.error(f"Could not retrieve temp image: {str(fallback_error)}")
             
             # Step 2: Save meal record to database
             try:
@@ -231,7 +240,9 @@ class NutrientController:
                     image_public_id=image_public_id,
                     meal_name=meal_name,
                     notes=notes,
-                    food_type=food_type
+                    food_type=food_type,
+                    serving_size=serving_size,
+                    confidence_rate=confidence_rate
                 )
                 
                 if meal_result['success']:
@@ -400,10 +411,10 @@ class NutrientController:
     @firebase_auth_required
     def update_meal(meal_id):
         """
-        Update meal details (meal_name, notes, and food_type)
+        Update meal details (meal_name, notes, food_type, nutrients, and serving_size)
         
         Expected request:
-        - JSON body with optional 'meal_name', 'notes', and 'food_type' fields
+        - JSON body with optional 'meal_name', 'notes', 'food_type', 'nutrients', and 'serving_size' fields
         
         Returns:
         - JSON response with update status
@@ -421,12 +432,14 @@ class NutrientController:
             meal_name = data.get('meal_name')
             notes = data.get('notes')
             food_type = data.get('food_type')
+            nutrients = data.get('nutrients')
+            serving_size = data.get('serving_size')
             
             # At least one field should be provided
-            if meal_name is None and notes is None and food_type is None:
+            if meal_name is None and notes is None and food_type is None and nutrients is None and serving_size is None:
                 return jsonify({
                     'success': False,
-                    'error': 'At least one field (meal_name, notes, or food_type) must be provided'
+                    'error': 'At least one field (meal_name, notes, food_type, nutrients, or serving_size) must be provided'
                 }), 400
             
             result = UserMeal.update_meal(
@@ -434,7 +447,9 @@ class NutrientController:
                 user_id=user_id,
                 meal_name=meal_name,
                 notes=notes,
-                food_type=food_type
+                food_type=food_type,
+                nutrients=nutrients,
+                serving_size=serving_size
             )
             
             if result['success']:

@@ -17,7 +17,7 @@ class UserMeal:
         'other'
     ]
     
-    def __init__(self, user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None):
+    def __init__(self, user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None, recipes=None):
         self.user_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
         self.nutrients = nutrients  # Dict with Calories, Protein (g), Carbs (g), Fat (g), Added Sugars (g), Fiber (g)
         self.image_url = image_url
@@ -27,6 +27,7 @@ class UserMeal:
         self.food_type = self._validate_food_type(food_type)  # breakfast, lunch, dinner, snacks, drinks, etc.
         self.serving_size = serving_size  # Serving size information from Gemini
         self.confidence_rate = confidence_rate  # Confidence percentage from Gemini (0-100)
+        self.recipes = recipes if recipes else []  # Detected ingredients with bounding boxes
         self.meal_datetime = datetime.utcnow()  # When the meal was recorded
         self.created_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
@@ -55,13 +56,14 @@ class UserMeal:
             'food_type': self.food_type,
             'serving_size': self.serving_size,
             'confidence_rate': self.confidence_rate,
+            'recipes': self.recipes,
             'meal_datetime': self.meal_datetime,
             'created_at': self.created_at,
             'updated_at': self.updated_at
         }
 
     @staticmethod
-    def create_meal(user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None):
+    def create_meal(user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None, recipes=None):
         """Create a new meal record"""
         try:
             db = get_db()
@@ -75,7 +77,8 @@ class UserMeal:
                 notes=notes,
                 food_type=food_type,
                 serving_size=serving_size,
-                confidence_rate=confidence_rate
+                confidence_rate=confidence_rate,
+                recipes=recipes
             )
             
             result = db.user_meals.insert_one(meal.to_dict())
@@ -139,6 +142,7 @@ class UserMeal:
                     'food_type': meal.get('food_type', 'other'),
                     'serving_size': meal.get('serving_size'),
                     'confidence_rate': meal.get('confidence_rate'),
+                    'recipes': meal.get('recipes', []),
                     'meal_datetime': meal['meal_datetime'].isoformat(),
                     'created_at': meal['created_at'].isoformat(),
                     'updated_at': meal['updated_at'].isoformat()
@@ -183,6 +187,7 @@ class UserMeal:
                     'food_type': meal.get('food_type', 'other'),
                     'serving_size': meal.get('serving_size'),
                     'confidence_rate': meal.get('confidence_rate'),
+                    'recipes': meal.get('recipes', []),
                     'meal_datetime': meal['meal_datetime'].isoformat(),
                     'created_at': meal['created_at'].isoformat(),
                     'updated_at': meal['updated_at'].isoformat()
@@ -206,8 +211,8 @@ class UserMeal:
             }
 
     @staticmethod
-    def update_meal(meal_id, user_id, meal_name=None, notes=None, food_type=None):
-        """Update meal details (meal_name, notes, and food_type)"""
+    def update_meal(meal_id, user_id, meal_name=None, notes=None, food_type=None, nutrients=None, serving_size=None):
+        """Update meal details (meal_name, notes, food_type, nutrients, and serving_size)"""
         try:
             db = get_db()
             
@@ -219,6 +224,10 @@ class UserMeal:
                 update_data['meal_name'] = meal_name
             if notes is not None:
                 update_data['notes'] = notes
+            if nutrients is not None:
+                update_data['nutrients'] = nutrients
+            if serving_size is not None:
+                update_data['serving_size'] = serving_size
             if food_type is not None:
                 # Validate food_type
                 valid_types = UserMeal.VALID_MEAL_TYPES
@@ -331,11 +340,23 @@ class UserMeal:
                         'total_protein': {'$sum': '$nutrients.Protein (g)'},
                         'total_carbs': {'$sum': '$nutrients.Carbs (g)'},
                         'total_fat': {'$sum': '$nutrients.Fat (g)'},
+                        'total_added_sugars': {'$sum': '$nutrients.Added Sugars (g)'},
+                        'total_fiber': {'$sum': '$nutrients.Fiber (g)'},
+                        'total_saturated_fat': {'$sum': '$nutrients.Saturated Fat (g)'},
+                        'total_unsaturated_fat': {'$sum': '$nutrients.Unsaturated Fat (g)'},
+                        'total_sodium': {'$sum': '$nutrients.Sodium (mg)'},
+                        'total_glycemic_load': {'$sum': '$nutrients.Glycemic Load'},
                         'meal_count': {'$sum': 1},
                         'avg_calories': {'$avg': '$nutrients.Calories'},
                         'avg_protein': {'$avg': '$nutrients.Protein (g)'},
                         'avg_carbs': {'$avg': '$nutrients.Carbs (g)'},
-                        'avg_fat': {'$avg': '$nutrients.Fat (g)'}
+                        'avg_fat': {'$avg': '$nutrients.Fat (g)'},
+                        'avg_added_sugars': {'$avg': '$nutrients.Added Sugars (g)'},
+                        'avg_fiber': {'$avg': '$nutrients.Fiber (g)'},
+                        'avg_saturated_fat': {'$avg': '$nutrients.Saturated Fat (g)'},
+                        'avg_unsaturated_fat': {'$avg': '$nutrients.Unsaturated Fat (g)'},
+                        'avg_sodium': {'$avg': '$nutrients.Sodium (mg)'},
+                        'avg_glycemic_load': {'$avg': '$nutrients.Glycemic Load'}
                     }
                 }
             ]
@@ -351,13 +372,25 @@ class UserMeal:
                             'calories': round(summary.get('total_calories', 0), 2),
                             'protein': round(summary.get('total_protein', 0), 2),
                             'carbs': round(summary.get('total_carbs', 0), 2),
-                            'fat': round(summary.get('total_fat', 0), 2)
+                            'fat': round(summary.get('total_fat', 0), 2),
+                            'added_sugars': round(summary.get('total_added_sugars', 0), 2),
+                            'fiber': round(summary.get('total_fiber', 0), 2),
+                            'saturated_fat': round(summary.get('total_saturated_fat', 0), 2),
+                            'unsaturated_fat': round(summary.get('total_unsaturated_fat', 0), 2),
+                            'sodium': round(summary.get('total_sodium', 0), 2),
+                            'glycemic_load': round(summary.get('total_glycemic_load', 0), 2)
                         },
                         'average_nutrients': {
                             'calories': round(summary.get('avg_calories', 0), 2),
                             'protein': round(summary.get('avg_protein', 0), 2),
                             'carbs': round(summary.get('avg_carbs', 0), 2),
-                            'fat': round(summary.get('avg_fat', 0), 2)
+                            'fat': round(summary.get('avg_fat', 0), 2),
+                            'added_sugars': round(summary.get('avg_added_sugars', 0), 2),
+                            'fiber': round(summary.get('avg_fiber', 0), 2),
+                            'saturated_fat': round(summary.get('avg_saturated_fat', 0), 2),
+                            'unsaturated_fat': round(summary.get('avg_unsaturated_fat', 0), 2),
+                            'sodium': round(summary.get('avg_sodium', 0), 2),
+                            'glycemic_load': round(summary.get('avg_glycemic_load', 0), 2)
                         },
                         'meal_count': summary.get('meal_count', 0)
                     }
@@ -366,8 +399,16 @@ class UserMeal:
                 return {
                     'success': True,
                     'summary': {
-                        'total_nutrients': {'calories': 0, 'protein': 0, 'carbs': 0, 'fat': 0},
-                        'average_nutrients': {'calories': 0, 'protein': 0, 'carbs': 0, 'fat': 0},
+                        'total_nutrients': {
+                            'calories': 0, 'protein': 0, 'carbs': 0, 'fat': 0,
+                            'added_sugars': 0, 'fiber': 0, 'saturated_fat': 0,
+                            'unsaturated_fat': 0, 'sodium': 0, 'glycemic_load': 0
+                        },
+                        'average_nutrients': {
+                            'calories': 0, 'protein': 0, 'carbs': 0, 'fat': 0,
+                            'added_sugars': 0, 'fiber': 0, 'saturated_fat': 0,
+                            'unsaturated_fat': 0, 'sodium': 0, 'glycemic_load': 0
+                        },
                         'meal_count': 0
                     }
                 }
@@ -432,6 +473,7 @@ class UserMeal:
                     'food_type': meal.get('food_type', 'other'),
                     'serving_size': meal.get('serving_size'),
                     'confidence_rate': meal.get('confidence_rate'),
+                    'recipes': meal.get('recipes', []),
                     'meal_datetime': meal['meal_datetime'].isoformat(),
                     'created_at': meal['created_at'].isoformat(),
                     'updated_at': meal['updated_at'].isoformat()
@@ -482,11 +524,23 @@ class UserMeal:
                         'total_protein': {'$sum': '$nutrients.Protein (g)'},
                         'total_carbs': {'$sum': '$nutrients.Carbs (g)'},
                         'total_fat': {'$sum': '$nutrients.Fat (g)'},
+                        'total_added_sugars': {'$sum': '$nutrients.Added Sugars (g)'},
+                        'total_fiber': {'$sum': '$nutrients.Fiber (g)'},
+                        'total_saturated_fat': {'$sum': '$nutrients.Saturated Fat (g)'},
+                        'total_unsaturated_fat': {'$sum': '$nutrients.Unsaturated Fat (g)'},
+                        'total_sodium': {'$sum': '$nutrients.Sodium (mg)'},
+                        'total_glycemic_load': {'$sum': '$nutrients.Glycemic Load'},
                         'meal_count': {'$sum': 1},
                         'avg_calories': {'$avg': '$nutrients.Calories'},
                         'avg_protein': {'$avg': '$nutrients.Protein (g)'},
                         'avg_carbs': {'$avg': '$nutrients.Carbs (g)'},
-                        'avg_fat': {'$avg': '$nutrients.Fat (g)'}
+                        'avg_fat': {'$avg': '$nutrients.Fat (g)'},
+                        'avg_added_sugars': {'$avg': '$nutrients.Added Sugars (g)'},
+                        'avg_fiber': {'$avg': '$nutrients.Fiber (g)'},
+                        'avg_saturated_fat': {'$avg': '$nutrients.Saturated Fat (g)'},
+                        'avg_unsaturated_fat': {'$avg': '$nutrients.Unsaturated Fat (g)'},
+                        'avg_sodium': {'$avg': '$nutrients.Sodium (mg)'},
+                        'avg_glycemic_load': {'$avg': '$nutrients.Glycemic Load'}
                     }
                 },
                 {'$sort': {'meal_count': -1}}  # Sort by meal count descending
@@ -502,13 +556,25 @@ class UserMeal:
                         'calories': round(item.get('total_calories', 0), 2),
                         'protein': round(item.get('total_protein', 0), 2),
                         'carbs': round(item.get('total_carbs', 0), 2),
-                        'fat': round(item.get('total_fat', 0), 2)
+                        'fat': round(item.get('total_fat', 0), 2),
+                        'added_sugars': round(item.get('total_added_sugars', 0), 2),
+                        'fiber': round(item.get('total_fiber', 0), 2),
+                        'saturated_fat': round(item.get('total_saturated_fat', 0), 2),
+                        'unsaturated_fat': round(item.get('total_unsaturated_fat', 0), 2),
+                        'sodium': round(item.get('total_sodium', 0), 2),
+                        'glycemic_load': round(item.get('total_glycemic_load', 0), 2)
                     },
                     'average_nutrients': {
                         'calories': round(item.get('avg_calories', 0), 2),
                         'protein': round(item.get('avg_protein', 0), 2),
                         'carbs': round(item.get('avg_carbs', 0), 2),
-                        'fat': round(item.get('avg_fat', 0), 2)
+                        'fat': round(item.get('avg_fat', 0), 2),
+                        'added_sugars': round(item.get('avg_added_sugars', 0), 2),
+                        'fiber': round(item.get('avg_fiber', 0), 2),
+                        'saturated_fat': round(item.get('avg_saturated_fat', 0), 2),
+                        'unsaturated_fat': round(item.get('avg_unsaturated_fat', 0), 2),
+                        'sodium': round(item.get('avg_sodium', 0), 2),
+                        'glycemic_load': round(item.get('avg_glycemic_load', 0), 2)
                     },
                     'meal_count': item.get('meal_count', 0)
                 }

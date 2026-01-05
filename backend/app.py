@@ -1,5 +1,7 @@
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
+from flask_socketio import SocketIO
+from flask_jwt_extended import JWTManager
 from waitress import serve
 import os
 import logging
@@ -16,11 +18,20 @@ from routes.nutrient_routes import nutrient_bp
 from routes.gemini_routes import gemini_bp
 from routes.admin_routes import admin_bp
 from routes.physician_routes import physician_bp
-from routes.activity_routes import activity_bp
+from routes.health_data_routes import health_data_bp
+from routes.diabetes_assessment_routes import diabetes_assessment_bp
+from routes.chat_routes import chat_bp
+from routes.chatbot_routes import chatbot_bp
+from routes.smoking_intake_routes import smoking_intake_bp
+from routes.alcohol_intake_routes import alcohol_intake_bp
+from controllers.chat_controller import register_socket_events
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
 from services.ml_service import init_ml_service
 from services.gemini_service import init_gemini_service
+from services.groq_service import init_groq_service
+from services.diabetes_service import init_diabetes_service
+from models.chatbot_message import ChatbotMessage
 
 # Load environment variables
 load_dotenv()
@@ -31,7 +42,10 @@ def create_app():
     # Configuration
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET', 'jwt-secret-change-this')
-    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)  # Changed to 7 days like your .env
+    app.config['JWT_TOKEN_LOCATION'] = ['headers']  # Look for JWT in Authorization header
+    app.config['JWT_HEADER_NAME'] = 'Authorization'  # Header name to look for JWT
+    app.config['JWT_HEADER_TYPE'] = 'Bearer'  # Expected token type in header
     app.config['DB_URI'] = os.getenv('DB_URI', 'mongodb://localhost:27017/glycofit')
     
     # File upload configuration
@@ -47,8 +61,12 @@ def create_app():
         "capacitor://localhost", # Capacitor apps
         "ionic://localhost",    # Ionic apps
         "http://192.168.*.*:*", # Local network
-        "https://192.168.*.*:*" # Local network HTTPS
+        "https://192.168.*.*:*", # Local network HTTPS
+        "https://glycofit.vercel.app"
     ], supports_credentials=True)
+    
+    # Initialize JWT Manager
+    jwt = JWTManager(app)
     
     # Setup logging
     setup_logging()
@@ -70,15 +88,15 @@ def create_app():
     except Exception as e:
         logging.error(f"Failed to initialize Cloudinary: {str(e)}")
     
-    # Initialize ML Service
+    # Initialize Firebase Admin (fast initialization)
     try:
-        init_ml_service()
-        logging.info("ML Service initialized successfully")
+        init_firebase()
+        logging.info("Firebase Admin SDK initialized successfully")
     except Exception as e:
-        logging.error(f"Failed to initialize ML Service: {str(e)}")
-        logging.warning("ML features will be disabled")
+        logging.error(f"Failed to initialize Firebase Admin SDK: {str(e)}")
+        logging.warning("Firebase features will be disabled")
     
-    # Initialize Gemini AI Service
+    # Initialize Gemini AI Service (fast initialization)
     try:
         init_gemini_service()
         logging.info("Gemini AI Service initialized successfully")
@@ -86,13 +104,33 @@ def create_app():
         logging.error(f"Failed to initialize Gemini AI Service: {str(e)}")
         logging.warning("Gemini AI features will be disabled")
     
-    # Initialize Firebase Admin
+    # Initialize Groq Service for Chatbot
     try:
-        init_firebase()
-        logging.info("Firebase Admin SDK initialized successfully")
+        init_groq_service()
+        logging.info("Groq Service initialized successfully")
     except Exception as e:
-        logging.error(f"Failed to initialize Firebase Admin SDK: {str(e)}")
-        logging.warning("Firebase features will be disabled")
+        logging.error(f"Failed to initialize Groq Service: {str(e)}")
+        logging.warning("Chatbot features will be disabled")
+    
+    # Initialize Chatbot Message Model Indexes
+    try:
+        ChatbotMessage.ensure_indexes()
+        logging.info("Chatbot message database indexes created successfully")
+    except Exception as e:
+        logging.error(f"Failed to create chatbot message indexes: {str(e)}")
+        logging.warning("Chatbot message queries may be slower without indexes")
+    
+    # Initialize Diabetes Prediction Service
+    try:
+        init_diabetes_service()
+        logging.info("Diabetes Prediction Service initialized successfully")
+    except Exception as e:
+        logging.error(f"Failed to initialize Diabetes Prediction Service: {str(e)}")
+        logging.warning("Diabetes prediction features will be disabled")
+    
+    # Defer ML Service initialization to avoid blocking startup
+    # The ML service will initialize lazily on first use
+    logging.info("ML Service will initialize on first use (lazy loading)")
     
     # Middleware for request logging
     @app.before_request
@@ -113,22 +151,30 @@ def create_app():
     app.register_blueprint(gemini_bp, url_prefix='/api/v1/gemini')
     app.register_blueprint(admin_bp, url_prefix='/api/v1/admin')
     app.register_blueprint(physician_bp, url_prefix='/api/v1/physician')
-    app.register_blueprint(activity_bp, url_prefix='/api/v1/activity')
+    app.register_blueprint(health_data_bp, url_prefix='/api/v1/health-data')
+    app.register_blueprint(diabetes_assessment_bp, url_prefix='/api/v1/diabetes-assessment')
+    app.register_blueprint(chat_bp, url_prefix='/api/v1/chat')
+    app.register_blueprint(chatbot_bp, url_prefix='/api/v1/chatbot')
+    app.register_blueprint(smoking_intake_bp, url_prefix='/api/v1/smoking-intake')
+    app.register_blueprint(alcohol_intake_bp, url_prefix='/api/v1/alcohol-intake')
 
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])
     def health_check():
         logging.info("Health check endpoint accessed")
         
-        # Check ML service status
+        # Check ML service status (without triggering initialization)
         ml_status = 'disabled'
         try:
-            from services.ml_service import get_ml_service
-            ml_service = get_ml_service()
-            if ml_service and ml_service.is_model_ready():
+            from services.ml_service import ml_service, ml_service_initialized, ml_service_initializing
+            if ml_service_initializing:
+                ml_status = 'initializing'
+            elif ml_service_initialized and ml_service and ml_service.is_model_ready():
                 ml_status = 'ready'
+            elif ml_service_initialized:
+                ml_status = 'error'
             else:
-                ml_status = 'not_ready'
+                ml_status = 'lazy_load_pending'
         except Exception:
             ml_status = 'error'
         
@@ -176,13 +222,39 @@ def create_app():
     
     return app
 
+# Initialize SocketIO globally
+socketio = None
+
+def create_socketio(app):
+    """Create and configure SocketIO instance"""
+    global socketio
+    socketio = SocketIO(
+        app,
+        cors_allowed_origins="*",
+        async_mode='threading',
+        logger=True,
+        engineio_logger=True
+    )
+    # Register socket events
+    register_socket_events(socketio)
+    return socketio
+
 if __name__ == '__main__':
     app = create_app()
+    socketio = create_socketio(app)
     port = int(os.getenv('PORT', 5000))
-    debug = os.getenv('FLASK_ENV') == 'development'
-    
+
+    debug = False  # force OFF
+
     logging.info(f"Starting GlycoFit Backend on port {port}")
     logging.info(f"Debug mode: {debug}")
+    logging.info("Socket.IO enabled for real-time chat")
 
-    serve(app, host='0.0.0.0', port=port)
-    #app.run(host='0.0.0.0', port=port, debug=debug)
+    socketio.run(
+        app,
+        host='0.0.0.0',
+        port=port,
+        debug=False,
+        use_reloader=False,
+        allow_unsafe_werkzeug=True
+    )
