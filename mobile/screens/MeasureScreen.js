@@ -133,9 +133,9 @@ const MeasureScreen = ({ navigation }) => {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.header}>
-          <Text style={styles.title}>Health Measurements</Text>
+          <Text style={styles.title}>Lifetsyle Tracker</Text>
           <Text style={styles.subtitle}>
-            Track your vital signs and health metrics to get better insights into your well-being.
+            Track your lifestyle to get better insights into your well-being.
           </Text>
         </View>
 

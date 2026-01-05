@@ -25,7 +25,7 @@ import SleepDailyLogScreen from '../screens/SleepDailyLogScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-// Measure Stack Navigator - handles navigation within Measure tab
+// Tracker Stack Navigator - handles navigation within Tracker tab
 const MeasureStack = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -65,11 +65,11 @@ const TabNavigator = () => {
 
           if (route.name === 'Home') {
             iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Measure') {
+          } else if (route.name === 'Tracker') {
             iconName = focused ? 'heart-pulse' : 'heart-pulse';
           } else if (route.name === 'FindPhysician') {
             iconName = focused ? 'doctor' : 'doctor';
-          } else if (route.name === 'Prediction') {
+          } else if (route.name === 'Assessment') {
             iconName = focused ? 'chart-line' : 'chart-line';
           } else if (route.name === 'Settings') {
             iconName = focused ? 'cog' : 'cog-outline';
@@ -88,7 +88,7 @@ const TabNavigator = () => {
           height: 60 + insets.bottom,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 9,
           fontWeight: '600',
           marginBottom: 5,
         },
@@ -103,10 +103,10 @@ const TabNavigator = () => {
         }}
       />
       <Tab.Screen 
-        name="Measure" 
+        name="Tracker" 
         component={MeasureStack}
         options={{
-          title: 'Measure',
+          title: 'Tracker',
         }}
       />
       <Tab.Screen 
@@ -117,10 +117,10 @@ const TabNavigator = () => {
         }}
       />
       <Tab.Screen 
-        name="Prediction" 
+        name="Assessment" 
         component={PredictionScreen}
         options={{
-          title: 'Prediction',
+          title: 'Assessment',
         }}
       />
       <Tab.Screen 
