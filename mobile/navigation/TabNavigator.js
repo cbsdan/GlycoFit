@@ -17,6 +17,10 @@ import StepCounterScreen from '../screens/StepCounterScreen';
 import FoodScannerScreen from '../screens/FoodScannerScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SmokingIntakeScreen from '../screens/SmokingIntakeScreen';
+import AlcoholIntakeScreen from '../screens/AlcoholIntakeScreen';
+import SleepTrackingScreen from '../screens/SleepTrackingScreen';
+import SleepBaselineScreen from '../screens/SleepBaselineScreen';
+import SleepDailyLogScreen from '../screens/SleepDailyLogScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -29,6 +33,10 @@ const MeasureStack = () => {
       <Stack.Screen name="StepCounter" component={StepCounterScreen} />
       <Stack.Screen name="FoodScanner" component={FoodScannerScreen} />
       <Stack.Screen name="SmokingIntake" component={SmokingIntakeScreen} />
+      <Stack.Screen name="AlcoholIntake" component={AlcoholIntakeScreen} />
+      <Stack.Screen name="SleepTracking" component={SleepTrackingScreen} />
+      <Stack.Screen name="SleepBaseline" component={SleepBaselineScreen} />
+      <Stack.Screen name="SleepDailyLog" component={SleepDailyLogScreen} />
     </Stack.Navigator>
   );
 };

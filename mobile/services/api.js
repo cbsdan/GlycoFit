@@ -1459,6 +1459,279 @@ export const deleteAlcoholIntake = async () => {
   }
 };
 
+// ==================== SLEEP TRACKING API ====================
+
+/**
+ * Create sleep baseline (required at onboarding, can only be done once)
+ * @param {number} baselineAvgSleepHours - Average hours of sleep (0-24)
+ * @param {number} baselineNights6hPlusPerWeek - Nights with 6+ hours (0-7)
+ * @param {number} baselineBedtimeConsistency - Consistency rating (1-5)
+ * @param {string} usualBedtime - Typical bedtime (HH:MM, optional)
+ * @param {string} usualWakeTime - Typical wake time (HH:MM, optional)
+ * @returns {Promise<Object>} Created baseline
+ */
+export const createSleepBaseline = async (
+  baselineAvgSleepHours,
+  baselineNights6hPlusPerWeek,
+  baselineBedtimeConsistency,
+  usualBedtime = null,
+  usualWakeTime = null
+) => {
+  try {
+    const payload = {
+      baseline_avg_sleep_hours: baselineAvgSleepHours,
+      baseline_nights_6h_plus_per_week: baselineNights6hPlusPerWeek,
+      baseline_bedtime_consistency: baselineBedtimeConsistency,
+    };
+    if (usualBedtime) payload.usual_bedtime = usualBedtime;
+    if (usualWakeTime) payload.usual_wake_time = usualWakeTime;
+    
+    const response = await api.post('/sleep-tracking/baseline', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating sleep baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get user's sleep baseline
+ * @returns {Promise<Object>} Baseline data
+ */
+export const getSleepBaseline = async () => {
+  try {
+    const response = await api.get('/sleep-tracking/baseline');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching sleep baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Check if user has completed sleep baseline
+ * @returns {Promise<Object>} { has_baseline: boolean }
+ */
+export const checkSleepBaseline = async () => {
+  try {
+    const response = await api.get('/sleep-tracking/baseline/check');
+    return response.data;
+  } catch (error) {
+    console.error('Error checking sleep baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Update sleep baseline (retake questionnaire)
+ * @param {number} baselineAvgSleepHours - Average hours of sleep (0-24)
+ * @param {number} baselineNights6hPlusPerWeek - Nights with 6+ hours (0-7)
+ * @param {number} baselineBedtimeConsistency - Consistency rating (1-5)
+ * @param {string} usualBedtime - Typical bedtime (HH:MM, optional)
+ * @param {string} usualWakeTime - Typical wake time (HH:MM, optional)
+ * @returns {Promise<Object>} Updated baseline
+ */
+export const updateSleepBaseline = async (
+  baselineAvgSleepHours,
+  baselineNights6hPlusPerWeek,
+  baselineBedtimeConsistency,
+  usualBedtime = null,
+  usualWakeTime = null
+) => {
+  try {
+    const payload = {
+      baseline_avg_sleep_hours: baselineAvgSleepHours,
+      baseline_nights_6h_plus_per_week: baselineNights6hPlusPerWeek,
+      baseline_bedtime_consistency: baselineBedtimeConsistency,
+    };
+    if (usualBedtime) payload.usual_bedtime = usualBedtime;
+    if (usualWakeTime) payload.usual_wake_time = usualWakeTime;
+    
+    const response = await api.put('/sleep-tracking/baseline', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating sleep baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Log manual daily sleep record
+ * @param {string} date - Date (YYYY-MM-DD)
+ * @param {string} bedtime - Bedtime (HH:MM, 24-hour)
+ * @param {number} sleepDurationHours - Sleep duration (0-24)
+ * @param {string} wakeTime - Wake time (HH:MM, optional)
+ * @param {number} sleepQuality - Quality rating 1-5 (optional)
+ * @param {string} notes - Notes (optional)
+ * @returns {Promise<Object>} Created/updated record
+ */
+export const logDailySleep = async (
+  date,
+  bedtime,
+  sleepDurationHours,
+  wakeTime = null,
+  sleepQuality = null,
+  notes = null
+) => {
+  try {
+    const payload = {
+      date,
+      bedtime,
+      sleep_duration_hours: sleepDurationHours,
+    };
+    if (wakeTime) payload.wake_time = wakeTime;
+    if (sleepQuality) payload.sleep_quality = sleepQuality;
+    if (notes) payload.notes = notes;
+    
+    const response = await api.post('/sleep-tracking/daily', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error logging daily sleep:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get daily sleep records
+ * @param {string} startDate - Start date (optional)
+ * @param {string} endDate - End date (optional)
+ * @param {number} days - Number of days (default: 30)
+ * @param {string} source - Filter by source (manual, health_connect)
+ * @returns {Promise<Object>} List of records
+ */
+export const getDailySleepRecords = async (startDate = null, endDate = null, days = 30, source = null) => {
+  try {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    if (days) params.append('days', days);
+    if (source) params.append('source', source);
+    
+    const response = await api.get(`/sleep-tracking/daily?${params.toString()}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching daily sleep records:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Delete daily sleep record
+ * @param {string} date - Date to delete (YYYY-MM-DD)
+ * @param {string} source - Source filter (optional)
+ * @returns {Promise<Object>} Delete result
+ */
+export const deleteDailySleepRecord = async (date, source = null) => {
+  try {
+    const params = source ? `?source=${source}` : '';
+    const response = await api.delete(`/sleep-tracking/daily/${date}${params}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting daily sleep record:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Sync Health Connect sleep data
+ * @param {Array} records - Array of sleep records from Health Connect
+ * @returns {Promise<Object>} Sync result
+ */
+export const syncHealthConnectSleep = async (records) => {
+  try {
+    const response = await api.post('/sleep-tracking/health-connect/sync', { records });
+    return response.data;
+  } catch (error) {
+    console.error('Error syncing Health Connect sleep:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get computed sleep metrics
+ * @returns {Promise<Object>} Computed metrics
+ */
+export const getSleepMetrics = async () => {
+  try {
+    const response = await api.get('/sleep-tracking/metrics');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching sleep metrics:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Force refresh sleep metrics
+ * @returns {Promise<Object>} Refreshed metrics
+ */
+export const refreshSleepMetrics = async () => {
+  try {
+    const response = await api.post('/sleep-tracking/metrics/refresh');
+    return response.data;
+  } catch (error) {
+    console.error('Error refreshing sleep metrics:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get latest sleep risk assessment
+ * @returns {Promise<Object>} Risk assessment
+ */
+export const getSleepRiskAssessment = async () => {
+  try {
+    const response = await api.get('/sleep-tracking/risk');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching sleep risk assessment:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get sleep risk assessment history
+ * @param {number} limit - Maximum records (default: 30)
+ * @returns {Promise<Object>} Risk history
+ */
+export const getSleepRiskHistory = async (limit = 30) => {
+  try {
+    const response = await api.get(`/sleep-tracking/risk/history?limit=${limit}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching sleep risk history:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get comprehensive sleep summary for dashboard
+ * @returns {Promise<Object>} Complete sleep status
+ */
+export const getSleepSummary = async () => {
+  try {
+    const response = await api.get('/sleep-tracking/summary');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching sleep summary:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Clean up duplicate sleep records
+ * @returns {Promise<Object>} Cleanup result
+ */
+export const cleanupDuplicateSleepRecords = async () => {
+  try {
+    const response = await api.post('/sleep-tracking/cleanup-duplicates');
+    return response.data;
+  } catch (error) {
+    console.error('Error cleaning up duplicates:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
 api.saveMeal = saveMeal;
@@ -1518,5 +1791,21 @@ api.saveSmokingIntake = saveSmokingIntake;
 api.getSmokingIntakeHistory = getSmokingIntakeHistory;
 api.getLatestSmokingIntake = getLatestSmokingIntake;
 api.deleteSmokingSession = deleteSmokingSession;
+
+// Sleep Tracking endpoints
+api.createSleepBaseline = createSleepBaseline;
+api.getSleepBaseline = getSleepBaseline;
+api.checkSleepBaseline = checkSleepBaseline;
+api.updateSleepBaseline = updateSleepBaseline;
+api.logDailySleep = logDailySleep;
+api.getDailySleepRecords = getDailySleepRecords;
+api.deleteDailySleepRecord = deleteDailySleepRecord;
+api.syncHealthConnectSleep = syncHealthConnectSleep;
+api.getSleepMetrics = getSleepMetrics;
+api.refreshSleepMetrics = refreshSleepMetrics;
+api.getSleepRiskAssessment = getSleepRiskAssessment;
+api.getSleepRiskHistory = getSleepRiskHistory;
+api.getSleepSummary = getSleepSummary;
+api.cleanupDuplicateSleepRecords = cleanupDuplicateSleepRecords;
 
 export default api;

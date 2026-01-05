@@ -31,6 +31,14 @@ const MeasureScreen = ({ navigation }) => {
       action: () => navigation.navigate('StepCounter'),
     },
     {
+      id: 'sleep-tracking',
+      title: 'Sleep Tracking',
+      subtitle: 'Track sleep patterns and duration',
+      icon: 'moon-waning-crescent',
+      color: '#3498DB',
+      action: () => navigation.navigate('SleepTracking'),
+    },
+    {
       id: 'smoking-intake',
       title: 'Smoking Intake',
       subtitle: 'Track your smoking history',

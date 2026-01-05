@@ -24,6 +24,7 @@ from routes.chat_routes import chat_bp
 from routes.chatbot_routes import chatbot_bp
 from routes.smoking_intake_routes import smoking_intake_bp
 from routes.alcohol_intake_routes import alcohol_intake_bp
+from routes.sleep_tracking_routes import sleep_tracking_bp
 from controllers.chat_controller import register_socket_events
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
@@ -32,6 +33,7 @@ from services.gemini_service import init_gemini_service
 from services.groq_service import init_groq_service
 from services.diabetes_service import init_diabetes_service
 from models.chatbot_message import ChatbotMessage
+from controllers.sleep_tracking_controller import init_sleep_tracking_indexes
 
 # Load environment variables
 load_dotenv()
@@ -128,6 +130,14 @@ def create_app():
         logging.error(f"Failed to initialize Diabetes Prediction Service: {str(e)}")
         logging.warning("Diabetes prediction features will be disabled")
     
+    # Initialize Sleep Tracking Indexes
+    try:
+        init_sleep_tracking_indexes()
+        logging.info("Sleep tracking database indexes created successfully")
+    except Exception as e:
+        logging.error(f"Failed to create sleep tracking indexes: {str(e)}")
+        logging.warning("Sleep tracking queries may be slower without indexes")
+    
     # Defer ML Service initialization to avoid blocking startup
     # The ML service will initialize lazily on first use
     logging.info("ML Service will initialize on first use (lazy loading)")
@@ -158,6 +168,7 @@ def create_app():
     app.register_blueprint(chatbot_bp, url_prefix='/api/v1/chatbot')
     app.register_blueprint(smoking_intake_bp, url_prefix='/api/v1/smoking-intake')
     app.register_blueprint(alcohol_intake_bp, url_prefix='/api/v1/alcohol-intake')
+    app.register_blueprint(sleep_tracking_bp, url_prefix='/api/v1/sleep-tracking')
 
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])
