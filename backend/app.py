@@ -18,6 +18,7 @@ from routes.nutrient_routes import nutrient_bp
 from routes.gemini_routes import gemini_bp
 from routes.admin_routes import admin_bp
 from routes.physician_routes import physician_bp
+from routes.activity_routes import activity_bp
 from routes.health_data_routes import health_data_bp
 from routes.diabetes_assessment_routes import diabetes_assessment_bp
 from routes.chat_routes import chat_bp
@@ -162,6 +163,7 @@ def create_app():
     app.register_blueprint(gemini_bp, url_prefix='/api/v1/gemini')
     app.register_blueprint(admin_bp, url_prefix='/api/v1/admin')
     app.register_blueprint(physician_bp, url_prefix='/api/v1/physician')
+    app.register_blueprint(activity_bp, url_prefix='/api/v1/activity')
     app.register_blueprint(health_data_bp, url_prefix='/api/v1/health-data')
     app.register_blueprint(diabetes_assessment_bp, url_prefix='/api/v1/diabetes-assessment')
     app.register_blueprint(chat_bp, url_prefix='/api/v1/chat')

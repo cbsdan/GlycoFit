@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,13 @@ import {
   RefreshControl,
   Dimensions,
   AppState,
+  Animated,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import healthConnectManager, {
+import {
+  initializeHealthConnect,
   getActivityData,
   requestAllHealthPermissions,
   openHealthConnectSettingsPage,
@@ -23,6 +25,21 @@ import stepDetectionService from '../services/stepDetectionService';
 import api from '../services/api';
 
 const { width } = Dimensions.get('window');
+
+// Constants
+const SYNC_STEP_THRESHOLD = 50;
+const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const DAILY_GOAL = 10000;
+
+// Achievements configuration
+const ACHIEVEMENTS = [
+  { id: 1, name: 'First Steps', requirement: 1000, icon: 'walk', color: '#3498DB' },
+  { id: 2, name: 'Getting Started', requirement: 5000, icon: 'shoe-print', color: '#9B59B6' },
+  { id: 3, name: 'Daily Goal', requirement: 10000, icon: 'trophy', color: '#F39C12' },
+  { id: 4, name: 'Super Walker', requirement: 15000, icon: 'star', color: '#E74C3C' },
+  { id: 5, name: 'Marathon', requirement: 20000, icon: 'medal', color: '#27AE60' },
+  { id: 6, name: 'Ultra Runner', requirement: 30000, icon: 'crown', color: '#E67E22' },
+];
 
 const StepCounterScreen = ({ navigation }) => {
   const { colors } = useTheme();
@@ -35,7 +52,6 @@ const StepCounterScreen = ({ navigation }) => {
   const [selectedPeriod, setSelectedPeriod] = useState('today');
   const [phoneSensorSteps, setPhoneSensorSteps] = useState(0);
   const [lastSyncedSteps, setLastSyncedSteps] = useState(0);
-  const [lastWrittenToHealthConnect, setLastWrittenToHealthConnect] = useState(0);
   const [activityData, setActivityData] = useState({
     steps: 0,
     distance: 0,
@@ -43,432 +59,27 @@ const StepCounterScreen = ({ navigation }) => {
     totalCalories: 0,
     exerciseSessions: [],
     dailyData: [],
+    hourlyData: [],
   });
   const [hasPermissions, setHasPermissions] = useState(false);
+  const [streak, setStreak] = useState({ current: 0, longest: 0 });
+  const [unlockedAchievements, setUnlockedAchievements] = useState([]);
 
-  // Refs for intervals and timers
+  // Refs
   const syncIntervalRef = useRef(null);
   const appStateRef = useRef(AppState.currentState);
   const lastAutoSyncRef = useRef(Date.now());
+  const isMountedRef = useRef(true);
+  const achievementAnimation = useRef(new Animated.Value(0)).current;
 
-  const periods = [
+  const periods = useMemo(() => [
     { id: 'today', label: 'Today', icon: 'calendar-today' },
     { id: 'week', label: 'Week', icon: 'calendar-week' },
     { id: 'month', label: 'Month', icon: 'calendar-month' },
-  ];
+  ], []);
 
-  // Initialize services
-  useEffect(() => {
-    initializeServices();
-    
-    return () => {
-      // Cleanup on unmount
-      stepDetectionService.stop();
-      
-      // Clear sync interval
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
-      }
-    };
-  }, []);
-
-  // Reload data when period changes
-  useEffect(() => {
-    if (selectedPeriod === 'today') {
-      updateTodaySteps();
-    } else if (hasPermissions) {
-      loadActivityData();
-    }
-  }, [selectedPeriod, hasPermissions, phoneSensorSteps]);
-
-  // Auto-sync based on step milestones (every 50 steps)
-  useEffect(() => {
-    if (selectedPeriod === 'today' && phoneSensorSteps > 0) {
-      const stepDifference = phoneSensorSteps - lastSyncedSteps;
-      
-      // Sync every 50 steps
-      if (stepDifference >= 50) {
-        console.log(`🎯 Step milestone reached: ${phoneSensorSteps} steps (${stepDifference} new) - auto-syncing...`);
-        performAutoSync();
-      }
-    }
-  }, [phoneSensorSteps, selectedPeriod, lastSyncedSteps]);
-
-  // Periodic auto-sync (every 5 minutes)
-  useEffect(() => {
-    if (selectedPeriod === 'today') {
-      // Clear existing interval
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
-      }
-
-      // Set up new interval for periodic sync
-      syncIntervalRef.current = setInterval(() => {
-        const now = Date.now();
-        const timeSinceLastSync = now - lastAutoSyncRef.current;
-        
-        // Only sync if it's been more than 5 minutes since last sync
-        if (timeSinceLastSync >= 5 * 60 * 1000) {
-          console.log('⏰ Periodic auto-sync (5 minutes)...');
-          performAutoSync();
-        }
-      }, 5 * 60 * 1000); // Check every 5 minutes
-
-      return () => {
-        if (syncIntervalRef.current) {
-          clearInterval(syncIntervalRef.current);
-        }
-      };
-    }
-  }, [selectedPeriod]);
-
-  // Handle app state changes (foreground/background)
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', nextAppState => {
-      // App is coming to foreground
-      if (
-        appStateRef.current.match(/inactive|background/) &&
-        nextAppState === 'active'
-      ) {
-        console.log('📱 App came to foreground - syncing data...');
-        updateTodaySteps();
-        performAutoSync();
-      }
-      
-      // App is going to background
-      if (
-        appStateRef.current === 'active' &&
-        nextAppState.match(/inactive|background/)
-      ) {
-        console.log('📱 App going to background - saving data...');
-        performAutoSync();
-      }
-
-      appStateRef.current = nextAppState;
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, []);
-
-  // Auto-sync when leaving the screen
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('beforeRemove', () => {
-      console.log('👋 Leaving screen - performing final sync...');
-      performAutoSync();
-    });
-
-    return unsubscribe;
-  }, [navigation]);
-
-  // Perform auto-sync
-  const performAutoSync = useCallback(async () => {
-    if (isSyncing || selectedPeriod !== 'today') {
-      return;
-    }
-
-    try {
-      await updateTodaySteps();
-      await syncActivityToBackend(true); // Pass true for silent sync
-      setLastSyncedSteps(phoneSensorSteps);
-      lastAutoSyncRef.current = Date.now();
-    } catch (error) {
-      console.error('❌ Auto-sync error:', error);
-    }
-  }, [isSyncing, selectedPeriod, phoneSensorSteps]);
-
-  // Initialize all services
-  const initializeServices = useCallback(async () => {
-    try {
-      console.log('🔧 Initializing services...');
-      
-      // Initialize step detection (always enabled)
-      await stepDetectionService.initialize();
-      stepDetectionService.start();
-      
-      // Listen for step updates
-      const unsubscribe = stepDetectionService.addListener((steps) => {
-        setPhoneSensorSteps(steps);
-      });
-      
-      // Load current count
-      const currentSteps = stepDetectionService.getStepCount();
-      setPhoneSensorSteps(currentSteps);
-      setLastSyncedSteps(currentSteps);
-      
-      console.log('✅ Phone sensor started with', currentSteps, 'steps');
-      
-      // Initialize Health Connect (ALWAYS initialize for reading/writing)
-      await healthConnectManager.initialize();
-      const permissionsGranted = await requestAllHealthPermissions();
-      
-      setHasPermissions(permissionsGranted);
-      
-      if (permissionsGranted) {
-        console.log('✅ Health Connect permissions granted');
-        // Load last written count
-        const lastWritten = await loadLastWrittenSteps();
-        setLastWrittenToHealthConnect(lastWritten);
-      } else {
-        console.log('⚠️ Health Connect permissions denied, using phone sensor only');
-      }
-
-      // Initial data load and sync
-      await updateTodaySteps();
-      await performAutoSync();
-      
-    } catch (error) {
-      console.error('❌ Initialization error:', error);
-      toast.error('Failed to initialize step tracking');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toast]);
-
-  // Update today's steps (READ from Health Connect for unified view)
-  const updateTodaySteps = useCallback(async () => {
-    try {
-      let totalSteps = 0;
-      let distance = 0;
-      let calories = 0;
-      
-      if (hasPermissions) {
-        // Read ALL steps from Health Connect (including our written steps)
-        const { startDate, endDate } = getDateRange('today');
-        const healthData = await getActivityData(startDate, endDate);
-        
-        totalSteps = calculateTotalSteps(healthData.steps);
-        distance = calculateTotalDistance(healthData.distance);
-        calories = calculateTotalCalories(healthData.totalCalories);
-        
-        console.log(`📊 Health Connect: ${totalSteps} steps (includes all sources)`);
-      } else {
-        // Fallback: Use phone sensor only if no Health Connect access
-        totalSteps = phoneSensorSteps;
-        distance = stepDetectionService.calculateDistance(phoneSensorSteps);
-        calories = stepDetectionService.calculateCalories(phoneSensorSteps);
-        
-        console.log(`📱 Phone sensor only: ${totalSteps} steps`);
-      }
-      
-      setActivityData({
-        steps: totalSteps,
-        distance: distance,
-        activeCalories: calories * 0.7,
-        totalCalories: calories,
-        exerciseSessions: [],
-        dailyData: [],
-      });
-      
-    } catch (error) {
-      console.error('❌ Update error:', error);
-    }
-  }, [phoneSensorSteps, hasPermissions]);
-
-  // Group data by day for week/month view
-  const groupDataByDay = (stepsData, distanceData, caloriesData) => {
-    const dayMap = new Map();
-    
-    // Process steps
-    stepsData?.forEach(record => {
-      const date = new Date(record.startTime || record.time).toDateString();
-      if (!dayMap.has(date)) {
-        dayMap.set(date, { date, steps: 0, distance: 0, calories: 0 });
-      }
-      dayMap.get(date).steps += Number(record?.count || 0);
-    });
-    
-    // Process distance
-    distanceData?.forEach(record => {
-      const date = new Date(record.startTime || record.time).toDateString();
-      if (!dayMap.has(date)) {
-        dayMap.set(date, { date, steps: 0, distance: 0, calories: 0 });
-      }
-      dayMap.get(date).distance += Number(record?.distance?.inMeters || 0);
-    });
-    
-    // Process calories
-    caloriesData?.forEach(record => {
-      const date = new Date(record.startTime || record.time).toDateString();
-      if (!dayMap.has(date)) {
-        dayMap.set(date, { date, steps: 0, distance: 0, calories: 0 });
-      }
-      dayMap.get(date).calories += Number(record?.energy?.inKilocalories || 0);
-    });
-    
-    return Array.from(dayMap.values()).sort((a, b) => 
-      new Date(b.date) - new Date(a.date)
-    );
-  };
-
-  // Load activity data (for week/month view)
-  const loadActivityData = useCallback(async () => {
-    try {
-      console.log(`📊 Loading data for: ${selectedPeriod}`);
-      
-      if (!hasPermissions) {
-        // If no Health Connect permissions, show empty data
-        setActivityData({
-          steps: phoneSensorSteps,
-          distance: stepDetectionService.calculateDistance(phoneSensorSteps),
-          activeCalories: stepDetectionService.calculateCalories(phoneSensorSteps) * 0.7,
-          totalCalories: stepDetectionService.calculateCalories(phoneSensorSteps),
-          exerciseSessions: [],
-          dailyData: [],
-        });
-        return;
-      }
-      
-      const { startDate, endDate } = getDateRange(selectedPeriod);
-      const data = await getActivityData(startDate, endDate);
-      
-      console.log('📊 Raw data:', data);
-      
-      // Calculate totals
-      const totalSteps = calculateTotalSteps(data.steps);
-      const totalDistance = calculateTotalDistance(data.distance);
-      const totalActiveCalories = calculateTotalCalories(data.activeCalories);
-      const totalCalories = calculateTotalCalories(data.totalCalories);
-      
-      // Group by day for week/month view
-      const dailyData = selectedPeriod !== 'today' 
-        ? groupDataByDay(data.steps, data.distance, data.totalCalories)
-        : [];
-      
-      const processedData = {
-        steps: totalSteps,
-        distance: totalDistance,
-        activeCalories: totalActiveCalories,
-        totalCalories: totalCalories,
-        exerciseSessions: data.exerciseSessions || [],
-        dailyData,
-      };
-      
-      setActivityData(processedData);
-      console.log('✅ Data processed:', processedData);
-      
-    } catch (error) {
-      console.error('❌ Load error:', error);
-      toast.error('Failed to load activity data');
-    }
-  }, [selectedPeriod, toast, phoneSensorSteps, hasPermissions]);
-
-  // Write phone sensor steps to Health Connect
-  const writeStepsToHealthConnect = useCallback(async (stepCount) => {
-    if (!hasPermissions || stepCount <= 0) {
-      return;
-    }
-
-    try {
-      const { insertSteps } = require('../services/healthConnectService');
-      
-      const now = new Date();
-      const startTime = new Date(now.getTime() - (5 * 60 * 1000)); // 5 minutes ago
-      
-      const result = await insertSteps({
-        count: stepCount,
-        startTime: startTime.toISOString(),
-        endTime: now.toISOString(),
-      });
-      
-      if (result.success) {
-        setLastWrittenToHealthConnect(phoneSensorSteps);
-        await saveLastWrittenSteps(phoneSensorSteps);
-        console.log(`✅ Wrote ${stepCount} steps to Health Connect`);
-        
-        // Refresh to show combined data
-        await updateTodaySteps();
-      } else {
-        console.error('❌ Failed to write to Health Connect:', result);
-      }
-    } catch (error) {
-      console.error('❌ Write to Health Connect error:', error);
-    }
-  }, [hasPermissions, phoneSensorSteps]);
-
-  // Save last written steps count
-  const saveLastWrittenSteps = async (steps) => {
-    try {
-      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-      await AsyncStorage.setItem('last_written_steps', steps.toString());
-    } catch (error) {
-      console.error('❌ Failed to save last written steps:', error);
-    }
-  };
-
-  // Load last written steps count
-  const loadLastWrittenSteps = async () => {
-    try {
-      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-      const value = await AsyncStorage.getItem('last_written_steps');
-      return value ? parseInt(value, 10) : 0;
-    } catch (error) {
-      console.error('❌ Failed to load last written steps:', error);
-      return 0;
-    }
-  };
-
-  // Sync to backend (use Health Connect data as source of truth)
-  const syncActivityToBackend = useCallback(async (silent = false) => {
-    if (isSyncing || selectedPeriod !== 'today') {
-      console.log('⏭️ Skipping sync:', { isSyncing, selectedPeriod });
-      return;
-    }
-
-    try {
-      setIsSyncing(true);
-      if (!silent) {
-        console.log('📤 Syncing to backend...');
-      }
-      
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      // Use Health Connect data if available (already deduplicated)
-      // Otherwise use phone sensor data
-      const dataToSync = {
-        date: today.toISOString(),
-        steps: activityData.steps, // Health Connect total (deduplicated)
-        distance: activityData.distance,
-        activeCalories: activityData.activeCalories,
-        totalCalories: activityData.totalCalories,
-        source: hasPermissions ? 'health_connect' : 'phone_sensor',
-        phoneSensorSteps: phoneSensorSteps,
-        healthConnectSteps: hasPermissions ? activityData.steps : 0,
-      };
-      
-      if (!silent) {
-        console.log('📤 Data to sync:', dataToSync);
-      }
-      
-      const response = await api.saveDailyActivity(dataToSync);
-      
-      if (response.success) {
-        if (!silent) {
-          console.log('✅ Sync successful');
-          toast.success('Activity synced successfully');
-        } else {
-          console.log('✅ Auto-sync successful');
-        }
-      } else {
-        console.error('❌ Sync failed:', response);
-        if (!silent) {
-          toast.error('Failed to sync activity data');
-        }
-      }
-    } catch (error) {
-      console.error('❌ Sync error:', error);
-      if (!silent) {
-        toast.error('Sync failed: ' + error.message);
-      }
-    } finally {
-      setIsSyncing(false);
-    }
-  }, [isSyncing, selectedPeriod, phoneSensorSteps, activityData, hasPermissions, toast]);
-
-  // Get date range
-  const getDateRange = (period) => {
+  // Memoized date range calculator
+  const getDateRange = useCallback((period) => {
     const endDate = new Date();
     const startDate = new Date();
 
@@ -485,39 +96,406 @@ const StepCounterScreen = ({ navigation }) => {
         startDate.setMonth(startDate.getMonth() - 1);
         startDate.setHours(0, 0, 0, 0);
         break;
-      default:
-        startDate.setHours(0, 0, 0, 0);
     }
 
     return { startDate, endDate };
-  };
+  }, []);
 
-  // Calculate total steps
-  const calculateTotalSteps = (stepsData) => {
+  // Calculate streak
+  const calculateStreak = useCallback((dailyData) => {
+    if (!dailyData || dailyData.length === 0) return { current: 0, longest: 0 };
+
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let tempStreak = 0;
+
+    const sortedData = [...dailyData].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    for (let i = 0; i < sortedData.length; i++) {
+      if (sortedData[i].steps >= DAILY_GOAL) {
+        tempStreak++;
+        if (i === 0 || new Date(sortedData[i].date).getTime() === new Date(sortedData[i - 1].date).getTime() - 86400000) {
+          currentStreak = tempStreak;
+        }
+      } else {
+        if (i === 0) currentStreak = 0;
+        tempStreak = 0;
+      }
+      longestStreak = Math.max(longestStreak, tempStreak);
+    }
+
+    return { current: currentStreak, longest: longestStreak };
+  }, []);
+
+  // Check and unlock achievements
+  const checkAchievements = useCallback((steps) => {
+    const newUnlocked = [];
+    ACHIEVEMENTS.forEach(achievement => {
+      if (steps >= achievement.requirement && !unlockedAchievements.includes(achievement.id)) {
+        newUnlocked.push(achievement.id);
+        // Animate achievement unlock
+        Animated.sequence([
+          Animated.timing(achievementAnimation, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.delay(2000),
+          Animated.timing(achievementAnimation, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ]).start();
+        
+        toast.success(`🏆 Achievement Unlocked: ${achievement.name}!`);
+      }
+    });
+
+    if (newUnlocked.length > 0) {
+      setUnlockedAchievements(prev => [...prev, ...newUnlocked]);
+    }
+  }, [unlockedAchievements, achievementAnimation, toast]);
+
+  // Generate hourly data
+  const generateHourlyData = useCallback((stepsData) => {
+    const hourlyMap = new Map();
+    
+    // Initialize all hours with 0
+    for (let i = 0; i < 24; i++) {
+      hourlyMap.set(i, 0);
+    }
+
+    if (stepsData && Array.isArray(stepsData)) {
+      stepsData.forEach(record => {
+        const hour = new Date(record.startTime || record.time).getHours();
+        hourlyMap.set(hour, hourlyMap.get(hour) + (Number(record?.count) || 0));
+      });
+    }
+
+    return Array.from(hourlyMap.entries()).map(([hour, steps]) => ({ hour, steps }));
+  }, []);
+
+  // Predict end of day steps
+  const predictedSteps = useMemo(() => {
+    if (selectedPeriod !== 'today' || activityData.steps === 0) return null;
+
+    const now = new Date();
+    const minutesPassed = now.getHours() * 60 + now.getMinutes();
+    
+    if (minutesPassed === 0) return activityData.steps;
+    
+    const stepsPerMinute = activityData.steps / minutesPassed;
+    const predicted = Math.round(stepsPerMinute * 1440); // 1440 minutes in a day
+    
+    return predicted > activityData.steps ? predicted : activityData.steps;
+  }, [activityData.steps, selectedPeriod]);
+
+  // Generate health insights
+  const healthInsights = useMemo(() => {
+    const insights = [];
+
+    if (selectedPeriod === 'today') {
+      const progress = (activityData.steps / DAILY_GOAL) * 100;
+      
+      if (progress >= 100) {
+        insights.push({ type: 'success', icon: 'check-circle', message: '🎉 Daily goal achieved! Great job!', color: '#27AE60' });
+      } else if (progress >= 75) {
+        insights.push({ type: 'info', icon: 'trending-up', message: '💪 Almost there! Keep going!', color: '#F39C12' });
+      } else if (progress < 25) {
+        insights.push({ type: 'warning', icon: 'alert-circle', message: '👟 Time to get moving!', color: '#E74C3C' });
+      }
+
+      if (predictedSteps && predictedSteps >= DAILY_GOAL) {
+        insights.push({ type: 'info', icon: 'chart-line', message: `📈 On track to reach ${predictedSteps.toLocaleString()} steps`, color: '#3498DB' });
+      }
+
+      if (streak.current > 0) {
+        insights.push({ type: 'success', icon: 'fire', message: `🔥 ${streak.current} day streak! Keep it up!`, color: '#E67E22' });
+      }
+    } else if (selectedPeriod === 'week' && activityData.dailyData.length > 0) {
+      const thisWeekAvg = activityData.steps / 7;
+      const lastWeekData = activityData.dailyData.slice(7, 14);
+      const lastWeekTotal = lastWeekData.reduce((sum, day) => sum + day.steps, 0);
+      const lastWeekAvg = lastWeekData.length > 0 ? lastWeekTotal / lastWeekData.length : 0;
+
+      if (lastWeekAvg > 0) {
+        const change = ((thisWeekAvg - lastWeekAvg) / lastWeekAvg) * 100;
+        if (change > 0) {
+          insights.push({ 
+            type: 'success', 
+            icon: 'trending-up', 
+            message: `📈 ${change.toFixed(0)}% increase from last week!`, 
+            color: '#27AE60' 
+          });
+        } else if (change < 0) {
+          insights.push({ 
+            type: 'warning', 
+            icon: 'trending-down', 
+            message: `📉 ${Math.abs(change).toFixed(0)}% decrease from last week`, 
+            color: '#E74C3C' 
+          });
+        }
+      }
+    }
+
+    const calories = activityData.activeCalories;
+    if (calories > 500) {
+      insights.push({ type: 'success', icon: 'fire', message: `🔥 Burned ${Math.round(calories)} active calories`, color: '#E74C3C' });
+    }
+
+    return insights;
+  }, [activityData, selectedPeriod, predictedSteps, streak]);
+
+  // Optimized calculation functions
+  const calculateTotalSteps = useCallback((stepsData) => {
     if (!Array.isArray(stepsData) || stepsData.length === 0) return 0;
-    return stepsData.reduce((total, record) => {
-      const count = Number(record?.count || 0);
-      return total + count;
-    }, 0);
-  };
+    return stepsData.reduce((total, record) => total + (Number(record?.count) || 0), 0);
+  }, []);
 
-  // Calculate total distance
-  const calculateTotalDistance = (distanceData) => {
+  const calculateTotalDistance = useCallback((distanceData) => {
     if (!Array.isArray(distanceData) || distanceData.length === 0) return 0;
-    return distanceData.reduce((total, record) => {
-      const distance = Number(record?.distance?.inMeters || 0);
-      return total + distance;
-    }, 0);
-  };
+    return distanceData.reduce((total, record) => total + (Number(record?.distance?.inMeters) || 0), 0);
+  }, []);
 
-  // Calculate total calories
-  const calculateTotalCalories = (caloriesData) => {
+  const calculateTotalCalories = useCallback((caloriesData) => {
     if (!Array.isArray(caloriesData) || caloriesData.length === 0) return 0;
-    return caloriesData.reduce((total, record) => {
-      const calories = Number(record?.energy?.inKilocalories || 0);
-      return total + calories;
-    }, 0);
-  };
+    return caloriesData.reduce((total, record) => total + (Number(record?.energy?.inKilocalories) || 0), 0);
+  }, []);
+
+  // Group data by day (optimized)
+  const groupDataByDay = useCallback((stepsData, distanceData, caloriesData) => {
+    const dayMap = new Map();
+
+    const processRecord = (record, field, getValue) => {
+      const date = new Date(record.startTime || record.time).toDateString();
+      if (!dayMap.has(date)) {
+        dayMap.set(date, { date, steps: 0, distance: 0, calories: 0 });
+      }
+      dayMap.get(date)[field] += getValue(record);
+    };
+
+    stepsData?.forEach(record => processRecord(record, 'steps', r => Number(r?.count || 0)));
+    distanceData?.forEach(record => processRecord(record, 'distance', r => Number(r?.distance?.inMeters || 0)));
+    caloriesData?.forEach(record => processRecord(record, 'calories', r => Number(r?.energy?.inKilocalories || 0)));
+
+    return Array.from(dayMap.values()).sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, []);
+
+  // Update today's steps
+  const updateTodaySteps = useCallback(async () => {
+    if (!isMountedRef.current) return;
+
+    try {
+      let totalSteps = 0;
+      let distance = 0;
+      let calories = 0;
+      let hourlyData = [];
+
+      if (hasPermissions) {
+        const { startDate, endDate } = getDateRange('today');
+        const healthData = await getActivityData(startDate, endDate);
+
+        totalSteps = calculateTotalSteps(healthData.steps);
+        distance = calculateTotalDistance(healthData.distance);
+        calories = calculateTotalCalories(healthData.totalCalories);
+        hourlyData = generateHourlyData(healthData.steps);
+
+        console.log(`📊 Health Connect: ${totalSteps} steps`);
+      } else {
+        totalSteps = phoneSensorSteps;
+        distance = stepDetectionService.calculateDistance(phoneSensorSteps);
+        calories = stepDetectionService.calculateCalories(phoneSensorSteps);
+
+        console.log(`📱 Phone sensor: ${totalSteps} steps`);
+      }
+
+      if (isMountedRef.current) {
+        setActivityData(prev => ({
+          ...prev,
+          steps: totalSteps,
+          distance,
+          activeCalories: calories * 0.7,
+          totalCalories: calories,
+          hourlyData,
+        }));
+        checkAchievements(totalSteps);
+      }
+    } catch (error) {
+      console.error('❌ Update error:', error);
+    }
+  }, [phoneSensorSteps, hasPermissions, getDateRange, calculateTotalSteps, calculateTotalDistance, calculateTotalCalories, generateHourlyData, checkAchievements]);
+
+  // Load activity data for week/month
+  const loadActivityData = useCallback(async () => {
+    if (!isMountedRef.current) return;
+
+    try {
+      console.log(`📊 Loading data for: ${selectedPeriod}`);
+
+      if (!hasPermissions) {
+        setActivityData({
+          steps: phoneSensorSteps,
+          distance: stepDetectionService.calculateDistance(phoneSensorSteps),
+          activeCalories: stepDetectionService.calculateCalories(phoneSensorSteps) * 0.7,
+          totalCalories: stepDetectionService.calculateCalories(phoneSensorSteps),
+          exerciseSessions: [],
+          dailyData: [],
+          hourlyData: [],
+        });
+        return;
+      }
+
+      const { startDate, endDate } = getDateRange(selectedPeriod);
+      const data = await getActivityData(startDate, endDate);
+
+      const totalSteps = calculateTotalSteps(data.steps);
+      const totalDistance = calculateTotalDistance(data.distance);
+      const totalActiveCalories = calculateTotalCalories(data.activeCalories);
+      const totalCalories = calculateTotalCalories(data.totalCalories);
+
+      const dailyData = selectedPeriod !== 'today'
+        ? groupDataByDay(data.steps, data.distance, data.totalCalories)
+        : [];
+
+      const streakData = calculateStreak(dailyData);
+      setStreak(streakData);
+
+      if (isMountedRef.current) {
+        setActivityData({
+          steps: totalSteps,
+          distance: totalDistance,
+          activeCalories: totalActiveCalories,
+          totalCalories: totalCalories,
+          exerciseSessions: data.exerciseSessions || [],
+          dailyData,
+          hourlyData: [],
+        });
+      }
+
+      console.log('✅ Data loaded');
+    } catch (error) {
+      console.error('❌ Load error:', error);
+      toast.error('Failed to load activity data');
+    }
+  }, [selectedPeriod, phoneSensorSteps, hasPermissions, toast, getDateRange, calculateTotalSteps, calculateTotalDistance, calculateTotalCalories, groupDataByDay, calculateStreak]);
+
+  // Sync to backend
+  const syncActivityToBackend = useCallback(async (silent = false) => {
+    if (isSyncing || selectedPeriod !== 'today' || !isMountedRef.current) {
+      return;
+    }
+
+    try {
+      setIsSyncing(true);
+      if (!silent) console.log('📤 Syncing to backend...');
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const dataToSync = {
+        date: today.toISOString(),
+        steps: activityData.steps,
+        distance: activityData.distance,
+        activeCalories: activityData.activeCalories,
+        totalCalories: activityData.totalCalories,
+        source: hasPermissions ? 'health_connect' : 'phone_sensor',
+        phoneSensorSteps: phoneSensorSteps,
+        healthConnectSteps: hasPermissions ? activityData.steps : 0,
+        streak: streak.current,
+        achievements: unlockedAchievements,
+      };
+
+      const response = await api.saveDailyActivity(dataToSync);
+
+      if (response.success) {
+        if (!silent) {
+          console.log('✅ Sync successful');
+          toast.success('Activity synced successfully');
+        }
+      } else {
+        console.error('❌ Sync failed:', response);
+        if (!silent) toast.error('Failed to sync activity data');
+      }
+    } catch (error) {
+      console.error('❌ Sync error:', error);
+      if (!silent) toast.error('Sync failed: ' + error.message);
+    } finally {
+      if (isMountedRef.current) {
+        setIsSyncing(false);
+      }
+    }
+  }, [isSyncing, selectedPeriod, phoneSensorSteps, activityData, hasPermissions, streak, unlockedAchievements, toast]);
+
+  // Perform auto-sync
+  const performAutoSync = useCallback(async () => {
+    if (isSyncing || selectedPeriod !== 'today' || !isMountedRef.current) return;
+
+    try {
+      await updateTodaySteps();
+      await syncActivityToBackend(true);
+      setLastSyncedSteps(phoneSensorSteps);
+      lastAutoSyncRef.current = Date.now();
+    } catch (error) {
+      console.error('❌ Auto-sync error:', error);
+    }
+  }, [isSyncing, selectedPeriod, phoneSensorSteps, updateTodaySteps, syncActivityToBackend]);
+
+  // Initialize services
+  const initializeServices = useCallback(async () => {
+    try {
+      console.log('🔧 Initializing services...');
+
+      // Initialize Health Connect FIRST
+      await initializeHealthConnect();
+      const permissionsGranted = await requestAllHealthPermissions();
+
+      setHasPermissions(permissionsGranted);
+
+      if (permissionsGranted) {
+        console.log('✅ Health Connect permissions granted');
+        console.log('⚠️ Phone sensor will NOT be started (Health Connect is active)');
+        // Don't start phone sensor - Health Connect handles everything
+        // This prevents duplicate counting and saves battery
+        
+      } else {
+        console.log('⚠️ Health Connect permissions denied');
+        console.log('📱 Starting phone sensor as fallback');
+        
+        // ONLY start phone sensor if Health Connect not available
+        await stepDetectionService.initialize();
+        stepDetectionService.start();
+
+        const unsubscribe = stepDetectionService.addListener((steps) => {
+          if (isMountedRef.current) {
+            setPhoneSensorSteps(steps);
+          }
+        });
+
+        const currentSteps = stepDetectionService.getStepCount();
+        setPhoneSensorSteps(currentSteps);
+        setLastSyncedSteps(currentSteps);
+
+        console.log('✅ Phone sensor started:', currentSteps, 'steps');
+        
+        await updateTodaySteps();
+        await performAutoSync();
+        
+        return unsubscribe;
+      }
+
+      await updateTodaySteps();
+      await performAutoSync();
+
+    } catch (error) {
+      console.error('❌ Initialization error:', error);
+      toast.error('Failed to initialize step tracking');
+    } finally {
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
+    }
+  }, [toast, updateTodaySteps, performAutoSync]);
 
   // Handle refresh
   const handleRefresh = useCallback(async () => {
@@ -533,120 +511,328 @@ const StepCounterScreen = ({ navigation }) => {
     } catch (error) {
       console.error('Refresh error:', error);
     } finally {
-      setIsRefreshing(false);
-    }
-  }, [loadActivityData, updateTodaySteps, selectedPeriod, performAutoSync, toast]);
-
-  // Format distance
-  const formatDistance = (meters) => {
-    const m = Number(meters) || 0;
-    if (m < 1000) {
-      return `${Math.round(m)} m`;
-    }
-    return `${(m / 1000).toFixed(2)} km`;
-  };
-
-  // Calculate step goal progress
-  const getStepGoalProgress = () => {
-    const dailyGoal = 10000;
-    const steps = Number(activityData.steps) || 0;
-    const progress = (steps / dailyGoal) * 100;
-    return Math.min(Math.max(progress, 0), 100);
-  };
-
-  // Get average for period
-  const getAverageSteps = () => {
-    const days = selectedPeriod === 'week' ? 7 : 30;
-    return Math.round(activityData.steps / days);
-  };
-
-  // Format date for display
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    if (date.toDateString() === today.toDateString()) {
-      return 'Today';
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
-    } else {
-      return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    }
-  };
-
-  // Get max steps for chart scaling
-  const getMaxSteps = () => {
-    if (activityData.dailyData.length === 0) return 10000;
-    return Math.max(...activityData.dailyData.map(d => d.steps), 10000);
-  };
-
-  // Request permissions
-  const handleRequestPermissions = useCallback(async () => {
-    try {
-      const granted = await requestAllHealthPermissions();
-      if (granted) {
-        setHasPermissions(true);
-        toast.success('Permissions granted');
-        await loadActivityData();
-      } else {
-        toast.error('Permissions denied');
+      if (isMountedRef.current) {
+        setIsRefreshing(false);
       }
-    } catch (error) {
-      console.error('Permission error:', error);
-      toast.error('Failed to request permissions');
     }
-  }, [loadActivityData, toast]);
+  }, [selectedPeriod, updateTodaySteps, performAutoSync, loadActivityData, toast]);
 
-  // Open settings
-  const handleOpenSettings = useCallback(async () => {
-    try {
-      await openHealthConnectSettingsPage();
-    } catch (error) {
-      console.error('Settings error:', error);
-      toast.error('Failed to open settings');
-    }
-  }, [toast]);
-
-  // Manual sync handler (keeping for manual refresh button)
+  // Manual sync handler
   const handleManualSync = useCallback(async () => {
     if (selectedPeriod !== 'today') {
       toast.info('Switch to "Today" to sync data');
       return;
     }
-    
+
     await updateTodaySteps();
-    await syncActivityToBackend(false); // Manual sync with toast
+    await syncActivityToBackend(false);
   }, [selectedPeriod, updateTodaySteps, syncActivityToBackend, toast]);
 
-  // Render steps badge showing breakdown
-  const renderStepsBadge = () => {
-    if (selectedPeriod !== 'today') return null;
+  // Initialize on mount
+  useEffect(() => {
+    let unsubscribe;
     
+    initializeServices().then(unsub => {
+      unsubscribe = unsub;
+    });
+
+    return () => {
+      isMountedRef.current = false;
+      stepDetectionService.stop();
+      if (unsubscribe) unsubscribe();
+      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+    };
+  }, []);
+
+  // Reload data when period changes
+  // useEffect(() => {
+  //   if (!isLoading) {
+  //     if (selectedPeriod === 'today') {
+  //       updateTodaySteps();
+  //     } else if (hasPermissions) {
+  //       loadActivityData();
+  //     }
+  //   }
+  // }, [selectedPeriod, hasPermissions, isLoading]);
+
+  // ...existing code...
+
+// Reload data when period changes
+useEffect(() => {
+  if (!isLoading) {
+    if (selectedPeriod === 'today') {
+      updateTodaySteps();
+    } else {
+      // Call loadActivityData for both week and month
+      loadActivityData();
+    }
+  }
+}, [selectedPeriod, isLoading, updateTodaySteps, loadActivityData]);
+
+  // Auto-sync based on step milestones
+  useEffect(() => {
+    if (selectedPeriod === 'today' && phoneSensorSteps > 0) {
+      const stepDifference = phoneSensorSteps - lastSyncedSteps;
+
+      if (stepDifference >= SYNC_STEP_THRESHOLD) {
+        console.log(`🎯 Step milestone: ${phoneSensorSteps} steps (${stepDifference} new)`);
+        performAutoSync();
+      }
+    }
+  }, [phoneSensorSteps, selectedPeriod, lastSyncedSteps, performAutoSync]);
+
+  // Periodic auto-sync
+  useEffect(() => {
+    if (selectedPeriod === 'today') {
+      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+
+      syncIntervalRef.current = setInterval(() => {
+        const timeSinceLastSync = Date.now() - lastAutoSyncRef.current;
+
+        if (timeSinceLastSync >= SYNC_INTERVAL_MS) {
+          console.log('⏰ Periodic auto-sync');
+          performAutoSync();
+        }
+      }, SYNC_INTERVAL_MS);
+
+      return () => {
+        if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+      };
+    }
+  }, [selectedPeriod, performAutoSync]);
+
+  // Handle app state changes
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+        console.log('📱 App to foreground');
+        updateTodaySteps();
+        performAutoSync();
+      }
+
+      if (appStateRef.current === 'active' && nextAppState.match(/inactive|background/)) {
+        console.log('📱 App to background');
+        performAutoSync();
+      }
+
+      appStateRef.current = nextAppState;
+    });
+
+    return () => subscription.remove();
+  }, [updateTodaySteps, performAutoSync]);
+
+  // Auto-sync when leaving screen
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', () => {
+      console.log('👋 Leaving screen');
+      performAutoSync();
+    });
+
+    return unsubscribe;
+  }, [navigation, performAutoSync]);
+
+  // Memoized calculations
+  const stepGoalProgress = useMemo(() => {
+    const progress = (activityData.steps / DAILY_GOAL) * 100;
+    return Math.min(Math.max(progress, 0), 100);
+  }, [activityData.steps]);
+
+  const averageSteps = useMemo(() => {
+    const days = selectedPeriod === 'week' ? 7 : 30;
+    return Math.round(activityData.steps / days);
+  }, [activityData.steps, selectedPeriod]);
+
+  const maxSteps = useMemo(() => {
+    if (activityData.dailyData.length === 0) return DAILY_GOAL;
+    return Math.max(...activityData.dailyData.map(d => d.steps), DAILY_GOAL);
+  }, [activityData.dailyData]);
+
+  // Format functions
+  const formatDistance = useCallback((meters) => {
+    const m = Number(meters) || 0;
+    return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(2)} km`;
+  }, []);
+
+  const formatDate = useCallback((dateString) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    if (date.toDateString() === today.toDateString()) return 'Today';
+    if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  }, []);
+
+  // Render streak badge
+  const renderStreakBadge = useCallback(() => {
+    if (streak.current === 0) return null;
+
+    return (
+      <View style={styles.streakCard}>
+        <View style={styles.streakIconContainer}>
+          <Icon name="fire" size={32} color="#E67E22" />
+        </View>
+        <View style={styles.streakInfo}>
+          <Text style={styles.streakNumber}>{streak.current} days</Text>
+          <Text style={styles.streakLabel}>Current Streak</Text>
+          {streak.longest > streak.current && (
+            <Text style={styles.streakBest}>Best: {streak.longest} days</Text>
+          )}
+        </View>
+      </View>
+    );
+  }, [streak]);
+
+  // Render achievements
+  const renderAchievements = useCallback(() => {
+    const nextAchievement = ACHIEVEMENTS.find(a => activityData.steps < a.requirement);
+    const completed = ACHIEVEMENTS.filter(a => unlockedAchievements.includes(a.id));
+
+    return (
+      <View style={styles.achievementsCard}>
+        <View style={styles.achievementsHeader}>
+          <Text style={styles.sectionTitle}>Achievements</Text>
+          <Text style={styles.achievementsCount}>
+            {completed.length}/{ACHIEVEMENTS.length}
+          </Text>
+        </View>
+        
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.achievementsList}>
+          {ACHIEVEMENTS.map(achievement => {
+            const isUnlocked = unlockedAchievements.includes(achievement.id);
+            return (
+              <View
+                key={achievement.id}
+                style={[
+                  styles.achievementBadge,
+                  { borderColor: achievement.color, opacity: isUnlocked ? 1 : 0.4 }
+                ]}
+              >
+                <View style={[styles.achievementIcon, { backgroundColor: achievement.color + '20' }]}>
+                  <Icon
+                    name={achievement.icon}
+                    size={28}
+                    color={isUnlocked ? achievement.color : colors.secondary}
+                  />
+                </View>
+                <Text style={styles.achievementName} numberOfLines={2}>
+                  {achievement.name}
+                </Text>
+                <Text style={styles.achievementRequirement}>
+                  {achievement.requirement.toLocaleString()}
+                </Text>
+              </View>
+            );
+          })}
+        </ScrollView>
+
+        {nextAchievement && selectedPeriod === 'today' && (
+          <View style={styles.nextAchievement}>
+            <Text style={styles.nextAchievementText}>
+              Next: {nextAchievement.name} - {(nextAchievement.requirement - activityData.steps).toLocaleString()} steps to go
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  }, [activityData.steps, unlockedAchievements, selectedPeriod, colors]);
+
+  // Render hourly chart
+  const renderHourlyChart = useCallback(() => {
+    if (selectedPeriod !== 'today' || activityData.hourlyData.length === 0) return null;
+
+    const maxHourlySteps = Math.max(...activityData.hourlyData.map(h => h.steps), 100);
+    const currentHour = new Date().getHours();
+
+    return (
+      <View style={styles.chartCard}>
+        <Text style={styles.chartTitle}>Hourly Activity</Text>
+        <View style={styles.chartContainer}>
+          <View style={styles.chartBars}>
+            {activityData.hourlyData.map((hourData, index) => {
+              const height = (hourData.steps / maxHourlySteps) * 120;
+              const isCurrent = hourData.hour === currentHour;
+              return (
+                <View
+                  key={`hour-${index}`}
+                  style={[
+                    styles.hourlyBar,
+                    {
+                      height: Math.max(height, 2),
+                      opacity: hourData.steps > 0 ? 0.8 : 0.3,
+                      backgroundColor: isCurrent ? colors.primary : colors.primary + '80',
+                    },
+                  ]}
+                />
+              );
+            })}
+          </View>
+          <View style={styles.chartLabels}>
+            {[0, 6, 12, 18, 23].map(hour => (
+              <Text key={`hour-label-${hour}`} style={styles.chartLabel}>
+                {hour}h
+              </Text>
+            ))}
+          </View>
+        </View>
+      </View>
+    );
+  }, [selectedPeriod, activityData.hourlyData, colors]);
+
+  // Render health insights
+  const renderHealthInsights = useCallback(() => {
+    if (healthInsights.length === 0) return null;
+
+    return (
+      <View style={styles.insightsCard}>
+        <Text style={styles.sectionTitle}>Insights</Text>
+        {healthInsights.map((insight, index) => (
+          <View key={`insight-${index}`} style={styles.insightItem}>
+            <Icon name={insight.icon} size={20} color={insight.color} />
+            <Text style={styles.insightText}>{insight.message}</Text>
+          </View>
+        ))}
+        
+        {predictedSteps && selectedPeriod === 'today' && (
+          <View style={[styles.insightItem, { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }]}>
+            <Icon name="crystal-ball" size={20} color="#9B59B6" />
+            <Text style={styles.insightText}>
+              Predicted end of day: {predictedSteps.toLocaleString()} steps
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  }, [healthInsights, predictedSteps, selectedPeriod, colors]);
+
+  // Render steps badge
+  const renderStepsBadge = useCallback(() => {
+    if (selectedPeriod !== 'today') return null;
+
     if (hasPermissions) {
-      const otherAppsSteps = activityData.steps - phoneSensorSteps;
-      
+      const otherAppsSteps = Math.max(0, activityData.steps - phoneSensorSteps);
+
       return (
         <>
-          <View style={styles.sensorBadge}>
+          {/* <View style={styles.sensorBadge}>
             <Icon name="cellphone" size={14} color={colors.primary} />
             <Text style={styles.sensorBadgeText}>
               {phoneSensorSteps.toLocaleString()} from this app
             </Text>
-          </View>
-          {otherAppsSteps > 0 && (
+          </View> */}
+          {/* {otherAppsSteps > 0 && (
             <View style={[styles.sensorBadge, { marginTop: 4, backgroundColor: '#4CAF5015' }]}>
               <Icon name="google-fit" size={14} color="#4CAF50" />
               <Text style={[styles.sensorBadgeText, { color: '#4CAF50' }]}>
                 {otherAppsSteps.toLocaleString()} from other apps
               </Text>
             </View>
-          )}
+          )} */}
         </>
       );
     }
-    
+
     return (
       <View style={styles.sensorBadge}>
         <Icon name="cellphone" size={14} color={colors.primary} />
@@ -655,397 +841,12 @@ const StepCounterScreen = ({ navigation }) => {
         </Text>
       </View>
     );
-  };
+  }, [selectedPeriod, hasPermissions, activityData.steps, phoneSensorSteps, colors.primary]);
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    header: {
-      padding: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    headerTop: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: 16,
-    },
-    backButton: {
-      padding: 8,
-    },
-    headerTitle: {
-      fontSize: 24,
-      fontWeight: '700',
-      color: colors.text,
-      flex: 1,
-      textAlign: 'center',
-      marginHorizontal: 8,
-    },
-    headerActions: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    settingsButton: {
-      padding: 8,
-      marginLeft: 4,
-    },
-    periodSelector: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    periodButton: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 12,
-      paddingHorizontal: 8,
-      borderRadius: 8,
-      marginHorizontal: 4,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    periodButtonActive: {
-      backgroundColor: colors.primary,
-      borderColor: colors.primary,
-    },
-    periodButtonText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.text,
-      marginLeft: 6,
-    },
-    periodButtonTextActive: {
-      color: 'white',
-    },
-    scrollContent: {
-      padding: 16,
-    },
-    mainStatsCard: {
-      backgroundColor: colors.card,
-      borderRadius: 20,
-      padding: 24,
-      marginBottom: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      elevation: 3,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-    },
-    stepsContainer: {
-      alignItems: 'center',
-      marginBottom: 24,
-    },
-    stepsIcon: {
-      marginBottom: 16,
-    },
-    stepsCount: {
-      fontSize: 56,
-      fontWeight: 'bold',
-      color: colors.primary,
-      marginBottom: 8,
-    },
-    stepsLabel: {
-      fontSize: 16,
-      color: colors.secondary,
-      fontWeight: '500',
-    },
-    sensorBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.primary + '15',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 20,
-      marginTop: 8,
-    },
-    sensorBadgeText: {
-      fontSize: 12,
-      color: colors.primary,
-      marginLeft: 6,
-      fontWeight: '500',
-    },
-    averageContainer: {
-      marginTop: 16,
-      paddingTop: 16,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
-    averageRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    averageLabel: {
-      fontSize: 16,
-      color: colors.secondary,
-      fontWeight: '500',
-    },
-    averageValue: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: colors.primary,
-    },
-    goalProgress: {
-      marginTop: 16,
-    },
-    goalProgressBar: {
-      height: 8,
-      backgroundColor: colors.border,
-      borderRadius: 4,
-      overflow: 'hidden',
-      marginBottom: 8,
-    },
-    goalProgressFill: {
-      height: '100%',
-      backgroundColor: colors.primary,
-      borderRadius: 4,
-    },
-    goalText: {
-      fontSize: 14,
-      color: colors.secondary,
-      textAlign: 'center',
-    },
-    metricsGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      marginHorizontal: -8,
-    },
-    metricCard: {
-      width: (width - 48) / 2,
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      padding: 20,
-      margin: 8,
-      borderWidth: 1,
-      borderColor: colors.border,
-      elevation: 2,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
-      shadowRadius: 2,
-    },
-    metricIconContainer: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: 12,
-    },
-    metricValue: {
-      fontSize: 28,
-      fontWeight: 'bold',
-      color: colors.text,
-      marginBottom: 4,
-    },
-    metricLabel: {
-      fontSize: 14,
-      color: colors.secondary,
-      fontWeight: '500',
-    },
-    chartCard: {
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      padding: 16,
-      marginBottom: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    chartTitle: {
-      fontSize: 18,
-      fontWeight: '700',
-      color: colors.text,
-      marginBottom: 16,
-    },
-    chartContainer: {
-      height: 200,
-    },
-    chartBars: {
-      flexDirection: 'row',
-      alignItems: 'flex-end',
-      justifyContent: 'space-between',
-      height: 160,
-      paddingHorizontal: 8,
-    },
-    chartBar: {
-      flex: 1,
-      marginHorizontal: 2,
-      backgroundColor: colors.primary,
-      borderRadius: 4,
-      minHeight: 2,
-      opacity: 0.8,
-    },
-    chartLabels: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginTop: 8,
-      paddingHorizontal: 8,
-    },
-    chartLabel: {
-      fontSize: 10,
-      color: colors.secondary,
-      flex: 1,
-      textAlign: 'center',
-    },
-    dailyBreakdownSection: {
-      marginTop: 16,
-    },
-    sectionTitle: {
-      fontSize: 20,
-      fontWeight: '700',
-      color: colors.text,
-      marginBottom: 16,
-    },
-    dailyCard: {
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      padding: 16,
-      marginBottom: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    dailyCardHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 12,
-    },
-    dailyDate: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    dailySteps: {
-      fontSize: 20,
-      fontWeight: 'bold',
-      color: colors.primary,
-    },
-    dailyMetrics: {
-      flexDirection: 'row',
-      justifyContent: 'space-around',
-      paddingTop: 12,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
-    dailyMetric: {
-      alignItems: 'center',
-    },
-    dailyMetricValue: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.text,
-      marginBottom: 4,
-    },
-    dailyMetricLabel: {
-      fontSize: 12,
-      color: colors.secondary,
-    },
-    sessionsSection: {
-      marginTop: 16,
-    },
-    sessionCard: {
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      padding: 16,
-      marginBottom: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    sessionIcon: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: 16,
-    },
-    sessionInfo: {
-      flex: 1,
-    },
-    sessionTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.text,
-      marginBottom: 4,
-    },
-    sessionDetails: {
-      fontSize: 14,
-      color: colors.secondary,
-    },
-    centerContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 32,
-      minHeight: 200,
-    },
-    emptyText: {
-      fontSize: 16,
-      color: colors.secondary,
-      textAlign: 'center',
-      marginTop: 16,
-    },
-    permissionsContainer: {
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      padding: 24,
-      margin: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-    },
-    permissionsTitle: {
-      fontSize: 20,
-      fontWeight: '700',
-      color: colors.text,
-      marginTop: 16,
-      marginBottom: 8,
-    },
-    permissionsText: {
-      fontSize: 16,
-      color: colors.secondary,
-      textAlign: 'center',
-      marginBottom: 24,
-      lineHeight: 24,
-    },
-    permissionsButton: {
-      backgroundColor: colors.primary,
-      borderRadius: 12,
-      paddingVertical: 16,
-      paddingHorizontal: 32,
-      width: '100%',
-    },
-    permissionsButtonText: {
-      color: 'white',
-      fontSize: 16,
-      fontWeight: '600',
-      textAlign: 'center',
-    },
-    settingsLinkButton: {
-      marginTop: 12,
-      paddingVertical: 12,
-    },
-    settingsLinkText: {
-      color: colors.primary,
-      fontSize: 14,
-      fontWeight: '600',
-    },
-  });
-
-  // Render chart for week/month view
-  const renderChart = () => {
+  // Render chart
+  const renderChart = useCallback(() => {
     if (selectedPeriod === 'today' || activityData.dailyData.length === 0) return null;
 
-    const maxSteps = getMaxSteps();
     const displayData = activityData.dailyData.slice(0, selectedPeriod === 'week' ? 7 : 14);
 
     return (
@@ -1060,7 +861,7 @@ const StepCounterScreen = ({ navigation }) => {
                   key={`bar-${index}`}
                   style={[
                     styles.chartBar,
-                    { 
+                    {
                       height: Math.max(height, 2),
                       opacity: day.steps > 0 ? 0.8 : 0.3,
                     },
@@ -1079,10 +880,10 @@ const StepCounterScreen = ({ navigation }) => {
         </View>
       </View>
     );
-  };
+  }, [selectedPeriod, activityData.dailyData, maxSteps]);
 
-  // Render daily breakdown for week/month
-  const renderDailyBreakdown = () => {
+  // Render daily breakdown
+  const renderDailyBreakdown = useCallback(() => {
     if (selectedPeriod === 'today' || activityData.dailyData.length === 0) return null;
 
     return (
@@ -1092,26 +893,25 @@ const StepCounterScreen = ({ navigation }) => {
           <View key={`day-${index}`} style={styles.dailyCard}>
             <View style={styles.dailyCardHeader}>
               <Text style={styles.dailyDate}>{formatDate(day.date)}</Text>
-              <Text style={styles.dailySteps}>
-                {day.steps.toLocaleString()} steps
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {day.steps >= DAILY_GOAL && (
+                  <Icon name="check-circle" size={20} color="#27AE60" style={{ marginRight: 8 }} />
+                )}
+                <Text style={styles.dailySteps}>{day.steps.toLocaleString()} steps</Text>
+              </View>
             </View>
             <View style={styles.dailyMetrics}>
               <View style={styles.dailyMetric}>
-                <Text style={styles.dailyMetricValue}>
-                  {formatDistance(day.distance)}
-                </Text>
+                <Text style={styles.dailyMetricValue}>{formatDistance(day.distance)}</Text>
                 <Text style={styles.dailyMetricLabel}>Distance</Text>
               </View>
               <View style={styles.dailyMetric}>
-                <Text style={styles.dailyMetricValue}>
-                  {Math.round(day.calories)}
-                </Text>
+                <Text style={styles.dailyMetricValue}>{Math.round(day.calories)}</Text>
                 <Text style={styles.dailyMetricLabel}>Calories</Text>
               </View>
               <View style={styles.dailyMetric}>
                 <Text style={styles.dailyMetricValue}>
-                  {Math.round((day.steps / 10000) * 100)}%
+                  {Math.round((day.steps / DAILY_GOAL) * 100)}%
                 </Text>
                 <Text style={styles.dailyMetricLabel}>Goal</Text>
               </View>
@@ -1120,9 +920,89 @@ const StepCounterScreen = ({ navigation }) => {
         ))}
       </View>
     );
-  };
+  }, [selectedPeriod, activityData.dailyData, formatDate, formatDistance]);
 
-  // Loading state
+  const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    header: { padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
+    headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+    backButton: { padding: 8 },
+    headerTitle: { fontSize: 24, fontWeight: '700', color: colors.text, flex: 1, textAlign: 'center', marginHorizontal: 8 },
+    headerActions: { flexDirection: 'row', alignItems: 'center' },
+    settingsButton: { padding: 8, marginLeft: 4 },
+    periodSelector: { flexDirection: 'row', justifyContent: 'space-between' },
+    periodButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 8, borderRadius: 8, marginHorizontal: 4, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+    periodButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    periodButtonText: { fontSize: 14, fontWeight: '600', color: colors.text, marginLeft: 6 },
+    periodButtonTextActive: { color: 'white' },
+    scrollContent: { padding: 16 },
+    mainStatsCard: { backgroundColor: colors.card, borderRadius: 20, padding: 24, marginBottom: 16, borderWidth: 1, borderColor: colors.border, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+    stepsContainer: { alignItems: 'center', marginBottom: 24 },
+    stepsIcon: { marginBottom: 16 },
+    stepsCount: { fontSize: 56, fontWeight: 'bold', color: colors.primary, marginBottom: 8 },
+    stepsLabel: { fontSize: 16, color: colors.secondary, fontWeight: '500' },
+    sensorBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '15', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginTop: 8 },
+    sensorBadgeText: { fontSize: 12, color: colors.primary, marginLeft: 6, fontWeight: '500' },
+    averageContainer: { marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.border },
+    averageRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    averageLabel: { fontSize: 16, color: colors.secondary, fontWeight: '500' },
+    averageValue: { fontSize: 24, fontWeight: 'bold', color: colors.primary },
+    goalProgress: { marginTop: 16 },
+    goalProgressBar: { height: 8, backgroundColor: colors.border, borderRadius: 4, overflow: 'hidden', marginBottom: 8 },
+    goalProgressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 4 },
+    goalText: { fontSize: 14, color: colors.secondary, textAlign: 'center' },
+    streakCard: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center' },
+    streakIconContainer: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#E67E2215', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+    streakInfo: { flex: 1 },
+    streakNumber: { fontSize: 28, fontWeight: 'bold', color: colors.text },
+    streakLabel: { fontSize: 14, color: colors.secondary, marginTop: 4 },
+    streakBest: { fontSize: 12, color: colors.secondary, marginTop: 2 },
+    achievementsCard: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border },
+    achievementsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    achievementsCount: { fontSize: 16, fontWeight: '600', color: colors.primary },
+    achievementsList: { marginBottom: 12 },
+    achievementBadge: { width: 90, alignItems: 'center', marginRight: 12, padding: 12, borderRadius: 12, borderWidth: 2 },
+    achievementIcon: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+    achievementName: { fontSize: 12, fontWeight: '600', color: colors.text, textAlign: 'center', marginBottom: 4 },
+    achievementRequirement: { fontSize: 11, color: colors.secondary, textAlign: 'center' },
+    nextAchievement: { paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
+    nextAchievementText: { fontSize: 13, color: colors.secondary, textAlign: 'center' },
+    insightsCard: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border },
+    insightItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+    insightText: { fontSize: 14, color: colors.text, marginLeft: 12, flex: 1 },
+    metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -8 },
+    metricCard: { width: (width - 48) / 2, backgroundColor: colors.card, borderRadius: 16, padding: 20, margin: 8, borderWidth: 1, borderColor: colors.border, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
+    metricIconContainer: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+    metricValue: { fontSize: 28, fontWeight: 'bold', color: colors.text, marginBottom: 4 },
+    metricLabel: { fontSize: 14, color: colors.secondary, fontWeight: '500' },
+    chartCard: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border },
+    chartTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 16 },
+    chartContainer: { height: 200 },
+    chartBars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 160, paddingHorizontal: 8 },
+    chartBar: { flex: 1, marginHorizontal: 2, backgroundColor: colors.primary, borderRadius: 4, minHeight: 2, opacity: 0.8 },
+    hourlyBar: { flex: 1, marginHorizontal: 1, borderRadius: 2, minHeight: 2 },
+    chartLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, paddingHorizontal: 8 },
+    chartLabel: { fontSize: 10, color: colors.secondary, flex: 1, textAlign: 'center' },
+    dailyBreakdownSection: { marginTop: 16 },
+    sectionTitle: { fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 16 },
+    dailyCard: { backgroundColor: colors.card, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: colors.border },
+    dailyCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    dailyDate: { fontSize: 16, fontWeight: '600', color: colors.text },
+    dailySteps: { fontSize: 20, fontWeight: 'bold', color: colors.primary },
+    dailyMetrics: { flexDirection: 'row', justifyContent: 'space-around', paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
+    dailyMetric: { alignItems: 'center' },
+    dailyMetricValue: { fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: 4 },
+    dailyMetricLabel: { fontSize: 12, color: colors.secondary },
+    sessionsSection: { marginTop: 16 },
+    sessionCard: { backgroundColor: colors.card, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center' },
+    sessionIcon: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+    sessionInfo: { flex: 1 },
+    sessionTitle: { fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: 4 },
+    sessionDetails: { fontSize: 14, color: colors.secondary },
+    centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32, minHeight: 200 },
+    emptyText: { fontSize: 16, color: colors.secondary, textAlign: 'center', marginTop: 16 },
+  });
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -1145,7 +1025,6 @@ const StepCounterScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -1153,47 +1032,26 @@ const StepCounterScreen = ({ navigation }) => {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Step Counter</Text>
           <View style={styles.headerActions}>
-            <TouchableOpacity 
-              style={styles.settingsButton} 
-              onPress={handleManualSync}
-              disabled={isSyncing}
-            >
-              <Icon 
-                name={isSyncing ? "sync" : "cloud-upload"} 
-                size={24} 
-                color={isSyncing ? colors.secondary : colors.text} 
-              />
+            <TouchableOpacity style={styles.settingsButton} onPress={handleManualSync} disabled={isSyncing}>
+              <Icon name={isSyncing ? "sync" : "cloud-upload"} size={24} color={isSyncing ? colors.secondary : colors.text} />
             </TouchableOpacity>
             {hasPermissions && (
-              <TouchableOpacity style={styles.settingsButton} onPress={handleOpenSettings}>
+              <TouchableOpacity style={styles.settingsButton} onPress={openHealthConnectSettingsPage}>
                 <Icon name="cog" size={24} color={colors.text} />
               </TouchableOpacity>
             )}
           </View>
         </View>
 
-        {/* Period selector */}
         <View style={styles.periodSelector}>
           {periods.map(period => (
             <TouchableOpacity
               key={period.id}
-              style={[
-                styles.periodButton,
-                selectedPeriod === period.id && styles.periodButtonActive,
-              ]}
+              style={[styles.periodButton, selectedPeriod === period.id && styles.periodButtonActive]}
               onPress={() => setSelectedPeriod(period.id)}
             >
-              <Icon
-                name={period.icon}
-                size={18}
-                color={selectedPeriod === period.id ? 'white' : colors.text}
-              />
-              <Text
-                style={[
-                  styles.periodButtonText,
-                  selectedPeriod === period.id && styles.periodButtonTextActive,
-                ]}
-              >
+              <Icon name={period.icon} size={18} color={selectedPeriod === period.id ? 'white' : colors.text} />
+              <Text style={[styles.periodButtonText, selectedPeriod === period.id && styles.periodButtonTextActive]}>
                 {period.label}
               </Text>
             </TouchableOpacity>
@@ -1204,108 +1062,47 @@ const StepCounterScreen = ({ navigation }) => {
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
-          />
-        }
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={[colors.primary]} tintColor={colors.primary} />}
       >
-        {/* Main steps card */}
         <View style={styles.mainStatsCard}>
           <View style={styles.stepsContainer}>
             <View style={styles.stepsIcon}>
               <Icon name="walk" size={64} color={colors.primary} />
             </View>
-            <Text style={styles.stepsCount}>
-              {activityData.steps.toLocaleString()}
-            </Text>
-            <Text style={styles.stepsLabel}>
-              {selectedPeriod === 'today' ? 'Steps Today' : 'Total Steps'}
-            </Text>
+            <Text style={styles.stepsCount}>{activityData.steps.toLocaleString()}</Text>
+            <Text style={styles.stepsLabel}>{selectedPeriod === 'today' ? 'Steps Today' : 'Total Steps'}</Text>
+            {renderStepsBadge()}
           </View>
 
-          {/* Goal progress for today */}
           {selectedPeriod === 'today' && (
             <View style={styles.goalProgress}>
               <View style={styles.goalProgressBar}>
-                <View
-                  style={[
-                    styles.goalProgressFill,
-                    { width: `${getStepGoalProgress()}%` },
-                  ]}
-                />
+                <View style={[styles.goalProgressFill, { width: `${stepGoalProgress}%` }]} />
               </View>
-              <Text style={styles.goalText}>
-                {getStepGoalProgress().toFixed(0)}% of daily goal (10,000 steps)
-              </Text>
+              <Text style={styles.goalText}>{stepGoalProgress.toFixed(0)}% of daily goal ({DAILY_GOAL.toLocaleString()} steps)</Text>
             </View>
           )}
 
-          {/* Average for week/month */}
           {selectedPeriod !== 'today' && (
             <View style={styles.averageContainer}>
               <View style={styles.averageRow}>
                 <Text style={styles.averageLabel}>Daily Average</Text>
-                <Text style={styles.averageValue}>
-                  {getAverageSteps().toLocaleString()}
-                </Text>
+                <Text style={styles.averageValue}>{averageSteps.toLocaleString()}</Text>
               </View>
             </View>
           )}
         </View>
 
-        {/* Chart for week/month */}
+        {renderStreakBadge()}
+        {renderHealthInsights()}
+        {renderAchievements()}
+        {renderHourlyChart()}
         {renderChart()}
-        {/* Activity metrics */}
-        <View style={styles.metricsGrid}>
-          <View style={styles.metricCard}>
-            <View style={[styles.metricIconContainer, { backgroundColor: '#3498DB15' }]}>
-              <Icon name="map-marker-distance" size={24} color="#3498DB" />
-            </View>
-            <Text style={styles.metricValue}>
-              {formatDistance(activityData.distance)}
-            </Text>
-            <Text style={styles.metricLabel}>Distance</Text>
-          </View>
 
-          <View style={styles.metricCard}>
-            <View style={[styles.metricIconContainer, { backgroundColor: '#E74C3C15' }]}>
-              <Icon name="fire" size={24} color="#E74C3C" />
-            </View>
-            <Text style={styles.metricValue}>
-              {Math.round(activityData.activeCalories)}
-            </Text>
-            <Text style={styles.metricLabel}>Active Cal</Text>
-          </View>
+        
 
-          <View style={styles.metricCard}>
-            <View style={[styles.metricIconContainer, { backgroundColor: '#F39C1215' }]}>
-              <Icon name="flash" size={24} color="#F39C12" />
-            </View>
-            <Text style={styles.metricValue}>
-              {Math.round(activityData.totalCalories)}
-            </Text>
-            <Text style={styles.metricLabel}>Total Cal</Text>
-          </View>
-
-          <View style={styles.metricCard}>
-            <View style={[styles.metricIconContainer, { backgroundColor: '#27AE6015' }]}>
-              <Icon name="dumbbell" size={24} color="#27AE60" />
-            </View>
-            <Text style={styles.metricValue}>
-              {activityData.exerciseSessions.length}
-            </Text>
-            <Text style={styles.metricLabel}>Workouts</Text>
-          </View>
-        </View>
-
-        {/* Daily breakdown for week/month */}
         {renderDailyBreakdown()}
 
-        {/* Exercise sessions for today */}
         {selectedPeriod === 'today' && activityData.exerciseSessions.length > 0 && (
           <View style={styles.sessionsSection}>
             <Text style={styles.sectionTitle}>Recent Workouts</Text>
@@ -1315,9 +1112,7 @@ const StepCounterScreen = ({ navigation }) => {
                   <Icon name="run" size={24} color="#27AE60" />
                 </View>
                 <View style={styles.sessionInfo}>
-                  <Text style={styles.sessionTitle}>
-                    {session.exerciseType || 'Exercise'}
-                  </Text>
+                  <Text style={styles.sessionTitle}>{session.exerciseType || 'Exercise'}</Text>
                   <Text style={styles.sessionDetails}>
                     {session.duration ? `${Math.round(session.duration / 60)} min` : 'N/A'}
                   </Text>
@@ -1327,13 +1122,11 @@ const StepCounterScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Empty state */}
         {activityData.steps === 0 && !isRefreshing && (
           <View style={styles.centerContainer}>
             <Icon name="information-outline" size={64} color={colors.secondary} />
             <Text style={styles.emptyText}>
-              No activity data found for this period.{'\n'}
-              Start moving to see your stats!
+              No activity data found for this period.{'\n'}Start moving to see your stats!
             </Text>
           </View>
         )}
