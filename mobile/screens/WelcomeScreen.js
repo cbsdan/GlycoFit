@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 
 const { width, height } = Dimensions.get('window');
 
@@ -19,6 +20,10 @@ const WelcomeScreen = ({ navigation }) => {
   const scrollViewRef = useRef(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const floatAnim = useRef(new Animated.Value(0)).current;
 
   const pages = [
     {
@@ -59,13 +64,69 @@ const WelcomeScreen = ({ navigation }) => {
     },
   ];
 
-  React.useEffect(() => {
+  useEffect(() => {
+    // Icon scale animation
     Animated.spring(scaleAnim, {
       toValue: 1,
       tension: 50,
       friction: 7,
       useNativeDriver: true,
     }).start();
+
+    // Slide up animation for content
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
+
+    // Subtle rotation animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(rotateAnim, {
+          toValue: 1,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(rotateAnim, {
+          toValue: 0,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Pulse animation for active indicator
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.2,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Float animation for icons
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, {
+          toValue: -10,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim, {
+          toValue: 0,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
   }, [currentPage]);
 
   const handleScroll = (event) => {
@@ -117,22 +178,62 @@ const WelcomeScreen = ({ navigation }) => {
     });
   };
 
+  const spin = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '5deg'],
+  });
+
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       
-      {/* Modern Header */}
-      <View style={styles.header}>
-        <View style={styles.logoContainer}>
-          <Text style={styles.logoText}>GlycoFit</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.skipButton}
-          onPress={() => navigation.navigate('Login')}
-        >
-          <Text style={styles.skipText}>Skip</Text>
-          <Ionicons name="arrow-forward" size={16} color="#666" />
-        </TouchableOpacity>
+      {/* Animated Background Gradient */}
+      <LinearGradient
+        colors={['#FAFAFA', '#F0F0F0', '#FAFAFA']}
+        style={StyleSheet.absoluteFillObject}
+      />
+
+      {/* Floating Decorative Elements */}
+      <Animated.View 
+        style={[
+          styles.floatingCircle1,
+          { 
+            transform: [
+              { translateY: floatAnim },
+              { rotate: spin }
+            ]
+          }
+        ]}
+      >
+        <LinearGradient
+          colors={['rgba(33, 150, 243, 0.1)', 'rgba(33, 150, 243, 0.05)']}
+          style={styles.circleGradient}
+        />
+      </Animated.View>
+
+      <Animated.View 
+        style={[
+          styles.floatingCircle2,
+          { 
+            transform: [
+              { translateY: Animated.multiply(floatAnim, -1) }
+            ]
+          }
+        ]}
+      >
+        <LinearGradient
+          colors={['rgba(76, 175, 80, 0.1)', 'rgba(76, 175, 80, 0.05)']}
+          style={styles.circleGradient}
+        />
+      </Animated.View>
+
+      {/* Enhanced Header with Blur */}
+      <View style={styles.headerWrapper}>
+        <BlurView intensity={20} tint="light" style={styles.headerBlur}>
+          <View style={styles.header}>
+            {/* Header is now empty but maintains spacing */}
+          </View>
+        </BlurView>
       </View>
 
       {/* Scrollable Pages */}
@@ -143,46 +244,118 @@ const WelcomeScreen = ({ navigation }) => {
         showsHorizontalScrollIndicator={false}
         onScroll={handleScroll}
         scrollEventThrottle={16}
+        style={styles.mainScrollView}
       >
         {pages.map((page, index) => (
-          <View key={page.id} style={styles.page}>
-            {/* Animated Icon with Gradient */}
-            <Animated.View style={{ transform: [{ scale: currentPage === index ? scaleAnim : 0.8 }] }}>
-              <LinearGradient
-                colors={page.gradientColors}
-                style={styles.iconContainer}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
+          <View key={page.id} style={styles.pageWrapper}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.pageScrollContent}
+              bounces={true}
+            >
+              <Animated.View 
+                style={[
+                  styles.page,
+                  {
+                    opacity: currentPage === index ? 1 : 0.5,
+                    transform: [
+                      { scale: currentPage === index ? 1 : 0.95 }
+                    ]
+                  }
+                ]}
               >
-                <Ionicons name={page.icon} size={70} color="#FFF" />
-              </LinearGradient>
-            </Animated.View>
+                {/* Animated Icon with Gradient and Float Effect */}
+                <Animated.View 
+                  style={{ 
+                    transform: [
+                      { scale: currentPage === index ? scaleAnim : 0.8 },
+                      { translateY: currentPage === index ? floatAnim : 0 }
+                    ]
+                  }}
+                >
+                  <LinearGradient
+                    colors={page.gradientColors}
+                    style={styles.iconContainer}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    <Ionicons name={page.icon} size={60} color="#FFF" />
+                    {/* Animated Ring Around Icon */}
+                    <Animated.View 
+                      style={[
+                        styles.iconRing,
+                        {
+                          transform: [{ scale: pulseAnim }],
+                          borderColor: page.gradientColors[0]
+                        }
+                      ]}
+                    />
+                  </LinearGradient>
+                </Animated.View>
 
-            {/* Title & Description */}
-            <Text style={styles.title}>{page.title}</Text>
-            <Text style={styles.description}>{page.description}</Text>
+                {/* Enhanced Title & Description */}
+                <Animated.Text 
+                  style={[
+                    styles.title,
+                    { transform: [{ translateY: slideAnim }] }
+                  ]}
+                >
+                  {page.title}
+                </Animated.Text>
+                <Animated.Text 
+                  style={[
+                    styles.description,
+                    { transform: [{ translateY: slideAnim }] }
+                  ]}
+                >
+                  {page.description}
+                </Animated.Text>
 
-            {/* Detailed Explanation */}
-            <View style={styles.detailsContainer}>
-              <Text style={styles.detailsText}>{page.details}</Text>
-            </View>
+                {/* Enhanced Details Container with Glassmorphism */}
+                <Animated.View 
+                  style={[
+                    styles.detailsContainer,
+                    { transform: [{ translateY: slideAnim }] }
+                  ]}
+                >
+                  <BlurView intensity={10} tint="light" style={styles.detailsBlur}>
+                    <Text style={styles.detailsText}>{page.details}</Text>
+                  </BlurView>
+                </Animated.View>
 
-            {/* Feature Pills */}
-            <View style={styles.featuresContainer}>
-              {page.features.map((feature, idx) => (
-                <View key={idx} style={styles.featurePill}>
-                  <Ionicons name="checkmark-circle" size={16} color={page.gradientColors[0]} />
-                  <Text style={[styles.featureText, { color: page.gradientColors[0] }]}>
-                    {feature}
-                  </Text>
+                {/* Enhanced Feature Pills with Stagger Animation */}
+                <View style={styles.featuresContainer}>
+                  {page.features.map((feature, idx) => (
+                    <Animated.View
+                      key={idx}
+                      style={[
+                        styles.featurePill,
+                        {
+                          transform: [
+                            { 
+                              translateY: Animated.add(
+                                slideAnim,
+                                new Animated.Value(idx * 20)
+                              )
+                            }
+                          ]
+                        }
+                      ]}
+                    >
+                      <Ionicons name="checkmark-circle" size={16} color={page.gradientColors[0]} />
+                      <Text style={[styles.featureText, { color: page.gradientColors[0] }]}>
+                        {feature}
+                      </Text>
+                    </Animated.View>
+                  ))}
                 </View>
-              ))}
-            </View>
+              </Animated.View>
+            </ScrollView>
           </View>
         ))}
       </ScrollView>
 
-      {/* Modern Page Indicators */}
+      {/* Enhanced Page Indicators with Animation */}
       <View style={styles.indicatorContainer}>
         {pages.map((page, index) => (
           <Animated.View
@@ -191,23 +364,28 @@ const WelcomeScreen = ({ navigation }) => {
               styles.indicator,
               currentPage === index && [
                 styles.activeIndicator,
-                { backgroundColor: page.gradientColors[0] }
+                { 
+                  backgroundColor: page.gradientColors[0],
+                  transform: [{ scale: currentPage === index ? pulseAnim : 1 }]
+                },
               ],
             ]}
           />
         ))}
       </View>
 
-      {/* Navigation Buttons */}
+      {/* Enhanced Navigation Buttons */}
       <View style={styles.bottomContainer}>
         {currentPage > 0 && (
-          <TouchableOpacity
-            style={styles.prevButton}
-            onPress={goToPreviousPage}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="arrow-back" size={24} color="#2196F3" />
-          </TouchableOpacity>
+          <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+            <TouchableOpacity
+              style={styles.prevButton}
+              onPress={goToPreviousPage}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="arrow-back" size={24} color="#2196F3" />
+            </TouchableOpacity>
+          </Animated.View>
         )}
 
         {currentPage < pages.length - 1 ? (
@@ -223,7 +401,9 @@ const WelcomeScreen = ({ navigation }) => {
               activeOpacity={0.8}
             >
               <Text style={styles.nextButtonText}>Next</Text>
-              <Ionicons name="arrow-forward" size={20} color="#FFF" />
+              <Animated.View style={{ transform: [{ translateX: floatAnim }] }}>
+                <Ionicons name="arrow-forward" size={20} color="#FFF" />
+              </Animated.View>
             </TouchableOpacity>
           </LinearGradient>
         ) : (
@@ -239,13 +419,15 @@ const WelcomeScreen = ({ navigation }) => {
               activeOpacity={0.8}
             >
               <Text style={styles.getStartedButtonText}>Get Started</Text>
-              <Ionicons name="arrow-forward" size={20} color="#FFF" style={{ marginLeft: 8 }} />
+              <Animated.View style={{ transform: [{ translateX: floatAnim }] }}>
+                <Ionicons name="arrow-forward" size={20} color="#FFF" style={{ marginLeft: 8 }} />
+              </Animated.View>
             </TouchableOpacity>
           </LinearGradient>
         )}
       </View>
 
-      {/* Modern Footer */}
+      {/* Enhanced Footer */}
       <View style={styles.footer}>
         <Text style={styles.footerText}>
           Already have an account?{' '}
@@ -263,52 +445,49 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FAFAFA',
   },
+  headerWrapper: {
+    paddingTop: (StatusBar.currentHeight || 0) + 10,
+    zIndex: 10,
+  },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 50,
+    paddingHorizontal: 20,
+    paddingTop: 20,
     paddingBottom: 20,
   },
-  logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  headerBlur: {
+    overflow: 'hidden',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
   },
-  logoText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2196F3',
-    letterSpacing: 0.5,
+  mainScrollView: {
+    flex: 1,
   },
-  skipButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: '#F5F5F5',
-    borderRadius: 20,
+  pageWrapper: {
+    width: width,
   },
-  skipText: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '600',
-    marginRight: 4,
+  pageScrollContent: {
+    flexGrow: 1,
+    paddingBottom: 40,
   },
   page: {
     width: width,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 32,
-    paddingBottom: 80,
+    paddingTop: 30,
+    minHeight: height - 350,
   },
   iconContainer: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
+    width: 170,
+    height: 170,
+    borderRadius: 85,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 32,
+    marginBottom: 35,
+    marginTop: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.15,
@@ -322,6 +501,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
     letterSpacing: 0.3,
+    paddingHorizontal: 10,
   },
   description: {
     fontSize: 16,
@@ -333,7 +513,7 @@ const styles = StyleSheet.create({
   },
   detailsContainer: {
     backgroundColor: '#FFF',
-    padding: 20,
+    padding: 18,
     borderRadius: 16,
     marginBottom: 24,
     shadowColor: '#000',
@@ -341,6 +521,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 3,
+    width: '100%',
   },
   detailsText: {
     fontSize: 14,
@@ -353,13 +534,14 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 12,
+    paddingHorizontal: 10,
   },
   featurePill: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFF',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
     borderRadius: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -376,7 +558,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 20,
+    paddingVertical: 16,
+    backgroundColor: '#FAFAFA',
   },
   indicator: {
     width: 8,
@@ -395,7 +578,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingBottom: 16,
+    paddingBottom: 12,
+    backgroundColor: '#FAFAFA',
   },
   prevButton: {
     width: 50,
@@ -451,9 +635,10 @@ const styles = StyleSheet.create({
   },
   footer: {
     flexDirection: 'row',
-    paddingVertical: 20,
+    paddingVertical: 16,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#FAFAFA',
   },
   footerText: {
     fontSize: 14,
@@ -463,6 +648,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#2196F3',
     fontWeight: '700',
+  },
+  floatingCircle1: {
+    position: 'absolute',
+    top: 100,
+    right: -50,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    overflow: 'hidden',
+  },
+  floatingCircle2: {
+    position: 'absolute',
+    bottom: 150,
+    left: -50,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    overflow: 'hidden',
+  },
+  circleGradient: {
+    flex: 1,
+  },
+  iconRing: {
+    position: 'absolute',
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+    borderWidth: 3,
+    borderColor: 'transparent',
+  },
+  detailsBlur: {
+    padding: 18,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
 });
 

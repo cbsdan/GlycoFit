@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import {
@@ -21,6 +21,7 @@ import TabNavigator from './navigation/TabNavigator';
 import LoadingScreen from './components/LoadingScreen';
 import StepCounterScreen from './screens/StepCounterScreen';
 import WelcomeScreen from './screens/WelcomeScreen';
+import SplashScreen from './screens/SplashScreen';
 
 const Stack = createStackNavigator();
 
@@ -44,6 +45,11 @@ const UniversalScreenWrapper = ({ children }) => {
 function AppNavigator() {
   const { isAuthenticated, isLoading } = useAuth();
   const { colors, isDarkMode } = useTheme();
+  const [showSplash, setShowSplash] = useState(true);
+
+  if (showSplash) {
+    return <SplashScreen onFinish={() => setShowSplash(false)} />;
+  }
 
   if (isLoading) {
     return <LoadingScreen />;
