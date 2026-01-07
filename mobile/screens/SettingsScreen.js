@@ -132,35 +132,6 @@ const SettingsScreen = ({ navigation }) => {
       ],
     },
     {
-      title: 'Health Data',
-      items: [
-        {
-          id: 'health-data',
-          title: 'View Health Data',
-          subtitle: 'See your health metrics and history',
-          icon: 'chart-box',
-          action: () => navigation.navigate('HealthData'),
-          showArrow: true,
-        },
-        {
-          id: 'synced-health-data',
-          title: 'Synced Health Data',
-          subtitle: 'View cloud-synced health records',
-          icon: 'cloud-check',
-          action: () => navigation.navigate('SyncedHealthData'),
-          showArrow: true,
-        },
-        {
-          id: 'data-export',
-          title: 'Export Data',
-          subtitle: 'Download your health records',
-          icon: 'download',
-          action: () => handleDataExport(),
-          showArrow: true,
-        },
-      ],
-    },
-    {
       title: 'Notifications',
       items: [
         {

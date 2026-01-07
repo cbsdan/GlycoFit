@@ -23,7 +23,11 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
   const [age, setAge] = useState('');
   const [sex, setSex] = useState('');
   const [height, setHeight] = useState('');
+  const [heightUnit, setHeightUnit] = useState('cm');
+  const [feet, setFeet] = useState('');
+  const [inches, setInches] = useState('');
   const [weight, setWeight] = useState('');
+  const [weightUnit, setWeightUnit] = useState('kg');
   const [diagnosisStatus, setDiagnosisStatus] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({});
@@ -31,10 +35,38 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
   // Show skip button only during initial setup (when onSkip prop is provided)
   const showSkipButton = !!onSkip;
 
+  // Convert height to cm based on selected unit
+  const convertHeightToCm = () => {
+    if (heightUnit === 'cm') {
+      return parseFloat(height) || 0;
+    } else if (heightUnit === 'ft') {
+      const ft = parseFloat(feet) || 0;
+      const inch = parseFloat(inches) || 0;
+      return (ft * 30.48) + (inch * 2.54);
+    } else if (heightUnit === 'm') {
+      return (parseFloat(height) || 0) * 100;
+    } else if (heightUnit === 'in') {
+      return (parseFloat(height) || 0) * 2.54;
+    }
+    return 0;
+  };
+
+  // Convert weight to kg based on selected unit
+  const convertWeightToKg = () => {
+    if (weightUnit === 'kg') {
+      return parseFloat(weight) || 0;
+    } else if (weightUnit === 'lbs') {
+      return (parseFloat(weight) || 0) * 0.453592;
+    } else if (weightUnit === 'stone') {
+      return (parseFloat(weight) || 0) * 6.35029;
+    }
+    return 0;
+  };
+
   // Calculate BMI in real-time
   const calculateBMI = () => {
-    const h = parseFloat(height);
-    const w = parseFloat(weight);
+    const h = convertHeightToCm();
+    const w = convertWeightToKg();
     if (h > 0 && w > 0) {
       const heightInMeters = h / 100;
       return (w / (heightInMeters * heightInMeters)).toFixed(1);
@@ -78,16 +110,42 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
       newErrors.sex = 'Please select your sex';
     }
 
-    if (!height) {
-      newErrors.height = 'Height is required';
-    } else if (isNaN(height) || parseFloat(height) < 50 || parseFloat(height) > 300) {
-      newErrors.height = 'Please enter a valid height in cm (50-300)';
+    if (heightUnit === 'ft') {
+      if (!feet && !inches) {
+        newErrors.height = 'Height is required';
+      } else {
+        const ft = parseFloat(feet) || 0;
+        const inch = parseFloat(inches) || 0;
+        if ((ft === 0 && inch === 0) || ft < 0 || inch < 0 || inch >= 12) {
+          newErrors.height = 'Please enter a valid height';
+        }
+      }
+    } else {
+      if (!height) {
+        newErrors.height = 'Height is required';
+      } else {
+        const heightValue = parseFloat(height);
+        if (heightUnit === 'cm' && (heightValue < 50 || heightValue > 300)) {
+          newErrors.height = 'Please enter a valid height (50-300 cm)';
+        } else if (heightUnit === 'm' && (heightValue < 0.5 || heightValue > 3)) {
+          newErrors.height = 'Please enter a valid height (0.5-3 m)';
+        } else if (heightUnit === 'in' && (heightValue < 20 || heightValue > 120)) {
+          newErrors.height = 'Please enter a valid height (20-120 in)';
+        }
+      }
     }
 
     if (!weight) {
       newErrors.weight = 'Weight is required';
-    } else if (isNaN(weight) || parseFloat(weight) < 10 || parseFloat(weight) > 500) {
-      newErrors.weight = 'Please enter a valid weight in kg (10-500)';
+    } else {
+      const weightValue = parseFloat(weight);
+      if (weightUnit === 'kg' && (weightValue < 10 || weightValue > 500)) {
+        newErrors.weight = 'Please enter a valid weight (10-500 kg)';
+      } else if (weightUnit === 'lbs' && (weightValue < 22 || weightValue > 1100)) {
+        newErrors.weight = 'Please enter a valid weight (22-1100 lbs)';
+      } else if (weightUnit === 'stone' && (weightValue < 1.5 || weightValue > 80)) {
+        newErrors.weight = 'Please enter a valid weight (1.5-80 stone)';
+      }
     }
 
     if (!diagnosisStatus) {
@@ -107,11 +165,14 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
     try {
       setIsLoading(true);
       
+      const heightInCm = convertHeightToCm();
+      const weightInKg = convertWeightToKg();
+
       const response = await api.updateHealthMetrics(
         parseInt(age),
         sex.toLowerCase(),
-        parseFloat(height),
-        parseFloat(weight),
+        heightInCm,
+        weightInKg,
         diagnosisStatus
       );
 
@@ -270,34 +331,108 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
 
           {/* Height Input */}
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: theme.text }]}>Height (cm)</Text>
-            <View
-              style={[
-                styles.inputWrapper,
-                {
-                  backgroundColor: theme.inputBackground,
-                  borderColor: errors.height ? theme.error : theme.inputBorder,
-                },
-              ]}
-            >
-              <Ionicons
-                name="resize-outline"
-                size={20}
-                color={theme.secondary}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={[styles.input, { color: theme.inputText }]}
-                placeholder="Enter your height in cm"
-                placeholderTextColor={theme.inputPlaceholder}
-                value={height}
-                onChangeText={(text) => {
-                  setHeight(text);
-                  if (errors.height) setErrors({ ...errors, height: null });
-                }}
-                keyboardType="decimal-pad"
-              />
+            <Text style={[styles.label, { color: theme.text }]}>Height</Text>
+            
+            {/* Unit Selector */}
+            <View style={styles.unitSelectorContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.unitButton,
+                  { backgroundColor: heightUnit === 'cm' ? theme.primary : theme.inputBackground, borderColor: heightUnit === 'cm' ? theme.primary : theme.inputBorder }
+                ]}
+                onPress={() => setHeightUnit('cm')}
+              >
+                <Text style={[styles.unitButtonText, { color: heightUnit === 'cm' ? '#FFFFFF' : theme.text }]}>cm</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.unitButton,
+                  { backgroundColor: heightUnit === 'ft' ? theme.primary : theme.inputBackground, borderColor: heightUnit === 'ft' ? theme.primary : theme.inputBorder }
+                ]}
+                onPress={() => setHeightUnit('ft')}
+              >
+                <Text style={[styles.unitButtonText, { color: heightUnit === 'ft' ? '#FFFFFF' : theme.text }]}>ft/in</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.unitButton,
+                  { backgroundColor: heightUnit === 'm' ? theme.primary : theme.inputBackground, borderColor: heightUnit === 'm' ? theme.primary : theme.inputBorder }
+                ]}
+                onPress={() => setHeightUnit('m')}
+              >
+                <Text style={[styles.unitButtonText, { color: heightUnit === 'm' ? '#FFFFFF' : theme.text }]}>m</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.unitButton,
+                  { backgroundColor: heightUnit === 'in' ? theme.primary : theme.inputBackground, borderColor: heightUnit === 'in' ? theme.primary : theme.inputBorder }
+                ]}
+                onPress={() => setHeightUnit('in')}
+              >
+                <Text style={[styles.unitButtonText, { color: heightUnit === 'in' ? '#FFFFFF' : theme.text }]}>in</Text>
+              </TouchableOpacity>
             </View>
+
+            {/* Input Fields */}
+            {heightUnit === 'ft' ? (
+              <View style={styles.feetInchesContainer}>
+                <View style={[styles.inputWrapper, { flex: 1, backgroundColor: theme.inputBackground, borderColor: errors.height ? theme.error : theme.inputBorder }]}>
+                  <Ionicons name="resize-outline" size={20} color={theme.secondary} style={styles.inputIcon} />
+                  <TextInput
+                    style={[styles.input, { color: theme.inputText }]}
+                    placeholder="Feet"
+                    placeholderTextColor={theme.inputPlaceholder}
+                    value={feet}
+                    onChangeText={(text) => {
+                      setFeet(text);
+                      if (errors.height) setErrors({ ...errors, height: null });
+                    }}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={[styles.inputWrapper, { flex: 1, backgroundColor: theme.inputBackground, borderColor: errors.height ? theme.error : theme.inputBorder }]}>
+                  <TextInput
+                    style={[styles.input, { color: theme.inputText }]}
+                    placeholder="Inches"
+                    placeholderTextColor={theme.inputPlaceholder}
+                    value={inches}
+                    onChangeText={(text) => {
+                      setInches(text);
+                      if (errors.height) setErrors({ ...errors, height: null });
+                    }}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+            ) : (
+              <View
+                style={[
+                  styles.inputWrapper,
+                  {
+                    backgroundColor: theme.inputBackground,
+                    borderColor: errors.height ? theme.error : theme.inputBorder,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="resize-outline"
+                  size={20}
+                  color={theme.secondary}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={[styles.input, { color: theme.inputText }]}
+                  placeholder={`Enter height in ${heightUnit}`}
+                  placeholderTextColor={theme.inputPlaceholder}
+                  value={height}
+                  onChangeText={(text) => {
+                    setHeight(text);
+                    if (errors.height) setErrors({ ...errors, height: null });
+                  }}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            )}
             {errors.height && (
               <Text style={[styles.errorText, { color: theme.error }]}>
                 {errors.height}
@@ -307,7 +442,39 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
 
           {/* Weight Input */}
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: theme.text }]}>Weight (kg)</Text>
+            <Text style={[styles.label, { color: theme.text }]}>Weight</Text>
+            
+            {/* Unit Selector */}
+            <View style={styles.unitSelectorContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.unitButton,
+                  { backgroundColor: weightUnit === 'kg' ? theme.primary : theme.inputBackground, borderColor: weightUnit === 'kg' ? theme.primary : theme.inputBorder }
+                ]}
+                onPress={() => setWeightUnit('kg')}
+              >
+                <Text style={[styles.unitButtonText, { color: weightUnit === 'kg' ? '#FFFFFF' : theme.text }]}>kg</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.unitButton,
+                  { backgroundColor: weightUnit === 'lbs' ? theme.primary : theme.inputBackground, borderColor: weightUnit === 'lbs' ? theme.primary : theme.inputBorder }
+                ]}
+                onPress={() => setWeightUnit('lbs')}
+              >
+                <Text style={[styles.unitButtonText, { color: weightUnit === 'lbs' ? '#FFFFFF' : theme.text }]}>lbs</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.unitButton,
+                  { backgroundColor: weightUnit === 'stone' ? theme.primary : theme.inputBackground, borderColor: weightUnit === 'stone' ? theme.primary : theme.inputBorder }
+                ]}
+                onPress={() => setWeightUnit('stone')}
+              >
+                <Text style={[styles.unitButtonText, { color: weightUnit === 'stone' ? '#FFFFFF' : theme.text }]}>stone</Text>
+              </TouchableOpacity>
+            </View>
+
             <View
               style={[
                 styles.inputWrapper,
@@ -325,7 +492,7 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
               />
               <TextInput
                 style={[styles.input, { color: theme.inputText }]}
-                placeholder="Enter your weight in kg"
+                placeholder={`Enter weight in ${weightUnit}`}
                 placeholderTextColor={theme.inputPlaceholder}
                 value={weight}
                 onChangeText={(text) => {
@@ -344,7 +511,7 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
 
           {/* Diagnosis Status Selection */}
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: theme.text }]}>Diagnosis Status</Text>
+            <Text style={[styles.label, { color: theme.text }]}>Diagnosis Status (Prediabetes & Type 2 Diabetes Only)</Text>
             <View style={styles.diagnosisButtonsContainer}>
               <TouchableOpacity
                 style={[
@@ -368,7 +535,7 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
                   styles.diagnosisButtonText,
                   { color: diagnosisStatus === 'not_diagnosed' ? '#FFFFFF' : theme.text }
                 ]}>
-                  I am not diagnosed
+                  I am not diagnosed with Prediabetes or Type 2 Diabetes
                 </Text>
               </TouchableOpacity>
 
@@ -605,6 +772,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginTop: 5,
+  },
+  unitSelectorContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  unitButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unitButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  feetInchesContainer: {
+    flexDirection: 'row',
+    gap: 10,
   },
   diagnosisButtonsContainer: {
     gap: 12,

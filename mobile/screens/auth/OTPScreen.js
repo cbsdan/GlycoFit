@@ -98,8 +98,12 @@ const OTPScreen = ({ navigation, route }) => {
             const registerResult = await register(registrationData);
             
             if (registerResult.success) {
-              toast.success('Registration completed successfully!');
-              // Navigation will be handled by auth state change
+              toast.success('Registration completed successfully! Please login to continue.');
+              // Navigate to login screen instead of auto-login
+              navigation.navigate('Login', { 
+                email: registrationData.email,
+                registrationSuccess: true 
+              });
             } else {
               toast.error(registerResult.error || 'Registration failed');
             }

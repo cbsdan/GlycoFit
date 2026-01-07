@@ -180,8 +180,9 @@ export const AuthProvider = ({ children }) => {
       const result = await authService.register(userData);
       
       if (result.success) {
-        setUser(result.user);
-        setIsAuthenticated(true);
+        // Don't automatically log in the user after registration
+        // setUser(result.user);
+        // setIsAuthenticated(true);
         return result;
       } else {
         return result;

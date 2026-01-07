@@ -43,10 +43,61 @@ const ProfileScreen = ({ navigation }) => {
   });
 
   const [avatarUri, setAvatarUri] = useState(null);
+  const [heightUnit, setHeightUnit] = useState('cm');
+  const [weightUnit, setWeightUnit] = useState('kg');
+  const [feet, setFeet] = useState('');
+  const [inches, setInches] = useState('');
+  const [heightInput, setHeightInput] = useState('');
+  const [weightInput, setWeightInput] = useState('');
 
   useEffect(() => {
     loadProfile();
   }, []);
+
+  // Handle unit switching for height
+  useEffect(() => {
+    if (isEditing && profileData.height) {
+      const cm = parseFloat(profileData.height);
+      if (!cm || isNaN(cm)) return;
+
+      if (heightUnit === 'ft') {
+        // Convert to feet/inches
+        const totalInches = cm / 2.54;
+        const ft = Math.floor(totalInches / 12);
+        const inch = Math.round(totalInches % 12);
+        setFeet(ft.toString());
+        setInches(inch.toString());
+        setHeightInput(''); // Clear the single input when using ft/in
+      } else {
+        // Convert cm to selected unit
+        if (heightUnit === 'cm') {
+          setHeightInput(cm.toFixed(2));
+        } else if (heightUnit === 'm') {
+          setHeightInput((cm / 100).toFixed(2));
+        } else if (heightUnit === 'in') {
+          setHeightInput((cm / 2.54).toFixed(2));
+        }
+        setFeet('');
+        setInches('');
+      }
+    }
+  }, [heightUnit, isEditing]);
+
+  // Handle unit switching for weight
+  useEffect(() => {
+    if (isEditing && profileData.weight) {
+      const kg = parseFloat(profileData.weight);
+      if (!kg || isNaN(kg)) return;
+
+      if (weightUnit === 'kg') {
+        setWeightInput(kg.toFixed(2));
+      } else if (weightUnit === 'lbs') {
+        setWeightInput((kg * 2.20462).toFixed(2));
+      } else if (weightUnit === 'stone') {
+        setWeightInput((kg / 6.35029).toFixed(2));
+      }
+    }
+  }, [weightUnit, isEditing]);
 
   const loadProfile = async () => {
     setIsLoading(true);
@@ -67,6 +118,16 @@ const ProfileScreen = ({ navigation }) => {
           avatar: userData.avatar || null,
         });
         
+        // Initialize input fields with stored values
+        if (userData.height) {
+          const cm = parseFloat(userData.height);
+          setHeightInput(cm.toFixed(2));
+        }
+        if (userData.weight) {
+          const kg = parseFloat(userData.weight);
+          setWeightInput(kg.toFixed(2));
+        }
+        
         if (userData.avatar?.url) {
           setAvatarUri(userData.avatar.url);
         }
@@ -77,6 +138,66 @@ const ProfileScreen = ({ navigation }) => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Get display value for height based on current unit
+  const getHeightDisplayValue = () => {
+    if (!heightInput || heightInput === '') return '';
+    const cm = parseFloat(heightInput);
+    if (!cm || isNaN(cm)) return '';
+    
+    if (heightUnit === 'cm') {
+      return cm.toFixed(2);
+    } else if (heightUnit === 'm') {
+      return (cm / 100).toFixed(2);
+    } else if (heightUnit === 'in') {
+      return (cm / 2.54).toFixed(2);
+    }
+    return '';
+  };
+
+  // Get display value for weight based on current unit
+  const getWeightDisplayValue = () => {
+    if (!weightInput || weightInput === '') return '';
+    const kg = parseFloat(weightInput);
+    if (!kg || isNaN(kg)) return '';
+    
+    if (weightUnit === 'kg') {
+      return kg.toFixed(2);
+    } else if (weightUnit === 'lbs') {
+      return (kg * 2.20462).toFixed(2);
+    } else if (weightUnit === 'stone') {
+      return (kg / 6.35029).toFixed(2);
+    }
+    return '';
+  };
+
+  // Convert height to cm based on selected unit
+  const convertHeightToCm = () => {
+    if (heightUnit === 'cm') {
+      return parseFloat(heightInput) || 0;
+    } else if (heightUnit === 'ft') {
+      const ft = parseFloat(feet) || 0;
+      const inch = parseFloat(inches) || 0;
+      return ((ft * 12) + inch) * 2.54;
+    } else if (heightUnit === 'm') {
+      return (parseFloat(heightInput) || 0) * 100;
+    } else if (heightUnit === 'in') {
+      return (parseFloat(heightInput) || 0) * 2.54;
+    }
+    return 0;
+  };
+
+  // Convert weight to kg based on selected unit
+  const convertWeightToKg = () => {
+    if (weightUnit === 'kg') {
+      return parseFloat(weightInput) || 0;
+    } else if (weightUnit === 'lbs') {
+      return (parseFloat(weightInput) || 0) / 2.20462;
+    } else if (weightUnit === 'stone') {
+      return (parseFloat(weightInput) || 0) * 6.35029;
+    }
+    return 0;
   };
 
   const handlePickImage = async () => {
@@ -126,13 +247,22 @@ const ProfileScreen = ({ navigation }) => {
       return;
     }
 
-    if (profileData.height && (isNaN(profileData.height) || parseFloat(profileData.height) <= 0)) {
-      toast.error('Please enter a valid height in cm');
+    // Validate height based on unit
+    if (heightUnit === 'ft') {
+      const ft = parseFloat(feet);
+      const inch = parseFloat(inches);
+      if ((!ft && !inch) || ft < 0 || inch < 0 || inch >= 12) {
+        toast.error('Please enter a valid height');
+        return;
+      }
+    } else if (profileData.height && (isNaN(profileData.height) || parseFloat(profileData.height) <= 0)) {
+      toast.error('Please enter a valid height');
       return;
     }
 
+    // Validate weight
     if (profileData.weight && (isNaN(profileData.weight) || parseFloat(profileData.weight) <= 0)) {
-      toast.error('Please enter a valid weight in kg');
+      toast.error('Please enter a valid weight');
       return;
     }
 
@@ -146,8 +276,14 @@ const ProfileScreen = ({ navigation }) => {
       // Add optional fields
       if (profileData.age) updateData.age = parseInt(profileData.age);
       if (profileData.sex) updateData.sex = profileData.sex;
-      if (profileData.height) updateData.height = parseFloat(profileData.height);
-      if (profileData.weight) updateData.weight = parseFloat(profileData.weight);
+      
+      // Convert height to cm before saving
+      const heightInCm = convertHeightToCm();
+      if (heightInCm > 0) updateData.height = parseFloat(heightInCm.toFixed(2));
+      
+      // Convert weight to kg before saving
+      const weightInKg = convertWeightToKg();
+      if (weightInKg > 0) updateData.weight = parseFloat(weightInKg.toFixed(2));
       if (profileData.diagnosis_status !== undefined && profileData.diagnosis_status !== '') {
         updateData.diagnosis_status = profileData.diagnosis_status;
       }
@@ -181,6 +317,11 @@ const ProfileScreen = ({ navigation }) => {
 
   const handleCancel = () => {
     setIsEditing(false);
+    // Reset inputs to stored values
+    setHeightInput(profileData.height);
+    setWeightInput(profileData.weight);
+    setFeet('');
+    setInches('');
     loadProfile(); // Reload original data
   };
 
@@ -434,6 +575,28 @@ const ProfileScreen = ({ navigation }) => {
       color: colors.secondary,
       fontStyle: 'italic',
     },
+    unitSelectorContainer: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 8,
+    },
+    unitButton: {
+      flex: 1,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    unitButtonText: {
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    feetInchesContainer: {
+      flexDirection: 'row',
+      gap: 8,
+    },
   });
 
   if (isLoading) {
@@ -491,7 +654,12 @@ const ProfileScreen = ({ navigation }) => {
               </TouchableOpacity>
             </>
           ) : (
-            <TouchableOpacity onPress={() => setIsEditing(true)} style={styles.headerButton}>
+            <TouchableOpacity 
+              onPress={() => {
+                setIsEditing(true);
+              }} 
+              style={styles.headerButton}
+            >
               <Icon name="pencil" size={24} color={colors.primary} />
             </TouchableOpacity>
           )}
@@ -655,7 +823,7 @@ const ProfileScreen = ({ navigation }) => {
                 </View>
 
                 <View style={styles.fieldContainer}>
-                  <Text style={styles.fieldLabel}>Diagnosis Status</Text>
+                  <Text style={styles.fieldLabel}>Diagnosis Status (Prediabetes and Type 2 Diabetes Only)</Text>
                   <View style={styles.diagnosisOptions}>
                     <TouchableOpacity
                       style={[
@@ -674,7 +842,7 @@ const ProfileScreen = ({ navigation }) => {
                         styles.diagnosisOptionText,
                         profileData.diagnosis_status === 'not_diagnosed' && styles.diagnosisOptionTextActive,
                       ]}>
-                        Not Diagnosed
+                        Not Diagnosed with Prediabetes or Type 2 Diabetes 
                       </Text>
                     </TouchableOpacity>
 
@@ -765,32 +933,112 @@ const ProfileScreen = ({ navigation }) => {
           <View style={styles.card}>
             {isEditing ? (
               <>
-                <View style={styles.fieldRow}>
-                  <View style={styles.fieldContainer}>
-                    <Text style={styles.fieldLabel}>Height (cm)</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={profileData.height}
-                      onChangeText={(text) => setProfileData({ ...profileData, height: text })}
-                      placeholder="Enter height"
-                      placeholderTextColor={colors.secondary}
-                      keyboardType="decimal-pad"
-                      editable={!isSaving}
-                    />
-                  </View>
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>Height</Text>
                   
-                  <View style={styles.fieldContainer}>
-                    <Text style={styles.fieldLabel}>Weight (kg)</Text>
+                  {/* Height Unit Selector */}
+                  <View style={styles.unitSelectorContainer}>
+                    <TouchableOpacity
+                      style={[styles.unitButton, { backgroundColor: heightUnit === 'cm' ? colors.primary : colors.surface, borderColor: heightUnit === 'cm' ? colors.primary : colors.border }]}
+                      onPress={() => setHeightUnit('cm')}
+                      disabled={isSaving}
+                    >
+                      <Text style={[styles.unitButtonText, { color: heightUnit === 'cm' ? '#FFFFFF' : colors.text }]}>cm</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.unitButton, { backgroundColor: heightUnit === 'ft' ? colors.primary : colors.surface, borderColor: heightUnit === 'ft' ? colors.primary : colors.border }]}
+                      onPress={() => setHeightUnit('ft')}
+                      disabled={isSaving}
+                    >
+                      <Text style={[styles.unitButtonText, { color: heightUnit === 'ft' ? '#FFFFFF' : colors.text }]}>ft/in</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.unitButton, { backgroundColor: heightUnit === 'm' ? colors.primary : colors.surface, borderColor: heightUnit === 'm' ? colors.primary : colors.border }]}
+                      onPress={() => setHeightUnit('m')}
+                      disabled={isSaving}
+                    >
+                      <Text style={[styles.unitButtonText, { color: heightUnit === 'm' ? '#FFFFFF' : colors.text }]}>m</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.unitButton, { backgroundColor: heightUnit === 'in' ? colors.primary : colors.surface, borderColor: heightUnit === 'in' ? colors.primary : colors.border }]}
+                      onPress={() => setHeightUnit('in')}
+                      disabled={isSaving}
+                    >
+                      <Text style={[styles.unitButtonText, { color: heightUnit === 'in' ? '#FFFFFF' : colors.text }]}>in</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {heightUnit === 'ft' ? (
+                    <View style={styles.feetInchesContainer}>
+                      <TextInput
+                        style={[styles.input, { flex: 1 }]}
+                        value={feet}
+                        onChangeText={(text) => setFeet(text)}
+                        placeholder="Feet"
+                        placeholderTextColor={colors.secondary}
+                        keyboardType="numeric"
+                        editable={!isSaving}
+                      />
+                      <TextInput
+                        style={[styles.input, { flex: 1, marginLeft: 8 }]}
+                        value={inches}
+                        onChangeText={(text) => setInches(text)}
+                        placeholder="Inches"
+                        placeholderTextColor={colors.secondary}
+                        keyboardType="numeric"
+                        editable={!isSaving}
+                      />
+                    </View>
+                  ) : (
                     <TextInput
                       style={styles.input}
-                      value={profileData.weight}
-                      onChangeText={(text) => setProfileData({ ...profileData, weight: text })}
-                      placeholder="Enter weight"
+                      value={heightInput}
+                      onChangeText={(text) => setHeightInput(text)}
+                      placeholder={`Enter height in ${heightUnit}`}
                       placeholderTextColor={colors.secondary}
                       keyboardType="decimal-pad"
                       editable={!isSaving}
                     />
+                  )}
+                </View>
+                
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>Weight</Text>
+                  
+                  {/* Weight Unit Selector */}
+                  <View style={styles.unitSelectorContainer}>
+                    <TouchableOpacity
+                      style={[styles.unitButton, { backgroundColor: weightUnit === 'kg' ? colors.primary : colors.surface, borderColor: weightUnit === 'kg' ? colors.primary : colors.border }]}
+                      onPress={() => setWeightUnit('kg')}
+                      disabled={isSaving}
+                    >
+                      <Text style={[styles.unitButtonText, { color: weightUnit === 'kg' ? '#FFFFFF' : colors.text }]}>kg</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.unitButton, { backgroundColor: weightUnit === 'lbs' ? colors.primary : colors.surface, borderColor: weightUnit === 'lbs' ? colors.primary : colors.border }]}
+                      onPress={() => setWeightUnit('lbs')}
+                      disabled={isSaving}
+                    >
+                      <Text style={[styles.unitButtonText, { color: weightUnit === 'lbs' ? '#FFFFFF' : colors.text }]}>lbs</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.unitButton, { backgroundColor: weightUnit === 'stone' ? colors.primary : colors.surface, borderColor: weightUnit === 'stone' ? colors.primary : colors.border }]}
+                      onPress={() => setWeightUnit('stone')}
+                      disabled={isSaving}
+                    >
+                      <Text style={[styles.unitButtonText, { color: weightUnit === 'stone' ? '#FFFFFF' : colors.text }]}>stone</Text>
+                    </TouchableOpacity>
                   </View>
+
+                  <TextInput
+                    style={styles.input}
+                    value={weightInput}
+                    onChangeText={(text) => setWeightInput(text)}
+                    placeholder={`Enter weight in ${weightUnit}`}
+                    placeholderTextColor={colors.secondary}
+                    keyboardType="decimal-pad"
+                    editable={!isSaving}
+                  />
                 </View>
               </>
             ) : (
@@ -799,14 +1047,14 @@ const ProfileScreen = ({ navigation }) => {
                   <View style={styles.fieldContainer}>
                     <Text style={styles.fieldLabel}>Height</Text>
                     <Text style={styles.fieldValue}>
-                      {profileData.height ? `${profileData.height} cm` : '-'}
+                      {profileData.height ? `${parseFloat(profileData.height).toFixed(2)} cm` : '-'}
                     </Text>
                   </View>
                   
                   <View style={styles.fieldContainer}>
                     <Text style={styles.fieldLabel}>Weight</Text>
                     <Text style={styles.fieldValue}>
-                      {profileData.weight ? `${profileData.weight} kg` : '-'}
+                      {profileData.weight ? `${parseFloat(profileData.weight).toFixed(2)} kg` : '-'}
                     </Text>
                   </View>
                 </View>
