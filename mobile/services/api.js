@@ -437,7 +437,7 @@ const predictNutrientsOnly = async (imageUri, note = '') => {
   }
 };
 
-const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePublicId, servingSize = null, confidenceRate = null, recipes = []) => {
+const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePublicId, servingSize = null, confidenceRate = null, recipes = [], ingredientNutrients = [], ingredientProportions = {}) => {
   try{
     const data = {
       nutrients,
@@ -447,7 +447,9 @@ const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePubl
       temp_image_public_id: tempImagePublicId,
       serving_size: servingSize,
       confidence_rate: confidenceRate,
-      recipes: recipes
+      recipes: recipes,
+      ingredient_nutrients: ingredientNutrients,
+      ingredient_proportions: ingredientProportions
     };
 
     const response = await api.post('/gemini/save-meal', data, {
@@ -490,7 +492,7 @@ const getMealById = async (mealId) => {
   }
 };
 
-const updateMeal = async (mealId, mealName = null, notes = null, foodType = null, nutrients = null, servingSize = null) => {
+const updateMeal = async (mealId, mealName = null, notes = null, foodType = null, nutrients = null, servingSize = null, ingredientNutrients = null, ingredientProportions = null) => {
   try {
     const updateData = {};
     if (mealName !== null) updateData.meal_name = mealName;
@@ -498,6 +500,8 @@ const updateMeal = async (mealId, mealName = null, notes = null, foodType = null
     if (foodType !== null) updateData.food_type = foodType;
     if (nutrients !== null) updateData.nutrients = nutrients;
     if (servingSize !== null) updateData.serving_size = servingSize;
+    if (ingredientNutrients !== null) updateData.ingredient_nutrients = ingredientNutrients;
+    if (ingredientProportions !== null) updateData.ingredient_proportions = ingredientProportions;
 
     const response = await api.put(`/users/meals/${mealId}`, updateData);
     return response.data;

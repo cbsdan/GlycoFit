@@ -17,7 +17,7 @@ class UserMeal:
         'other'
     ]
     
-    def __init__(self, user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None, recipes=None):
+    def __init__(self, user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None, recipes=None, ingredient_nutrients=None, ingredient_proportions=None):
         self.user_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
         self.nutrients = nutrients  # Dict with Calories, Protein (g), Carbs (g), Fat (g), Added Sugars (g), Fiber (g)
         self.image_url = image_url
@@ -28,6 +28,8 @@ class UserMeal:
         self.serving_size = serving_size  # Serving size information from Gemini
         self.confidence_rate = confidence_rate  # Confidence percentage from Gemini (0-100)
         self.recipes = recipes if recipes else []  # Detected ingredients with bounding boxes
+        self.ingredient_nutrients = ingredient_nutrients if ingredient_nutrients else []  # Nutrient breakdown per ingredient
+        self.ingredient_proportions = ingredient_proportions if ingredient_proportions else {}  # User-adjusted proportions per ingredient
         self.meal_datetime = datetime.utcnow()  # When the meal was recorded
         self.created_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
@@ -57,13 +59,15 @@ class UserMeal:
             'serving_size': self.serving_size,
             'confidence_rate': self.confidence_rate,
             'recipes': self.recipes,
+            'ingredient_nutrients': self.ingredient_nutrients,
+            'ingredient_proportions': self.ingredient_proportions,
             'meal_datetime': self.meal_datetime,
             'created_at': self.created_at,
             'updated_at': self.updated_at
         }
 
     @staticmethod
-    def create_meal(user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None, recipes=None):
+    def create_meal(user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None, recipes=None, ingredient_nutrients=None, ingredient_proportions=None):
         """Create a new meal record"""
         try:
             db = get_db()
@@ -78,7 +82,9 @@ class UserMeal:
                 food_type=food_type,
                 serving_size=serving_size,
                 confidence_rate=confidence_rate,
-                recipes=recipes
+                recipes=recipes,
+                ingredient_nutrients=ingredient_nutrients,
+                ingredient_proportions=ingredient_proportions
             )
             
             result = db.user_meals.insert_one(meal.to_dict())
@@ -143,6 +149,8 @@ class UserMeal:
                     'serving_size': meal.get('serving_size'),
                     'confidence_rate': meal.get('confidence_rate'),
                     'recipes': meal.get('recipes', []),
+                    'ingredient_nutrients': meal.get('ingredient_nutrients', []),
+                    'ingredient_proportions': meal.get('ingredient_proportions', {}),
                     'meal_datetime': meal['meal_datetime'].isoformat(),
                     'created_at': meal['created_at'].isoformat(),
                     'updated_at': meal['updated_at'].isoformat()
@@ -188,6 +196,8 @@ class UserMeal:
                     'serving_size': meal.get('serving_size'),
                     'confidence_rate': meal.get('confidence_rate'),
                     'recipes': meal.get('recipes', []),
+                    'ingredient_nutrients': meal.get('ingredient_nutrients', []),
+                    'ingredient_proportions': meal.get('ingredient_proportions', {}),
                     'meal_datetime': meal['meal_datetime'].isoformat(),
                     'created_at': meal['created_at'].isoformat(),
                     'updated_at': meal['updated_at'].isoformat()
@@ -211,8 +221,8 @@ class UserMeal:
             }
 
     @staticmethod
-    def update_meal(meal_id, user_id, meal_name=None, notes=None, food_type=None, nutrients=None, serving_size=None):
-        """Update meal details (meal_name, notes, food_type, nutrients, and serving_size)"""
+    def update_meal(meal_id, user_id, meal_name=None, notes=None, food_type=None, nutrients=None, serving_size=None, ingredient_nutrients=None, ingredient_proportions=None):
+        """Update meal details (meal_name, notes, food_type, nutrients, serving_size, ingredient_nutrients, and ingredient_proportions)"""
         try:
             db = get_db()
             
@@ -228,6 +238,10 @@ class UserMeal:
                 update_data['nutrients'] = nutrients
             if serving_size is not None:
                 update_data['serving_size'] = serving_size
+            if ingredient_nutrients is not None:
+                update_data['ingredient_nutrients'] = ingredient_nutrients
+            if ingredient_proportions is not None:
+                update_data['ingredient_proportions'] = ingredient_proportions
             if food_type is not None:
                 # Validate food_type
                 valid_types = UserMeal.VALID_MEAL_TYPES

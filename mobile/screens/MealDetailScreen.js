@@ -35,6 +35,48 @@ const MealDetailScreen = ({ route, navigation }) => {
   const [editableNutrients, setEditableNutrients] = useState(meal.nutrients || {});
   const [originalServingSize, setOriginalServingSize] = useState(null);
 
+  // Ingredient nutrients state
+  const [ingredientNutrients, setIngredientNutrients] = useState(meal.ingredient_nutrients || []);
+  const [ingredientProportions, setIngredientProportions] = useState(meal.ingredient_proportions || {});
+  const [baseIngredientNutrients, setBaseIngredientNutrients] = useState(meal.ingredient_nutrients || []);
+  const [showIngredientModal, setShowIngredientModal] = useState(false);
+
+  // Fetch complete meal data on mount to ensure we have ingredient_nutrients
+  useEffect(() => {
+    const fetchMealData = async () => {
+      try {
+        // Use 'id' field instead of '_id' as that's what the backend returns
+        const mealId = initialMeal.id || initialMeal._id;
+        const response = await api.getMealById(mealId);
+
+        // Backend returns meal in 'data' field, not 'meal'
+        if (response.success && response.data) {
+          console.log('Fetched meal data:', response.data);
+          console.log('Ingredient nutrients:', response.data.ingredient_nutrients);
+          console.log('Ingredient proportions:', response.data.ingredient_proportions);
+
+          // Convert 'id' to '_id' for compatibility with existing code
+          const mealData = { ...response.data, _id: response.data.id };
+          setMeal(mealData);
+
+          // Update ingredient states if available
+          if (response.data.ingredient_nutrients) {
+            setIngredientNutrients(response.data.ingredient_nutrients);
+            setBaseIngredientNutrients(response.data.ingredient_nutrients);
+          }
+          if (response.data.ingredient_proportions) {
+            setIngredientProportions(response.data.ingredient_proportions);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching meal details:', error);
+        // Don't show error to user, just use the initial meal data
+      }
+    };
+
+    fetchMealData();
+  }, [initialMeal.id, initialMeal._id]);
+
   // Valid food types from backend model
   const foodTypes = [
     { label: 'Unlabeled', value: 'unlabeled' },
@@ -173,7 +215,9 @@ const MealDetailScreen = ({ route, navigation }) => {
         editedNotes.trim(),
         editedFoodType,
         editableNutrients,
-        updatedServingSize
+        updatedServingSize,
+        ingredientNutrients,
+        ingredientProportions
       );
 
       if (response.success) {
@@ -183,9 +227,12 @@ const MealDetailScreen = ({ route, navigation }) => {
           notes: editedNotes.trim(),
           food_type: editedFoodType,
           nutrients: editableNutrients,
-          serving_size: updatedServingSize
+          serving_size: updatedServingSize,
+          ingredient_nutrients: ingredientNutrients,
+          ingredient_proportions: ingredientProportions
         }));
         setBaseNutrients(editableNutrients);
+        setBaseIngredientNutrients(ingredientNutrients);
         setIsEditing(false);
         toast.success('Meal updated successfully');
       } else {
@@ -248,7 +295,25 @@ const MealDetailScreen = ({ route, navigation }) => {
       setEditableNutrients(meal.nutrients);
       setPortionMultiplier(1);
     }
-    
+
+    // Initialize ingredient nutrients
+    if (meal.ingredient_nutrients) {
+      setIngredientNutrients(meal.ingredient_nutrients);
+      setBaseIngredientNutrients(meal.ingredient_nutrients);
+    }
+
+    // Initialize ingredient proportions
+    if (meal.ingredient_proportions) {
+      setIngredientProportions(meal.ingredient_proportions);
+    } else if (meal.ingredient_nutrients && meal.ingredient_nutrients.length > 0) {
+      // Initialize proportions to 1.0 for each ingredient
+      const initialProportions = {};
+      meal.ingredient_nutrients.forEach((ingredient) => {
+        initialProportions[ingredient.ingredient || 'Unknown'] = 1.0;
+      });
+      setIngredientProportions(initialProportions);
+    }
+
     // Extract original serving size (remove any existing multiplier)
     if (meal.serving_size) {
       // Check if serving_size has the pattern "X.XX× (original)"
@@ -278,6 +343,64 @@ const MealDetailScreen = ({ route, navigation }) => {
 
     setEditableNutrients(recalculated);
     setPortionMultiplier(multiplier);
+  };
+
+  // Handle ingredient proportion change and recalculate
+  const handleIngredientProportionChange = (ingredientName, proportion, shouldRecalculate = false) => {
+    const newProportions = {
+      ...ingredientProportions,
+      [ingredientName]: parseFloat(proportion) || 0
+    };
+    setIngredientProportions(newProportions);
+
+    if (shouldRecalculate) {
+      recalculateFromIngredients(portionMultiplier, newProportions);
+    }
+  };
+
+  // Recalculate nutrients from ingredient proportions
+  const recalculateFromIngredients = (overallMultiplier = portionMultiplier, updatedProportions = null) => {
+    const proportionsToUse = updatedProportions || ingredientProportions;
+
+    if (baseIngredientNutrients.length === 0) {
+      return;
+    }
+
+    // Calculate nutrients based on ingredient proportions
+    const updatedIngredients = baseIngredientNutrients.map(ingredient => {
+      const proportion = proportionsToUse[ingredient.ingredient] || 1.0;
+      const adjustedNutrients = {};
+
+      Object.keys(ingredient.nutrients).forEach(key => {
+        adjustedNutrients[key] = parseFloat((ingredient.nutrients[key] * proportion * overallMultiplier).toFixed(2));
+      });
+
+      return {
+        ...ingredient,
+        nutrients: adjustedNutrients,
+        proportion: proportion
+      };
+    });
+
+    setIngredientNutrients(updatedIngredients);
+
+    // Sum up all ingredient nutrients to get overall meal nutrients
+    const totalNutrients = {};
+    updatedIngredients.forEach(ingredient => {
+      Object.keys(ingredient.nutrients).forEach(key => {
+        if (!totalNutrients[key]) {
+          totalNutrients[key] = 0;
+        }
+        totalNutrients[key] += ingredient.nutrients[key];
+      });
+    });
+
+    // Round to 2 decimal places
+    Object.keys(totalNutrients).forEach(key => {
+      totalNutrients[key] = parseFloat(totalNutrients[key].toFixed(2));
+    });
+
+    setEditableNutrients(totalNutrients);
   };
 
   const foodTypeInfo = getFoodTypeInfo(meal.food_type);
@@ -778,6 +901,161 @@ const MealDetailScreen = ({ route, navigation }) => {
       fontSize: 11,
       color: colors.secondary,
     },
+    ingredientModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 20,
+    },
+    ingredientModalContent: {
+      backgroundColor: colors.card,
+      borderRadius: 20,
+      width: '100%',
+      maxHeight: '80%',
+      elevation: 5,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3.84,
+    },
+    ingredientModalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 20,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    ingredientModalTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+    },
+    ingredientModalTitle: {
+      fontSize: 20,
+      fontWeight: 'bold',
+      color: colors.text,
+      marginLeft: 12,
+    },
+    ingredientModalSubtitle: {
+      fontSize: 14,
+      color: colors.secondary,
+      paddingHorizontal: 20,
+      paddingTop: 12,
+      fontStyle: 'italic',
+    },
+    ingredientModalScroll: {
+      padding: 20,
+    },
+    ingredientModalCard: {
+      backgroundColor: colors.background,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    ingredientModalCardHeader: {
+      marginBottom: 12,
+    },
+    ingredientTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 4,
+    },
+    ingredientName: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text,
+      marginLeft: 8,
+      flex: 1,
+    },
+    ingredientServing: {
+      fontSize: 12,
+      color: colors.secondary,
+      marginTop: 4,
+    },
+    ingredientPortionControl: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+      paddingBottom: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    ingredientPortionLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    ingredientPortionAdjuster: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    portionSmallButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 6,
+      width: 32,
+      height: 32,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    ingredientPortionInput: {
+      borderWidth: 2,
+      borderColor: colors.primary,
+      borderRadius: 6,
+      padding: 8,
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: colors.primary,
+      backgroundColor: colors.card,
+      textAlign: 'center',
+      width: 70,
+    },
+    ingredientPortionText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.secondary,
+    },
+    ingredientNutrientsGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+    },
+    ingredientNutrientItem: {
+      width: '48%',
+      marginRight: '2%',
+      marginBottom: 8,
+    },
+    ingredientNutrientLabel: {
+      fontSize: 11,
+      color: colors.secondary,
+      marginBottom: 2,
+      textTransform: 'capitalize',
+    },
+    ingredientNutrientValue: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    ingredientModalFooter: {
+      padding: 20,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    ingredientModalCloseButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 8,
+      padding: 16,
+      alignItems: 'center',
+    },
+    ingredientModalCloseText: {
+      color: 'white',
+      fontSize: 16,
+      fontWeight: '600',
+    },
   });
 
   return (
@@ -786,7 +1064,7 @@ const MealDetailScreen = ({ route, navigation }) => {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <Icon name="arrow-left" size={24} color={colors.primary} />
         </TouchableOpacity>
-        
+
         <View style={styles.headerActions}>
           {isEditing ? (
             <>
@@ -797,7 +1075,7 @@ const MealDetailScreen = ({ route, navigation }) => {
               >
                 <Icon name="close" size={24} color={colors.secondary} />
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={[styles.actionButton, styles.saveButton]}
                 onPress={handleUpdateMeal}
@@ -815,7 +1093,7 @@ const MealDetailScreen = ({ route, navigation }) => {
               >
                 <Icon name="pencil" size={24} color={colors.primary} />
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={[styles.actionButton, styles.deleteButton]}
                 onPress={handleDeleteMeal}
@@ -833,9 +1111,9 @@ const MealDetailScreen = ({ route, navigation }) => {
         <View style={styles.imageSection}>
           {meal.image_url ? (
             <View style={styles.imageContainer}>
-              <Image 
-                source={{ uri: meal.image_url }} 
-                style={styles.mealImage} 
+              <Image
+                source={{ uri: meal.image_url }}
+                style={styles.mealImage}
                 resizeMode="contain"
                 onLayout={(event) => {
                   const { width, height } = event.nativeEvent.layout;
@@ -856,7 +1134,7 @@ const MealDetailScreen = ({ route, navigation }) => {
                     const top = y_min * scaleY;
                     const width = (x_max - x_min) * scaleX;
                     const height = (y_max - y_min) * scaleY;
-                    
+
                     return (
                       <View
                         key={index}
@@ -904,17 +1182,17 @@ const MealDetailScreen = ({ route, navigation }) => {
           ) : (
             <Text style={styles.mealName}>{meal.meal_name}</Text>
           )}
-          
+
           <View style={styles.dateTimeContainer}>
             <Icon name="calendar" size={16} color={colors.secondary} />
             <Text style={styles.dateTimeText}>
               {formatDate(meal.created_at)} at {formatTime(meal.created_at)}
             </Text>
           </View>
-          
+
           <View style={styles.foodTypeContainer}>
             {isEditing ? (
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.foodTypeSelector}
                 onPress={() => setShowFoodTypeModal(true)}
               >
@@ -955,21 +1233,21 @@ const MealDetailScreen = ({ route, navigation }) => {
               styles.confidenceContainer,
               {
                 borderLeftColor: meal.confidence_rate >= 70 ? '#27AE60' :
-                                meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C',
+                  meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C',
                 backgroundColor: meal.confidence_rate >= 70 ? '#27AE6010' :
-                                meal.confidence_rate >= 50 ? '#F39C1210' : '#E74C3C10',
+                  meal.confidence_rate >= 50 ? '#F39C1210' : '#E74C3C10',
               }
             ]}>
               <Icon name="shield-check" size={16} color={
                 meal.confidence_rate >= 70 ? '#27AE60' :
-                meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C'
+                  meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C'
               } />
               <Text style={styles.confidenceLabel}>Detection Confidence:</Text>
               <Text style={[
                 styles.confidenceValue,
                 {
                   color: meal.confidence_rate >= 70 ? '#27AE60' :
-                         meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C'
+                    meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C'
                 }
               ]}>
                 {meal.confidence_rate.toFixed(0)}%
@@ -1062,7 +1340,43 @@ const MealDetailScreen = ({ route, navigation }) => {
         {/* Nutrients Section */}
         {meal.nutrients && Object.keys(meal.nutrients).length > 0 && (
           <View style={styles.nutrientsSection}>
-            <Text style={styles.sectionTitle}>Nutritional Information</Text>
+            <View style={{ flexDirection: 'column', justifyContent: 'space-between', alignItems: 'left', marginBottom: 16 }}>
+              <Text style={styles.sectionTitle}>Nutritional Information</Text>
+              {isEditing && ingredientNutrients && ingredientNutrients.length > 0 && (
+                <View style={styles.ingredientButtonSection}>
+                  <TouchableOpacity
+                    style={styles.modifyIngredientButton}
+                    onPress={() => setShowIngredientModal(true)}
+                  >
+                    <Text style={styles.modifyIngredientButtonText}>
+                      Modify Ingredient Portions ({ingredientNutrients.length} ingredients)
+                    </Text>
+                    <Icon name="chevron-right" size={20} color="white" />
+                  </TouchableOpacity>
+                </View>
+              )}
+              {ingredientNutrients.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setShowIngredientModal(true)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: '#27AE6015',
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: '#27AE60',
+                  }}
+                >
+                  <Icon name="food-apple" size={16} color="#27AE60" />
+                  <Text style={{ color: '#27AE60', marginLeft: 6, fontSize: 13, fontWeight: '600' }}>
+                    Show Ingredients
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {/* Ingredient Nutrients Button - Only in Edit Mode */}
+            </View>
             {isEditing && portionMultiplier !== 1 && (
               <Text style={styles.nutrientSubtitle}>
                 Adjusted for {portionMultiplier.toFixed(2)}× portion size
@@ -1125,7 +1439,7 @@ const MealDetailScreen = ({ route, navigation }) => {
         animationType="slide"
         onRequestClose={() => setShowFoodTypeModal(false)}
       >
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
           onPress={() => setShowFoodTypeModal(false)}
@@ -1169,6 +1483,109 @@ const MealDetailScreen = ({ route, navigation }) => {
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      {/* Ingredient Nutrients Modal */}
+      <Modal
+        visible={showIngredientModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowIngredientModal(false)}
+      >
+        <View style={styles.ingredientModalOverlay}>
+          <View style={styles.ingredientModalContent}>
+            <View style={styles.ingredientModalHeader}>
+              <View style={styles.ingredientModalTitleRow}>
+                <Icon name="food-apple" size={24} color={colors.primary} />
+                <Text style={styles.ingredientModalTitle}>Ingredient Portions</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowIngredientModal(false)}>
+                <Icon name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.ingredientModalSubtitle}>
+              Adjust portion for each ingredient. Changes will recalculate overall meal nutrients.
+            </Text>
+
+            <ScrollView style={styles.ingredientModalScroll} showsVerticalScrollIndicator={false}>
+              {ingredientNutrients.map((ingredient, index) => (
+                <View key={index} style={styles.ingredientModalCard}>
+                  <View style={styles.ingredientModalCardHeader}>
+                    <View style={styles.ingredientTitleRow}>
+                      <Icon name="food-variant" size={18} color="#27AE60" />
+                      <Text style={styles.ingredientName}>{ingredient.ingredient}</Text>
+                    </View>
+                    {ingredient.serving_size && (
+                      <Text style={styles.ingredientServing}>
+                        {ingredient.serving_size}
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={styles.ingredientPortionControl}>
+                    <Text style={styles.ingredientPortionLabel}>Portion:</Text>
+                    <View style={styles.ingredientPortionAdjuster}>
+                      <TouchableOpacity
+                        style={styles.portionSmallButton}
+                        onPress={() => {
+                          const currentProportion = ingredientProportions[ingredient.ingredient] || 1.0;
+                          const newProportion = Math.max(0, currentProportion - 0.25);
+                          handleIngredientProportionChange(ingredient.ingredient, newProportion, true);
+                        }}
+                      >
+                        <Icon name="minus" size={16} color="white" />
+                      </TouchableOpacity>
+
+                      <TextInput
+                        style={styles.ingredientPortionInput}
+                        value={(ingredientProportions[ingredient.ingredient] || 1.0).toFixed(2)}
+                        onChangeText={(text) => {
+                          handleIngredientProportionChange(ingredient.ingredient, text, false);
+                        }}
+                        onEndEditing={() => recalculateFromIngredients()}
+                        keyboardType="decimal-pad"
+                        placeholderTextColor={colors.secondary}
+                      />
+
+                      <TouchableOpacity
+                        style={styles.portionSmallButton}
+                        onPress={() => {
+                          const currentProportion = ingredientProportions[ingredient.ingredient] || 1.0;
+                          const newProportion = currentProportion + 0.25;
+                          handleIngredientProportionChange(ingredient.ingredient, newProportion, true);
+                        }}
+                      >
+                        <Icon name="plus" size={16} color="white" />
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.ingredientPortionText}>x</Text>
+                  </View>
+
+                  <View style={styles.ingredientNutrientsGrid}>
+                    {Object.entries(ingredient.nutrients).map(([key, value]) => (
+                      <View key={key} style={styles.ingredientNutrientItem}>
+                        <Text style={styles.ingredientNutrientLabel}>{key}</Text>
+                        <Text style={styles.ingredientNutrientValue}>
+                          {typeof value === 'number' ? value.toFixed(1) : value}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={styles.ingredientModalFooter}>
+              <TouchableOpacity
+                style={styles.ingredientModalCloseButton}
+                onPress={() => setShowIngredientModal(false)}
+              >
+                <Text style={styles.ingredientModalCloseText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* Loading Overlay */}
