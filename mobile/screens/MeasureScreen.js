@@ -52,7 +52,7 @@ const MeasureScreen = ({ navigation }) => {
       subtitle: 'Track alcohol consumption patterns',
       icon: 'glass-wine',
       color: '#9B59B6',
-      action: () => navigation.navigate('AlcoholIntake'),
+      action: () => navigation.navigate('AlcoholTracking'),
     },
   ];
 

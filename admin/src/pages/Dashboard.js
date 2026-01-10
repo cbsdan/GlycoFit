@@ -8,7 +8,7 @@ import StatCard from '../components/common/StatCard';
 import { useAuth } from '../contexts/AuthContext';
 import { motion } from 'framer-motion';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:4000/api/v1';
+const API_BASE_URL = 'http://192.168.68.112:4000/api/v1';
 
 function Dashboard() {
   const [stats, setStats] = useState(null);

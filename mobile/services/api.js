@@ -1383,6 +1383,238 @@ export const getLatestSmokingIntake = async () => {
 // ==================== Alcohol Intake Management ====================
 
 /**
+ * Create alcohol baseline (required at onboarding)
+ * @param {number} baselineDrinkingDaysPerWeek - Typical drinking days per week (0-7)
+ * @param {number} baselineDrinksPerOccasion - Average drinks per drinking day (0-20)
+ * @param {number} baselineBingeFrequencyPerMonth - Binge episodes per month (0-31)
+ * @param {string} drinkingPattern - Pattern: none/occasional/weekends/regular/daily
+ * @param {number} yearsAtCurrentPattern - Years at this consumption level (0-50)
+ * @param {boolean} drinksWithMeals - Whether drinks are typically with food
+ * @returns {Promise<Object>} Created baseline
+ */
+export const createAlcoholBaseline = async (
+  baselineDrinkingDaysPerWeek,
+  baselineDrinksPerOccasion,
+  baselineBingeFrequencyPerMonth,
+  drinkingPattern = 'none',
+  yearsAtCurrentPattern = 0,
+  drinksWithMeals = false
+) => {
+  try {
+    const response = await api.post('/alcohol-intake/baseline', {
+      baseline_drinking_days_per_week: baselineDrinkingDaysPerWeek,
+      baseline_drinks_per_occasion: baselineDrinksPerOccasion,
+      baseline_binge_frequency_per_month: baselineBingeFrequencyPerMonth,
+      drinking_pattern: drinkingPattern,
+      years_at_current_pattern: yearsAtCurrentPattern,
+      drinks_with_meals: drinksWithMeals
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error creating alcohol baseline:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get user's alcohol baseline
+ * @returns {Promise<Object>} Baseline data
+ */
+export const getAlcoholBaseline = async () => {
+  try {
+    const response = await api.get('/alcohol-intake/baseline');
+    return response.data.data; // Extract the nested data object
+  } catch (error) {
+    console.error('Error fetching alcohol baseline:', error);
+    throw error;
+  }
+};
+
+/**
+ * Check if user has completed alcohol baseline
+ * @returns {Promise<Object>} { has_baseline: boolean }
+ */
+export const checkAlcoholBaseline = async () => {
+  try {
+    const response = await api.get('/alcohol-intake/baseline/check');
+    return response.data;
+  } catch (error) {
+    console.error('Error checking alcohol baseline:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update alcohol baseline (retake questionnaire)
+ * @param {number} baselineDrinkingDaysPerWeek - Typical drinking days per week (0-7)
+ * @param {number} baselineDrinksPerOccasion - Average drinks per drinking day (0-20)
+ * @param {number} baselineBingeFrequencyPerMonth - Binge episodes per month (0-31)
+ * @param {string} drinkingPattern - Pattern: none/occasional/weekends/regular/daily
+ * @param {number} yearsAtCurrentPattern - Years at this consumption level (0-50)
+ * @param {boolean} drinksWithMeals - Whether drinks are typically with food
+ * @returns {Promise<Object>} Updated baseline
+ */
+export const updateAlcoholBaseline = async (
+  baselineDrinkingDaysPerWeek,
+  baselineDrinksPerOccasion,
+  baselineBingeFrequencyPerMonth,
+  drinkingPattern = null,
+  yearsAtCurrentPattern = null,
+  drinksWithMeals = null
+) => {
+  try {
+    const payload = {
+      baseline_drinking_days_per_week: baselineDrinkingDaysPerWeek,
+      baseline_drinks_per_occasion: baselineDrinksPerOccasion,
+      baseline_binge_frequency_per_month: baselineBingeFrequencyPerMonth,
+    };
+    if (drinkingPattern !== null) payload.drinking_pattern = drinkingPattern;
+    if (yearsAtCurrentPattern !== null) payload.years_at_current_pattern = yearsAtCurrentPattern;
+    if (drinksWithMeals !== null) payload.drinks_with_meals = drinksWithMeals;
+    
+    const response = await api.put('/alcohol-intake/baseline', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating alcohol baseline:', error);
+    throw error;
+  }
+};
+
+/**
+ * Log daily alcohol consumption
+ * @param {string} date - Date (YYYY-MM-DD)
+ * @param {number} drinksConsumed - Number of standard drinks (0-20)
+ * @param {boolean} wasBingeEpisode - Whether it was a binge episode (optional)
+ * @param {string} drinkingContext - Context: meal/social/stress/celebration/other/none
+ * @param {string} timeOfDay - Time: morning/afternoon/evening/night
+ * @param {string} notes - Optional notes
+ * @returns {Promise<Object>} Created/updated record
+ */
+export const logDailyAlcohol = async (
+  date,
+  drinksConsumed,
+  wasBingeEpisode = null,
+  drinkingContext = 'other',
+  timeOfDay = 'evening',
+  notes = null
+) => {
+  try {
+    const payload = {
+      date,
+      drinks_consumed: drinksConsumed,
+      drinking_context: drinkingContext,
+      time_of_day: timeOfDay,
+    };
+    if (wasBingeEpisode !== null) payload.was_binge_episode = wasBingeEpisode;
+    if (notes) payload.notes = notes;
+    
+    const response = await api.post('/alcohol-intake/daily', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error logging daily alcohol:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get daily alcohol records
+ * @param {string} startDate - Start date (optional)
+ * @param {string} endDate - End date (optional)
+ * @param {number} days - Number of days (default: 30)
+ * @returns {Promise<Object>} List of records
+ */
+export const getDailyAlcoholRecords = async (startDate = null, endDate = null, days = 30) => {
+  try {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    if (days) params.append('days', days);
+    
+    const response = await api.get(`/alcohol-intake/daily?${params.toString()}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching daily alcohol records:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete daily alcohol record
+ * @param {string} date - Date to delete (YYYY-MM-DD)
+ * @returns {Promise<Object>} Delete result
+ */
+export const deleteDailyAlcoholRecord = async (date) => {
+  try {
+    const response = await api.delete(`/alcohol-intake/daily/${date}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting daily alcohol record:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get computed alcohol metrics
+ * @param {boolean} refresh - Force refresh metrics
+ * @returns {Promise<Object>} Computed metrics
+ */
+export const getAlcoholMetrics = async (refresh = false) => {
+  try {
+    const params = refresh ? '?refresh=true' : '';
+    const response = await api.get(`/alcohol-intake/metrics${params}`);
+    return response.data.data; // Extract the nested data object
+  } catch (error) {
+    console.error('Error fetching alcohol metrics:', error);
+    throw error;
+  }
+};
+
+/**
+ * Force refresh alcohol metrics
+ * @returns {Promise<Object>} Refreshed metrics
+ */
+export const refreshAlcoholMetrics = async () => {
+  try {
+    const response = await api.post('/alcohol-intake/metrics/refresh');
+    return response.data.data; // Extract the nested data object
+  } catch (error) {
+    console.error('Error refreshing alcohol metrics:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get comprehensive alcohol risk assessment
+ * @returns {Promise<Object>} Risk assessment with recommendations
+ */
+export const getAlcoholRiskAssessment = async () => {
+  try {
+    const response = await api.get('/alcohol-intake/risk');
+    return response.data.data; // Extract the nested data object
+  } catch (error) {
+    console.error('Error fetching alcohol risk assessment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get comprehensive alcohol summary for dashboard
+ * @returns {Promise<Object>} Complete alcohol status (baseline + metrics + risk + records)
+ */
+export const getAlcoholSummary = async () => {
+  try {
+    const response = await api.get('/alcohol-intake/summary');
+    return response.data.data; // Extract the nested data object
+  } catch (error) {
+    console.error('Error fetching alcohol summary:', error);
+    throw error;
+  }
+};
+
+// ==================== LEGACY ALCOHOL INTAKE (DEPRECATED) ====================
+
+/**
+ * @deprecated Use createAlcoholBaseline() and logDailyAlcohol() instead
  * Save or update alcohol intake record
  * @param {Object} alcoholData - Alcohol intake data
  * @returns {Promise<Object>} Saved alcohol intake record with risk assessment
@@ -1398,6 +1630,7 @@ export const saveAlcoholIntake = async (alcoholData) => {
 };
 
 /**
+ * @deprecated Use getAlcoholSummary() instead
  * Get current alcohol intake record
  * @returns {Promise<Object>} Current alcohol intake record
  */
@@ -1412,6 +1645,7 @@ export const getAlcoholIntake = async () => {
 };
 
 /**
+ * @deprecated Use getDailyAlcoholRecords() instead
  * Get alcohol intake history
  * @returns {Promise<Object>} Current and historical alcohol intake data
  */
@@ -1426,20 +1660,7 @@ export const getAlcoholIntakeHistory = async () => {
 };
 
 /**
- * Get comprehensive risk assessment based on alcohol intake
- * @returns {Promise<Object>} Risk assessment with recommendations and trend analysis
- */
-export const getAlcoholRiskAssessment = async () => {
-  try {
-    const response = await api.get('/alcohol-intake/risk-assessment');
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching alcohol risk assessment:', error);
-    throw error;
-  }
-};
-
-/**
+ * @deprecated Functionality removed - delete individual daily records instead
  * Delete alcohol intake record
  * @returns {Promise<Object>} Delete confirmation
  */

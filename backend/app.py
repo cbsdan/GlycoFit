@@ -35,6 +35,7 @@ from services.groq_service import init_groq_service
 from services.diabetes_service import init_diabetes_service
 from models.chatbot_message import ChatbotMessage
 from controllers.sleep_tracking_controller import init_sleep_tracking_indexes
+from controllers.alcohol_intake_controller import init_alcohol_tracking_indexes
 
 # Load environment variables
 load_dotenv()
@@ -138,6 +139,14 @@ def create_app():
     except Exception as e:
         logging.error(f"Failed to create sleep tracking indexes: {str(e)}")
         logging.warning("Sleep tracking queries may be slower without indexes")
+    
+    # Initialize Alcohol Tracking Indexes
+    try:
+        init_alcohol_tracking_indexes()
+        logging.info("Alcohol tracking database indexes created successfully")
+    except Exception as e:
+        logging.error(f"Failed to create alcohol tracking indexes: {str(e)}")
+        logging.warning("Alcohol tracking queries may be slower without indexes")
     
     # Defer ML Service initialization to avoid blocking startup
     # The ML service will initialize lazily on first use
