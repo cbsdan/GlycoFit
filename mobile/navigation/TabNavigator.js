@@ -15,6 +15,8 @@ import StepCounterScreen from '../screens/StepCounterScreen';
 import FoodScannerScreen from '../screens/FoodScannerScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SmokingIntakeScreen from '../screens/SmokingIntakeScreen';
+import SmokingBaselineScreen from '../screens/SmokingBaselineScreen';
+import SmokingDailyLogScreen from '../screens/SmokingDailyLogScreen';
 import AlcoholIntakeScreen from '../screens/AlcoholIntakeScreen';
 import AlcoholTrackingScreen from '../screens/AlcoholTrackingScreen';
 import AlcoholBaselineScreen from '../screens/AlcoholBaselineScreen';
@@ -34,6 +36,8 @@ const MeasureStack = () => {
       <Stack.Screen name="StepCounter" component={StepCounterScreen} />
       <Stack.Screen name="FoodScanner" component={FoodScannerScreen} />
       <Stack.Screen name="SmokingIntake" component={SmokingIntakeScreen} />
+      <Stack.Screen name="SmokingBaseline" component={SmokingBaselineScreen} />
+      <Stack.Screen name="SmokingDailyLog" component={SmokingDailyLogScreen} />
       <Stack.Screen name="AlcoholIntake" component={AlcoholIntakeScreen} />
       <Stack.Screen name="AlcoholTracking" component={AlcoholTrackingScreen} />
       <Stack.Screen name="AlcoholBaseline" component={AlcoholBaselineScreen} />

@@ -23,7 +23,7 @@ from routes.health_data_routes import health_data_bp
 from routes.diabetes_assessment_routes import diabetes_assessment_bp
 from routes.chat_routes import chat_bp
 from routes.chatbot_routes import chatbot_bp
-from routes.smoking_intake_routes import smoking_intake_bp
+from routes.smoking_intake_routes import smoking_tracking_bp
 from routes.alcohol_intake_routes import alcohol_intake_bp
 from routes.sleep_tracking_routes import sleep_tracking_bp
 from controllers.chat_controller import register_socket_events
@@ -36,6 +36,7 @@ from services.diabetes_service import init_diabetes_service
 from models.chatbot_message import ChatbotMessage
 from controllers.sleep_tracking_controller import init_sleep_tracking_indexes
 from controllers.alcohol_intake_controller import init_alcohol_tracking_indexes
+from controllers.smoking_tracking_controller import init_smoking_tracking_indexes
 
 # Load environment variables
 load_dotenv()
@@ -148,6 +149,14 @@ def create_app():
         logging.error(f"Failed to create alcohol tracking indexes: {str(e)}")
         logging.warning("Alcohol tracking queries may be slower without indexes")
     
+    # Initialize Smoking Tracking Indexes
+    try:
+        init_smoking_tracking_indexes()
+        logging.info("Smoking tracking database indexes created successfully")
+    except Exception as e:
+        logging.error(f"Failed to create smoking tracking indexes: {str(e)}")
+        logging.warning("Smoking tracking queries may be slower without indexes")
+    
     # Defer ML Service initialization to avoid blocking startup
     # The ML service will initialize lazily on first use
     logging.info("ML Service will initialize on first use (lazy loading)")
@@ -177,7 +186,7 @@ def create_app():
     app.register_blueprint(diabetes_assessment_bp, url_prefix='/api/v1/diabetes-assessment')
     app.register_blueprint(chat_bp, url_prefix='/api/v1/chat')
     app.register_blueprint(chatbot_bp, url_prefix='/api/v1/chatbot')
-    app.register_blueprint(smoking_intake_bp, url_prefix='/api/v1/smoking-intake')
+    app.register_blueprint(smoking_tracking_bp, url_prefix='/api/v1/smoking-tracking')
     app.register_blueprint(alcohol_intake_bp, url_prefix='/api/v1/alcohol-intake')
     app.register_blueprint(sleep_tracking_bp, url_prefix='/api/v1/sleep-tracking')
 

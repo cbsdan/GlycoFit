@@ -1380,6 +1380,184 @@ export const getLatestSmokingIntake = async () => {
   }
 };
 
+// ==================== Smoking Tracking Management (New Pattern) ====================
+
+/**
+ * Create smoking baseline (required at onboarding)
+ * @param {string} smoking_status - Status: never/current/former
+ * @param {number} years_smoked - Years smoked (if not never)
+ * @param {number} typical_cigarettes_per_day - Typical daily cigarettes (if not never)
+ * @param {string} quit_date - Date quit smoking (if former, YYYY-MM-DD)
+ * @param {number} start_age - Age started smoking (optional)
+ */
+const createSmokingBaseline = async (baselineData) => {
+  try {
+    const response = await api.post('/smoking-tracking/baseline', baselineData);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating smoking baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get user's smoking baseline
+ */
+const getSmokingBaseline = async () => {
+  try {
+    const response = await api.get('/smoking-tracking/baseline');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching smoking baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Check if user has baseline (quick check without full data)
+ */
+const checkSmokingBaseline = async () => {
+  try {
+    const response = await api.get('/smoking-tracking/baseline/check');
+    return response.data;
+  } catch (error) {
+    console.error('Error checking smoking baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Update smoking baseline (only allowed if not locked)
+ * @param {object} updates - Fields to update
+ */
+const updateSmokingBaseline = async (updates) => {
+  try {
+    const response = await api.put('/smoking-tracking/baseline', updates);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating smoking baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Log daily smoking record
+ * @param {string} date - Date (YYYY-MM-DD)
+ * @param {number} cigarettes_count - Number of cigarettes smoked
+ * @param {string} notes - Optional notes
+ */
+const logDailySmoking = async (recordData) => {
+  try {
+    const response = await api.post('/smoking-tracking/daily', recordData);
+    return response.data;
+  } catch (error) {
+    console.error('Error logging daily smoking:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get daily smoking records for a date range
+ * @param {string} startDate - Start date (YYYY-MM-DD)
+ * @param {string} endDate - End date (YYYY-MM-DD)
+ * @param {number} limit - Max records to return
+ */
+const getDailySmokingRecords = async (startDate = null, endDate = null, limit = 30) => {
+  try {
+    const params = {};
+    if (startDate) params.start_date = startDate;
+    if (endDate) params.end_date = endDate;
+    if (limit) params.limit = limit;
+    
+    const response = await api.get('/smoking-tracking/daily', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching daily smoking records:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Delete a daily smoking record
+ * @param {string} date - Date to delete (YYYY-MM-DD)
+ */
+const deleteDailySmokingRecord = async (date) => {
+  try {
+    const response = await api.delete(`/smoking-tracking/daily/${date}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting daily smoking record:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get smoking metrics (computed averages, pack-years, etc.)
+ */
+const getSmokingMetrics = async () => {
+  try {
+    const response = await api.get('/smoking-tracking/metrics');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching smoking metrics:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Refresh smoking metrics (force recalculation)
+ */
+const refreshSmokingMetrics = async () => {
+  try {
+    const response = await api.post('/smoking-tracking/metrics/refresh');
+    return response.data;
+  } catch (error) {
+    console.error('Error refreshing smoking metrics:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get current smoking risk assessment
+ */
+const getSmokingRiskAssessment = async () => {
+  try {
+    const response = await api.get('/smoking-tracking/risk');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching smoking risk assessment:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get smoking risk assessment history
+ * @param {number} limit - Number of historical records
+ */
+const getSmokingRiskHistory = async (limit = 10) => {
+  try {
+    const response = await api.get('/smoking-tracking/risk/history', { params: { limit } });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching smoking risk history:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get smoking tracking summary (dashboard data)
+ * @param {number} days - Days of history to include
+ */
+const getSmokingSummary = async (days = 7) => {
+  try {
+    const response = await api.get('/smoking-tracking/summary', { params: { days } });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching smoking summary:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
 // ==================== Alcohol Intake Management ====================
 
 /**
@@ -2006,6 +2184,20 @@ api.saveSmokingIntake = saveSmokingIntake;
 api.getSmokingIntakeHistory = getSmokingIntakeHistory;
 api.getLatestSmokingIntake = getLatestSmokingIntake;
 api.deleteSmokingSession = deleteSmokingSession;
+
+// Smoking Tracking endpoints (new pattern)
+api.createSmokingBaseline = createSmokingBaseline;
+api.getSmokingBaseline = getSmokingBaseline;
+api.checkSmokingBaseline = checkSmokingBaseline;
+api.updateSmokingBaseline = updateSmokingBaseline;
+api.logDailySmoking = logDailySmoking;
+api.getDailySmokingRecords = getDailySmokingRecords;
+api.deleteDailySmokingRecord = deleteDailySmokingRecord;
+api.getSmokingMetrics = getSmokingMetrics;
+api.refreshSmokingMetrics = refreshSmokingMetrics;
+api.getSmokingRiskAssessment = getSmokingRiskAssessment;
+api.getSmokingRiskHistory = getSmokingRiskHistory;
+api.getSmokingSummary = getSmokingSummary;
 
 // Sleep Tracking endpoints
 api.createSleepBaseline = createSleepBaseline;

@@ -1,88 +1,136 @@
+"""
+Smoking Tracking Routes
+
+URL Prefix: /api/v1/smoking-tracking
+
+Endpoints:
+- POST /baseline          - Create manual baseline (onboarding)
+- GET /baseline           - Get user's baseline
+- PUT /baseline           - Update user's baseline (retake questionnaire)
+- GET /baseline/check     - Check if baseline exists
+
+- POST /daily             - Log manual daily smoking
+- GET /daily              - Get daily records (with filters)
+- DELETE /daily/:date     - Delete daily record
+
+- GET /metrics            - Get computed metrics
+- POST /metrics/refresh   - Force refresh metrics
+
+- GET /risk               - Get latest risk assessment
+- GET /risk/history       - Get risk assessment history
+
+- GET /summary            - Get comprehensive dashboard summary
+"""
+
 from flask import Blueprint
-from controllers.smoking_intake_controller import (
-    save_smoking_intake,
-    get_smoking_intake,
-    get_smoking_intake_history,
-    get_latest_smoking_intake,
-    get_smoking_statistics,
-    delete_smoking_intake,
-    delete_smoking_session
+from controllers.smoking_tracking_controller import (
+    create_baseline,
+    get_baseline,
+    update_baseline,
+    check_baseline,
+    log_daily_smoking,
+    get_daily_records,
+    delete_daily_record,
+    get_metrics,
+    refresh_metrics,
+    get_risk_assessment,
+    get_risk_history,
+    get_smoking_summary
 )
 from middleware.firebase_auth import firebase_auth_required
 
-smoking_intake_bp = Blueprint('smoking_intake', __name__)
+# Create blueprint
+smoking_tracking_bp = Blueprint('smoking_tracking', __name__)
 
-# Save/update smoking intake record
-@smoking_intake_bp.route('', methods=['POST'])
-@firebase_auth_required
-def save_smoking_intake_route():
-    """
-    Save or update smoking intake record
-    
-    Request Body:
-    {
-        "smoking_status": "never|former|current",
-        "cigarettes_per_day": "0|1-5|6-10|11-20|>20",
-        "years_smoked": 0,
-        "pack_years": 0,
-        "start_date": "2020-01-01" (optional)
-    }
-    """
-    return save_smoking_intake()
+# ==================== BASELINE ROUTES ====================
 
-# Get smoking intake record
-@smoking_intake_bp.route('', methods=['GET'])
+@smoking_tracking_bp.route('/baseline', methods=['POST'])
 @firebase_auth_required
-def get_smoking_intake_route():
-    """
-    Get smoking intake record for authenticated user
-    """
-    return get_smoking_intake()
+def handle_create_baseline():
+    """Create manual baseline (onboarding)"""
+    return create_baseline()
 
-# Get smoking intake history (returns single record with sessions for backward compatibility)
-@smoking_intake_bp.route('/history', methods=['GET'])
-@firebase_auth_required
-def get_smoking_intake_history_route():
-    """
-    Get smoking intake record with session history for authenticated user
-    """
-    return get_smoking_intake_history()
 
-# Get latest smoking intake record
-@smoking_intake_bp.route('/latest', methods=['GET'])
+@smoking_tracking_bp.route('/baseline', methods=['GET'])
 @firebase_auth_required
-def get_latest_smoking_intake_route():
-    """
-    Get the smoking intake record for authenticated user
-    """
-    return get_latest_smoking_intake()
+def handle_get_baseline():
+    """Get user's baseline"""
+    return get_baseline()
 
-# Get smoking statistics with diabetes risk
-@smoking_intake_bp.route('/statistics', methods=['GET'])
-@firebase_auth_required
-def get_smoking_statistics_route():
-    """
-    Get smoking intake statistics with diabetes risk for authenticated user
-    """
-    return get_smoking_statistics()
 
-# Delete entire smoking intake record
-@smoking_intake_bp.route('', methods=['DELETE'])
+@smoking_tracking_bp.route('/baseline', methods=['PUT'])
 @firebase_auth_required
-def delete_smoking_intake_route():
-    """
-    Delete entire smoking intake record for authenticated user
-    """
-    return delete_smoking_intake()
+def handle_update_baseline():
+    """Update user's baseline (retake questionnaire)"""
+    return update_baseline()
 
-# Delete a specific smoking session
-@smoking_intake_bp.route('/session/<session_id>', methods=['DELETE'])
+
+@smoking_tracking_bp.route('/baseline/check', methods=['GET'])
 @firebase_auth_required
-def delete_smoking_session_route(session_id):
-    """
-    Delete a specific smoking session
-    
-    Path Parameters:
-    - session_id: ID of the smoking session to delete
-    """
-    return delete_smoking_session(session_id)
+def handle_check_baseline():
+    """Check if baseline exists"""
+    return check_baseline()
+
+
+# ==================== DAILY RECORD ROUTES ====================
+
+@smoking_tracking_bp.route('/daily', methods=['POST'])
+@firebase_auth_required
+def handle_log_daily_smoking():
+    """Log manual daily smoking"""
+    return log_daily_smoking()
+
+
+@smoking_tracking_bp.route('/daily', methods=['GET'])
+@firebase_auth_required
+def handle_get_daily_records():
+    """Get daily records (with filters)"""
+    return get_daily_records()
+
+
+@smoking_tracking_bp.route('/daily/<date>', methods=['DELETE'])
+@firebase_auth_required
+def handle_delete_daily_record(date):
+    """Delete daily record"""
+    return delete_daily_record(date)
+
+
+# ==================== METRICS ROUTES ====================
+
+@smoking_tracking_bp.route('/metrics', methods=['GET'])
+@firebase_auth_required
+def handle_get_metrics():
+    """Get computed metrics"""
+    return get_metrics()
+
+
+@smoking_tracking_bp.route('/metrics/refresh', methods=['POST'])
+@firebase_auth_required
+def handle_refresh_metrics():
+    """Force refresh metrics"""
+    return refresh_metrics()
+
+
+# ==================== RISK ASSESSMENT ROUTES ====================
+
+@smoking_tracking_bp.route('/risk', methods=['GET'])
+@firebase_auth_required
+def handle_get_risk_assessment():
+    """Get latest risk assessment"""
+    return get_risk_assessment()
+
+
+@smoking_tracking_bp.route('/risk/history', methods=['GET'])
+@firebase_auth_required
+def handle_get_risk_history():
+    """Get risk assessment history"""
+    return get_risk_history()
+
+
+# ==================== SUMMARY ROUTES ====================
+
+@smoking_tracking_bp.route('/summary', methods=['GET'])
+@firebase_auth_required
+def handle_get_smoking_summary():
+    """Get comprehensive dashboard summary"""
+    return get_smoking_summary()
