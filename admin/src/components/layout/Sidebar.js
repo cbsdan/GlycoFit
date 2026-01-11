@@ -15,7 +15,6 @@ function Sidebar({ open }) {
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
     { text: 'Users', icon: <PeopleIcon />, path: '/dashboard/users' },
-    { text: 'Create Physician', icon: <PersonAddIcon />, path: '/dashboard/create-physician' },
   ];
 
   const isActive = (path) => {

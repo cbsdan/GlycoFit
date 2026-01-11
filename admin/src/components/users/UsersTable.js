@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton, Tooltip, Chip } from '@mui/material';
+import React, { useState, useMemo } from 'react';
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton, Tooltip, Chip, TextField, Button, Stack } from '@mui/material';
+import DownloadIcon from '@mui/icons-material/Download';
 import BlockIcon from '@mui/icons-material/Block';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
@@ -8,6 +9,7 @@ import DisableUserDialog from './DisableUserDialog';
 
 function UsersTable({ users, onDisable, onEnable }) {
   const [selectedUser, setSelectedUser] = useState(null);
+  const [query, setQuery] = useState('');
   const [mealModalOpen, setMealModalOpen] = useState(false);
   const [disableDialogOpen, setDisableDialogOpen] = useState(false);
   const [userToDisable, setUserToDisable] = useState(null);
@@ -30,6 +32,41 @@ function UsersTable({ users, onDisable, onEnable }) {
     setMealModalOpen(true);
   };
 
+  const filteredUsers = useMemo(() => {
+    if (!query) return users;
+    const q = query.toLowerCase().trim();
+    const tokens = q.split(/\s+/).filter(Boolean);
+    return users.filter(u => {
+      const first = (u.first_name || '').toLowerCase();
+      const last = (u.last_name || '').toLowerCase();
+      const full = `${first} ${last}`.trim();
+      const email = (u.email || '').toLowerCase();
+      const role = (u.role || '').toLowerCase();
+      const id = (u.uid || u.id || '').toString().toLowerCase();
+      return tokens.every(t => full.includes(t) || first.includes(t) || last.includes(t) || email.includes(t) || role.includes(t) || id.includes(t));
+    });
+  }, [users, query]);
+
+  const exportToCsv = (rows) => {
+    const headers = ['Name','Email','Role','Status'];
+    const lines = [headers.join(',')];
+    rows.forEach(u => {
+      const name = `${u.first_name || ''} ${u.last_name || ''}`.trim();
+      const status = u.is_disabled ? 'Disabled' : 'Active';
+      const row = [name, u.email || '', u.role || '', status];
+      // Escape commas
+      lines.push(row.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(','));
+    });
+    const csv = lines.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'users_export.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleCloseMealModal = () => {
     setMealModalOpen(false);
     setSelectedUser(null);
@@ -37,6 +74,23 @@ function UsersTable({ users, onDisable, onEnable }) {
 
   return (
     <>
+    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2, alignItems: 'center', justifyContent: 'space-between' }}>
+      <TextField
+        size="small"
+        placeholder="Search users by name, email, role..."
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        sx={{ width: { xs: '100%', sm: 360 } }}
+      />
+      <Stack direction="row" spacing={1}>
+        <Button variant="outlined" size="small" startIcon={<DownloadIcon />} onClick={() => exportToCsv(filteredUsers)}>
+          Export (CSV)
+        </Button>
+        <Button variant="text" size="small" onClick={() => { setQuery(''); }}>
+          Clear
+        </Button>
+      </Stack>
+    </Stack>
     <TableContainer 
       component={Paper}
       sx={{
@@ -56,14 +110,14 @@ function UsersTable({ users, onDisable, onEnable }) {
           </TableRow>
         </TableHead>
         <TableBody>
-          {users.length === 0 ? (
+          {filteredUsers.length === 0 ? (
             <TableRow>
               <TableCell colSpan={5} align="center">
                 No users found
               </TableCell>
             </TableRow>
           ) : (
-            users.map((user) => (
+            filteredUsers.map((user) => (
               <TableRow key={user.uid || user.id}>
                 <TableCell>{user.first_name} {user.last_name}</TableCell>
                 <TableCell>{user.email}</TableCell>
