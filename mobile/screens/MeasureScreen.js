@@ -15,12 +15,12 @@ const MeasureScreen = ({ navigation }) => {
 
   const measurementOptions = [
     {
-      id: 'food-scanner',
-      title: 'Food Scanner',
-      subtitle: 'Scan and log your meals',
-      icon: 'camera',
+      id: 'food-tracker',
+      title: 'Food Tracker',
+      subtitle: 'Track meals & assess prediabetes risk',
+      icon: 'food-apple',
       color: '#27AE60',
-      action: () => navigation.navigate('FoodScanner'),
+      action: () => navigation.navigate('FoodTracker'),
     },
     {
       id: 'step-counter',

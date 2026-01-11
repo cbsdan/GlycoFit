@@ -186,6 +186,7 @@ class NutrientController:
             temp_image_public_id = data.get('temp_image_public_id')
             serving_size = data.get('serving_size')
             confidence_rate = data.get('confidence_rate')
+            meal_datetime = data.get('meal_datetime')  # Allow user to set when they ate
             
             logging.info(f"Saving meal for user {user_id} - temp_image_public_id: {temp_image_public_id}")
             
@@ -242,7 +243,8 @@ class NutrientController:
                     notes=notes,
                     food_type=food_type,
                     serving_size=serving_size,
-                    confidence_rate=confidence_rate
+                    confidence_rate=confidence_rate,
+                    meal_datetime=meal_datetime
                 )
                 
                 if meal_result['success']:

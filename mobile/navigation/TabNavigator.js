@@ -13,6 +13,9 @@ import FindPhysicianScreen from '../screens/FindPhysicianScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import StepCounterScreen from '../screens/StepCounterScreen';
 import FoodScannerScreen from '../screens/FoodScannerScreen';
+import FoodTrackerScreen from '../screens/FoodTrackerScreen';
+import FoodBaselineScreen from '../screens/FoodBaselineScreen';
+import FoodIntakeScreen from '../screens/FoodIntakeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SmokingIntakeScreen from '../screens/SmokingIntakeScreen';
 import SmokingBaselineScreen from '../screens/SmokingBaselineScreen';
@@ -34,7 +37,10 @@ const MeasureStack = () => {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MeasureMain" component={MeasureScreen} />
       <Stack.Screen name="StepCounter" component={StepCounterScreen} />
+      <Stack.Screen name="FoodTracker" component={FoodTrackerScreen} />
       <Stack.Screen name="FoodScanner" component={FoodScannerScreen} />
+      <Stack.Screen name="FoodBaseline" component={FoodBaselineScreen} />
+      <Stack.Screen name="FoodIntake" component={FoodIntakeScreen} />
       <Stack.Screen name="SmokingIntake" component={SmokingIntakeScreen} />
       <Stack.Screen name="SmokingBaseline" component={SmokingBaselineScreen} />
       <Stack.Screen name="SmokingDailyLog" component={SmokingDailyLogScreen} />

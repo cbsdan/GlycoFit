@@ -17,9 +17,9 @@ class UserMeal:
         'other'
     ]
     
-    def __init__(self, user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None, recipes=None, ingredient_nutrients=None, ingredient_proportions=None):
+    def __init__(self, user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None, recipes=None, ingredient_nutrients=None, ingredient_proportions=None, meal_datetime=None):
         self.user_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
-        self.nutrients = nutrients  # Dict with Calories, Protein (g), Carbs (g), Fat (g), Added Sugars (g), Fiber (g)
+        self.nutrients = nutrients  # Dict with Calories, Protein (g), Carbs (g), Fat (g), Added Sugars (g), Fiber (g), Saturated Fat (g), Unsaturated Fat (g), Sodium (mg), Glycemic Load
         self.image_url = image_url
         self.image_public_id = image_public_id
         self.meal_name = meal_name  # Optional meal name
@@ -30,7 +30,7 @@ class UserMeal:
         self.recipes = recipes if recipes else []  # Detected ingredients with bounding boxes
         self.ingredient_nutrients = ingredient_nutrients if ingredient_nutrients else []  # Nutrient breakdown per ingredient
         self.ingredient_proportions = ingredient_proportions if ingredient_proportions else {}  # User-adjusted proportions per ingredient
-        self.meal_datetime = datetime.utcnow()  # When the meal was recorded
+        self.meal_datetime = meal_datetime if meal_datetime else datetime.utcnow()  # When the meal was eaten (user can set this)
         self.created_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
 
@@ -67,10 +67,14 @@ class UserMeal:
         }
 
     @staticmethod
-    def create_meal(user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None, recipes=None, ingredient_nutrients=None, ingredient_proportions=None):
+    def create_meal(user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None, recipes=None, ingredient_nutrients=None, ingredient_proportions=None, meal_datetime=None):
         """Create a new meal record"""
         try:
             db = get_db()
+            
+            # Parse meal_datetime if it's a string
+            if meal_datetime and isinstance(meal_datetime, str):
+                meal_datetime = datetime.fromisoformat(meal_datetime.replace('Z', '+00:00'))
             
             meal = UserMeal(
                 user_id=user_id,
@@ -84,7 +88,8 @@ class UserMeal:
                 confidence_rate=confidence_rate,
                 recipes=recipes,
                 ingredient_nutrients=ingredient_nutrients,
-                ingredient_proportions=ingredient_proportions
+                ingredient_proportions=ingredient_proportions,
+                meal_datetime=meal_datetime
             )
             
             result = db.user_meals.insert_one(meal.to_dict())

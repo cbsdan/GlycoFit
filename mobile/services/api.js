@@ -437,7 +437,7 @@ const predictNutrientsOnly = async (imageUri, note = '') => {
   }
 };
 
-const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePublicId, servingSize = null, confidenceRate = null, recipes = [], ingredientNutrients = [], ingredientProportions = {}) => {
+const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePublicId, servingSize = null, confidenceRate = null, recipes = [], ingredientNutrients = [], ingredientProportions = {}, mealDatetime = null) => {
   try{
     const data = {
       nutrients,
@@ -449,7 +449,8 @@ const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePubl
       confidence_rate: confidenceRate,
       recipes: recipes,
       ingredient_nutrients: ingredientNutrients,
-      ingredient_proportions: ingredientProportions
+      ingredient_proportions: ingredientProportions,
+      meal_datetime: mealDatetime  // Add meal datetime
     };
 
     const response = await api.post('/gemini/save-meal', data, {
@@ -2125,6 +2126,95 @@ export const cleanupDuplicateSleepRecords = async () => {
   }
 };
 
+// ==================== FOOD RISK ASSESSMENT API ====================
+
+/**
+ * Get baseline assessment questions
+ * @returns {Promise<Object>} List of baseline questions
+ */
+export const getFoodBaselineQuestions = async () => {
+  try {
+    const response = await api.get('/food-risk/baseline/questions');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching baseline questions:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Submit baseline assessment
+ * @param {Object} responses - User responses to baseline questions
+ * @returns {Promise<Object>} Created baseline assessment
+ */
+export const submitFoodBaseline = async (responses) => {
+  try {
+    const response = await api.post('/food-risk/baseline/submit', { responses });
+    return response.data;
+  } catch (error) {
+    console.error('Error submitting baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get user's food baseline assessment
+ * @returns {Promise<Object>} Baseline assessment data
+ */
+export const getFoodBaseline = async () => {
+  try {
+    const response = await api.get('/food-risk/baseline');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get comprehensive food risk assessment
+ * @param {number} days - Number of days to analyze (default: 7)
+ * @returns {Promise<Object>} Risk assessment with scores and breakdown
+ */
+export const getFoodRiskAssessment = async (days = 7) => {
+  try {
+    const response = await api.get(`/food-risk/assessment?days=${days}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching risk assessment:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get personalized food recommendations
+ * @returns {Promise<Object>} Recommendations based on risk assessment
+ */
+export const getFoodRecommendations = async () => {
+  try {
+    const response = await api.get('/food-risk/recommendations');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching recommendations:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get daily log analysis
+ * @param {number} days - Number of days to analyze (default: 7)
+ * @returns {Promise<Object>} Daily log analysis
+ */
+export const getFoodDailyLogAnalysis = async (days = 7) => {
+  try {
+    const response = await api.get(`/food-risk/daily-log-analysis?days=${days}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching daily log analysis:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
 api.saveMeal = saveMeal;
@@ -2214,5 +2304,13 @@ api.getSleepRiskAssessment = getSleepRiskAssessment;
 api.getSleepRiskHistory = getSleepRiskHistory;
 api.getSleepSummary = getSleepSummary;
 api.cleanupDuplicateSleepRecords = cleanupDuplicateSleepRecords;
+
+// Food Risk Assessment endpoints
+api.getFoodBaselineQuestions = getFoodBaselineQuestions;
+api.submitFoodBaseline = submitFoodBaseline;
+api.getFoodBaseline = getFoodBaseline;
+api.getFoodRiskAssessment = getFoodRiskAssessment;
+api.getFoodRecommendations = getFoodRecommendations;
+api.getFoodDailyLogAnalysis = getFoodDailyLogAnalysis;
 
 export default api;
