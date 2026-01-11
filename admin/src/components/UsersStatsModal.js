@@ -17,8 +17,11 @@ import {
   Card,
   CardContent,
   Grid,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import SummarizeIcon from '@mui/icons-material/Summarize';
+import BedtimeIcon from '@mui/icons-material/Bedtime';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
@@ -165,6 +168,10 @@ export default function UsersStatsModal({ open, onClose, apiBase, getAuthHeaders
   const [userMeals, setUserMeals] = useState([]);
   const [mealsLoading, setMealsLoading] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
+  const [sleepData, setSleepData] = useState(null);
+  const [sleepLoading, setSleepLoading] = useState(false);
+  const [sleepTimeframe, setSleepTimeframe] = useState(30);
+  const [tabValue, setTabValue] = useState(0);
 
   const handleTotalClick = (event) => {
     setAnchorEl(event.currentTarget);
@@ -178,6 +185,7 @@ export default function UsersStatsModal({ open, onClose, apiBase, getAuthHeaders
 
   const handleViewStats = async (user) => {
     setSelectedUser(user);
+    setTabValue(0);
     setMealsLoading(true);
     try {
       const headers = getAuthHeaders ? await getAuthHeaders() : { 'Content-Type': 'application/json' };
@@ -192,14 +200,43 @@ export default function UsersStatsModal({ open, onClose, apiBase, getAuthHeaders
     } finally {
       setMealsLoading(false);
     }
+    // Fetch sleep data
+    fetchUserSleep(user);
+  };
+
+  const fetchUserSleep = async (user, days = sleepTimeframe) => {
+    setSleepLoading(true);
+    try {
+      const headers = getAuthHeaders ? await getAuthHeaders() : { 'Content-Type': 'application/json' };
+      const id = user.id || user.uid;
+      const url = `${apiBase}/admin/users/${id}/sleep?days=${days}`;
+      console.log('[Sleep] Fetching from:', url);
+      const res = await fetch(url, { headers, method: 'GET' });
+      console.log('[Sleep] Response status:', res.status);
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('[Sleep] Error response:', errorText);
+        throw new Error(`Failed to fetch sleep data: ${res.status}`);
+      }
+      const data = await res.json();
+      console.log('[Sleep] Data received:', data);
+      setSleepData(data);
+    } catch (err) {
+      console.error('[Sleep] Error fetching sleep data:', err);
+      setSleepData(null);
+    } finally {
+      setSleepLoading(false);
+    }
   };
 
   const closeUserDetail = () => {
     setSelectedUser(null);
     setAnchorEl(null);
-
     setUserMeals([]);
     setMealsLoading(false);
+    setSleepData(null);
+    setSleepLoading(false);
+    setTabValue(0);
   };
 
   // Derived nutrition totals for selected user
@@ -331,9 +368,17 @@ export default function UsersStatsModal({ open, onClose, apiBase, getAuthHeaders
       <Dialog open={!!selectedUser} onClose={closeUserDetail} fullWidth maxWidth="lg">
         <DialogTitle>{selectedUser ? `${selectedUser.first_name || ''} ${selectedUser.last_name || ''}`.trim() || selectedUser.email : 'User'}</DialogTitle>
         <DialogContent dividers>
-          {mealsLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
-          ) : (
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+            <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)}>
+              <Tab label="Meals & Nutrition" />
+              <Tab label="Sleep Tracking" icon={<BedtimeIcon fontSize="small" />} iconPosition="start" />
+            </Tabs>
+          </Box>
+
+          {tabValue === 0 && (
+            mealsLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+            ) : (
             <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start' }}>
               {/* Left: Nutrition pie */}
               <Box sx={{ width: { xs: '100%', md: '35%' }, minWidth: 220 }}>
@@ -508,6 +553,132 @@ export default function UsersStatsModal({ open, onClose, apiBase, getAuthHeaders
                   </TableContainer>
                 )}
               </Box>
+            </Box>
+            )
+          )}
+
+          {tabValue === 1 && (
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+                <Typography variant="h6">Sleep Tracking</Typography>
+                <FormControl size="small" sx={{ minWidth: 140 }}>
+                  <InputLabel>Timeframe</InputLabel>
+                  <Select
+                    value={sleepTimeframe}
+                    label="Timeframe"
+                    onChange={(e) => {
+                      const newDays = e.target.value;
+                      setSleepTimeframe(newDays);
+                      if (selectedUser) fetchUserSleep(selectedUser, newDays);
+                    }}
+                  >
+                    <MenuItem value={7}>Last 7 Days</MenuItem>
+                    <MenuItem value={14}>Last 14 Days</MenuItem>
+                    <MenuItem value={30}>Last 30 Days</MenuItem>
+                    <MenuItem value={60}>Last 60 Days</MenuItem>
+                    <MenuItem value={90}>Last 90 Days</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+
+              {sleepLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+                  <CircularProgress />
+                </Box>
+              ) : !sleepData || !sleepData.success ? (
+                <Box sx={{ py: 4, textAlign: 'center' }}>
+                  <BedtimeIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                  <Typography color="text.secondary">No sleep data available for this user</Typography>
+                </Box>
+              ) : (
+                <Box>
+                  {/* Sleep Summary Cards */}
+                  <Grid container spacing={2} sx={{ mb: 3 }}>
+                    <Grid item xs={12} md={6}>
+                      <Card sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+                        <CardContent>
+                          <Typography variant="caption" sx={{ opacity: 0.9 }}>Average Sleep Hours</Typography>
+                          <Typography variant="h3" sx={{ fontWeight: 700, my: 1 }}>
+                            {sleepData.avg_sleep_hours?.toFixed(1) || '0.0'}h
+                          </Typography>
+                          <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                            Based on {sleepData.total_records || 0} records in {sleepData.timeframe?.days || 0} days
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    {sleepData.baseline && (
+                      <Grid item xs={12} md={6}>
+                        <Card sx={{ bgcolor: '#f8fafc', border: '2px solid #e2e8f0' }}>
+                          <CardContent>
+                            <Typography variant="caption" color="text.secondary">Baseline (Usual Pattern)</Typography>
+                            <Typography variant="h4" sx={{ fontWeight: 700, my: 1, color: '#667eea' }}>
+                              {sleepData.baseline.baseline_avg_sleep_hours?.toFixed(1) || 'N/A'}h
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Bedtime: {sleepData.baseline.usual_bedtime || 'N/A'} • Wake: {sleepData.baseline.usual_wake_time || 'N/A'}
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    )}
+                  </Grid>
+
+                  {/* Sleep Records Table */}
+                  <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>Sleep Schedule</Typography>
+                  {sleepData.sleep_records.length === 0 ? (
+                    <Typography color="text.secondary">No sleep records found for this timeframe.</Typography>
+                  ) : (
+                    <TableContainer component={Paper} sx={{ maxHeight: 420 }}>
+                      <Table stickyHeader size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Date</TableCell>
+                            <TableCell>Bedtime</TableCell>
+                            <TableCell>Wake Time</TableCell>
+                            <TableCell>Sleep Duration</TableCell>
+                            <TableCell>Quality</TableCell>
+                            <TableCell>Source</TableCell>
+                            <TableCell>Notes</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {sleepData.sleep_records.map((record) => (
+                            <TableRow key={record.id} hover>
+                              <TableCell>{record.date || '-'}</TableCell>
+                              <TableCell>{record.bedtime || '-'}</TableCell>
+                              <TableCell>{record.wake_time || '-'}</TableCell>
+                              <TableCell>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#667eea' }}>
+                                    {record.sleep_duration_hours?.toFixed(1) || '0.0'}h
+                                  </Typography>
+                                </Box>
+                              </TableCell>
+                              <TableCell>
+                                {record.sleep_quality ? `${record.sleep_quality}/5` : '-'}
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="caption" sx={{ 
+                                  bgcolor: record.source === 'health_connect' ? '#e0f2fe' : '#f0fdf4',
+                                  color: record.source === 'health_connect' ? '#0369a1' : '#15803d',
+                                  px: 1,
+                                  py: 0.5,
+                                  borderRadius: 1,
+                                  textTransform: 'capitalize'
+                                }}>
+                                  {record.source || 'manual'}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>{record.notes || '-'}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </Box>
+              )}
             </Box>
           )}
         </DialogContent>

@@ -491,6 +491,110 @@ def get_user_meals(uid):
     else:
         return jsonify(error=result.get('error', 'Unknown error')), 400
 
+@admin_bp.route("/users/<uid>/sleep", methods=["GET"])
+def get_user_sleep_data(uid):
+    """Get sleep data for a specific user
+    Query params:
+      - start: ISO datetime string
+      - end: ISO datetime string
+      - days: number of days (default 30)
+    Returns sleep records and average sleep hours
+    """
+    try:
+        db = __import__('config.database', fromlist=['get_db']).database.get_db()
+    except Exception:
+        from config.database import get_db
+        db = get_db()
+
+    try:
+        # Try to find user by UID first, then by MongoDB ID
+        user = User.find_by_uid(uid)
+        if not user:
+            user = User.find_by_id(uid)
+        if not user:
+            return jsonify(error='User not found'), 404
+
+        # Get timeframe parameters
+        start_str = request.args.get('start')
+        end_str = request.args.get('end')
+        days_param = request.args.get('days', 30, type=int)
+        
+        now = datetime.utcnow()
+        if start_str and end_str:
+            try:
+                start = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+                end = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+            except Exception:
+                return jsonify(error='Invalid date format for start/end'), 400
+        else:
+            end = now
+            start = now - timedelta(days=days_param)
+
+        # Convert datetime to date strings for comparison (YYYY-MM-DD format)
+        start_date_str = start.strftime('%Y-%m-%d')
+        end_date_str = end.strftime('%Y-%m-%d')
+
+        # Get sleep daily records - filter by date field, not created_at
+        sleep_records = list(db.sleep_daily_records.find({
+            'user_id': str(user._id),
+            'date': {'$gte': start_date_str, '$lte': end_date_str}
+        }).sort('date', -1))
+
+        # Convert ObjectId to string and format dates
+        formatted_records = []
+        total_hours = 0
+        count = 0
+
+        for record in sleep_records:
+            record['_id'] = str(record['_id'])
+            formatted_records.append({
+                'id': str(record.get('_id')),
+                'date': record.get('date'),
+                'bedtime': record.get('bedtime'),
+                'wake_time': record.get('wake_time'),
+                'sleep_duration_hours': record.get('sleep_duration_hours'),
+                'source': record.get('source'),
+                'sleep_quality': record.get('sleep_quality'),
+                'notes': record.get('notes'),
+                'created_at': record.get('created_at').isoformat() if record.get('created_at') else None
+            })
+            
+            if record.get('sleep_duration_hours'):
+                total_hours += float(record.get('sleep_duration_hours'))
+                count += 1
+
+        # Calculate average
+        avg_sleep_hours = round(total_hours / count, 2) if count > 0 else 0
+
+        # Get baseline if exists
+        baseline = db.sleep_baselines.find_one({'user_id': str(user._id)})
+        baseline_data = None
+        if baseline:
+            baseline_data = {
+                'baseline_avg_sleep_hours': baseline.get('baseline_avg_sleep_hours'),
+                'usual_bedtime': baseline.get('usual_bedtime'),
+                'usual_wake_time': baseline.get('usual_wake_time'),
+                'baseline_nights_6h_plus_per_week': baseline.get('baseline_nights_6h_plus_per_week'),
+                'baseline_bedtime_consistency': baseline.get('baseline_bedtime_consistency')
+            }
+
+        return jsonify({
+            'success': True,
+            'sleep_records': formatted_records,
+            'total_records': len(formatted_records),
+            'avg_sleep_hours': avg_sleep_hours,
+            'baseline': baseline_data,
+            'timeframe': {
+                'start': start.isoformat(),
+                'end': end.isoformat(),
+                'days': (end - start).days + 1
+            }
+        })
+
+    except Exception as e:
+        logging.error(f"[ADMIN] Error fetching user sleep data: {str(e)}", exc_info=True)
+        return jsonify(error=str(e)), 500
+
 @admin_bp.route("/users/<uid>/disable", methods=["POST"])
 def disable_user(uid):
     data = request.get_json()
