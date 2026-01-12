@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Typography, CircularProgress, Alert, Snackbar } from '@mui/material';
-import UsersTable from '../components/users/UsersTable';
+import UsersManagement from '../components/UsersManagement';
 import { useAuth } from '../contexts/AuthContext';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:4000/api/v1';
@@ -129,12 +129,7 @@ function UsersPage() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       
-      <UsersTable 
-        users={users} 
-        onRefresh={fetchUsers}
-        onDisable={handleDisableUser}
-        onEnable={handleEnableUser}
-      />
+      <UsersManagement />
       
       <Snackbar
         open={!!successMessage}

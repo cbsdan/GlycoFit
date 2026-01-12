@@ -1,15 +1,12 @@
-from pymongo import MongoClient, DESCENDING
+from pymongo import DESCENDING
 from bson import ObjectId
 from datetime import datetime
-import os
-from dotenv import load_dotenv
+from config.database import get_db
 
-load_dotenv()
-
-# Database connection
-client = MongoClient(os.getenv('DB_URI', 'mongodb://localhost:27017/'))
-db = client.glycofit
-smoking_intake_collection = db.smoking_intake
+def get_smoking_intake_collection():
+    """Return the smoking_intake collection from the initialized DB."""
+    db = get_db()
+    return db.smoking_intake
 
 class SmokingIntake:
     """
@@ -22,8 +19,9 @@ class SmokingIntake:
     def ensure_indexes():
         """Create indexes for the smoking_intake collection"""
         # Index for user_id for efficient queries (one record per user)
-        smoking_intake_collection.create_index("user_id", unique=True)
-        smoking_intake_collection.create_index("updated_at")
+        col = get_smoking_intake_collection()
+        col.create_index("user_id", unique=True)
+        col.create_index("updated_at")
         print("Smoking intake collection indexes created successfully")
     
     @staticmethod
@@ -42,7 +40,8 @@ class SmokingIntake:
         Returns:
             dict: Updated smoking intake record
         """
-        existing_record = smoking_intake_collection.find_one({'user_id': user_id})
+        col = get_smoking_intake_collection()
+        existing_record = col.find_one({'user_id': user_id})
         
         now = datetime.utcnow()
         
@@ -92,7 +91,7 @@ class SmokingIntake:
                         years_since_quit = (now - quit_date).days / 365.25
             
             # Update record
-            result = smoking_intake_collection.update_one(
+            result = col.update_one(
                 {'user_id': user_id},
                 {
                     '$set': {
@@ -106,7 +105,7 @@ class SmokingIntake:
             )
             
             # Fetch and return updated record
-            record = smoking_intake_collection.find_one({'user_id': user_id})
+            record = col.find_one({'user_id': user_id})
         else:
             # Create new record
             cumulative_pack_years = pack_years if smoking_status != 'never' else 0
@@ -122,7 +121,7 @@ class SmokingIntake:
                 'updated_at': now
             }
             
-            result = smoking_intake_collection.insert_one(record)
+            result = col.insert_one(record)
             record['_id'] = result.inserted_id
         
         # Convert ObjectId to string
@@ -140,7 +139,8 @@ class SmokingIntake:
         Returns:
             dict: Smoking intake record or None
         """
-        record = smoking_intake_collection.find_one({'user_id': user_id})
+        col = get_smoking_intake_collection()
+        record = col.find_one({'user_id': user_id})
         
         if record:
             record['_id'] = str(record['_id'])
@@ -159,7 +159,8 @@ class SmokingIntake:
             dict: Smoking intake record or None
         """
         try:
-            record = smoking_intake_collection.find_one({'_id': ObjectId(record_id)})
+            col = get_smoking_intake_collection()
+            record = col.find_one({'_id': ObjectId(record_id)})
             if record:
                 record['_id'] = str(record['_id'])
             return record
@@ -177,7 +178,8 @@ class SmokingIntake:
         Returns:
             bool: True if deleted, False otherwise
         """
-        result = smoking_intake_collection.delete_one({'user_id': user_id})
+        col = get_smoking_intake_collection()
+        result = col.delete_one({'user_id': user_id})
         return result.deleted_count > 0
     
     @staticmethod
@@ -192,7 +194,8 @@ class SmokingIntake:
         Returns:
             bool: True if deleted, False otherwise
         """
-        record = smoking_intake_collection.find_one({'user_id': user_id})
+        col = get_smoking_intake_collection()
+        record = col.find_one({'user_id': user_id})
         if not record:
             return False
         
@@ -213,7 +216,7 @@ class SmokingIntake:
         current_status = 'current' if has_active else ('former' if sessions else 'never')
         
         # Update record
-        smoking_intake_collection.update_one(
+        col.update_one(
             {'user_id': user_id},
             {
                 '$set': {

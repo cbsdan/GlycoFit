@@ -59,69 +59,59 @@ function AdminCreatePhysician({ onSuccess }) {
   };
 
   return (
-    <Paper 
-      sx={{ 
-        p: 4, 
-        maxWidth: 600,
-        borderRadius: 3,
-        boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-        border: '1px solid #e0e0e0',
-      }}
-    >
-      <form onSubmit={handleSubmit}>
-        <TextField
-          label="First Name"
-          name="first_name"
-          value={form.first_name}
-          onChange={handleChange}
-          fullWidth
-          required
-          sx={{ mb: 2 }}
-        />
-        <TextField
-          label="Last Name"
-          name="last_name"
-          value={form.last_name}
-          onChange={handleChange}
-          fullWidth
-          required
-          sx={{ mb: 2 }}
-        />
-        <TextField
-          label="Email"
-          name="email"
-          type="email"
-          value={form.email}
-          onChange={handleChange}
-          fullWidth
-          required
-          sx={{ mb: 2 }}
-        />
-        <TextField
-          label="Password"
-          name="password"
-          type="password"
-          value={form.password}
-          onChange={handleChange}
-          fullWidth
-          required
-          helperText="Minimum 6 characters"
-          sx={{ mb: 2 }}
-        />
-        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {successMsg && <Alert severity="success" sx={{ mb: 2 }}>{successMsg}</Alert>}
-        <Button
-          type="submit"
-          variant="contained"
-          color="primary"
-          fullWidth
-          disabled={loading}
-          sx={{ height: 48 }}
-        >
-          {loading ? <CircularProgress size={24} /> : 'Create Physician Account'}
-        </Button>
-      </form>
-    </Paper>
+    <form onSubmit={handleSubmit}>
+      <TextField
+        label="First Name"
+        name="first_name"
+        value={form.first_name}
+        onChange={handleChange}
+        fullWidth
+        required
+        sx={{ mb: 2 }}
+      />
+      <TextField
+        label="Last Name"
+        name="last_name"
+        value={form.last_name}
+        onChange={handleChange}
+        fullWidth
+        required
+        sx={{ mb: 2 }}
+      />
+      <TextField
+        label="Email"
+        name="email"
+        type="email"
+        value={form.email}
+        onChange={handleChange}
+        fullWidth
+        required
+        sx={{ mb: 2 }}
+      />
+      <TextField
+        label="Password"
+        name="password"
+        type="password"
+        value={form.password}
+        onChange={handleChange}
+        fullWidth
+        required
+        helperText="Minimum 6 characters"
+        sx={{ mb: 2 }}
+      />
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {successMsg && <Alert severity="success" sx={{ mb: 2 }}>{successMsg}</Alert>}
+      <Button
+        type="submit"
+        variant="contained"
+        color="primary"
+        fullWidth
+        disabled={loading}
+        sx={{ height: 48 }}
+      >
+        {loading ? <CircularProgress size={24} /> : 'Create Physician Account'}
+      </Button>
+    </form>
   );
 }
 

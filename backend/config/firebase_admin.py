@@ -4,15 +4,25 @@ import os
 import logging
 import json
 
-# Global Firebase app instance
-firebase_app = None
 
 def init_firebase():
-    """Initialize Firebase Admin SDK"""
-    global firebase_app
-    
+    """Initialize Firebase Admin SDK using multiple fallbacks.
+
+    Tries in order:
+    1. If an app already exists, return it.
+    2. Service account from environment variables (FIREBASE_*).
+    3. Certificate file from FIREBASE_CREDENTIALS_PATH or GOOGLE_APPLICATION_CREDENTIALS.
+    4. Application Default Credentials.
+    """
     try:
-        # Construct service account from environment variables
+        # If already initialized elsewhere, return existing app
+        if firebase_admin._apps:
+            try:
+                return firebase_admin.get_app()
+            except Exception:
+                pass
+
+        # Attempt to build service account dict from environment
         service_account_info = {
             "type": os.getenv('FIREBASE_TYPE'),
             "project_id": os.getenv('FIREBASE_PROJECT_ID'),
@@ -26,33 +36,71 @@ def init_firebase():
             "client_x509_cert_url": os.getenv('FIREBASE_CLIENT_CERT_URL'),
             "universe_domain": os.getenv('FIREBASE_UNIVERSE_DOMAIN')
         }
-        
-        # Validate required fields
+
         required_fields = ['type', 'project_id', 'private_key', 'client_email']
-        missing_fields = [field for field in required_fields if not service_account_info.get(field)]
-        
-        if missing_fields:
-            raise ValueError(f"Missing required Firebase environment variables: {', '.join(missing_fields)}")
-        
-        # Create credentials from service account info
-        cred = credentials.Certificate(service_account_info)
-        
-        # Initialize Firebase app
-        firebase_app = firebase_admin.initialize_app(cred)
-        
-        logging.info("Firebase Admin SDK initialized successfully")
-        return firebase_app
-        
+        if all(service_account_info.get(f) for f in required_fields):
+            try:
+                cred = credentials.Certificate(service_account_info)
+                project_id = service_account_info.get('project_id') or os.getenv('FIREBASE_PROJECT_ID') or os.getenv('GOOGLE_CLOUD_PROJECT')
+                options = {'projectId': project_id} if project_id else None
+                app = firebase_admin.initialize_app(cred, options=options) if options else firebase_admin.initialize_app(cred)
+                logging.info("Firebase Admin SDK initialized from environment service account")
+                if not project_id:
+                    logging.warning('No project_id found in env service account or env vars; some auth operations may require project ID')
+                return app
+            except Exception as e:
+                logging.warning(f"Failed to initialize from env service account: {e}")
+
+        # Try certificate file path from env
+        cred_path = os.getenv('FIREBASE_CREDENTIALS_PATH') or os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        if cred_path:
+            try:
+                # Try to extract project_id from the JSON file if possible
+                project_id = None
+                try:
+                    with open(cred_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        project_id = data.get('project_id')
+                except Exception:
+                    project_id = os.getenv('FIREBASE_PROJECT_ID') or os.getenv('GOOGLE_CLOUD_PROJECT')
+
+                cred = credentials.Certificate(cred_path)
+                options = {'projectId': project_id} if project_id else None
+                app = firebase_admin.initialize_app(cred, options=options) if options else firebase_admin.initialize_app(cred)
+                logging.info(f"Firebase Admin SDK initialized from credentials file: {cred_path}")
+                if not project_id:
+                    logging.warning('No project_id found in credentials file or env vars; some auth operations may require project ID')
+                return app
+            except Exception as e:
+                logging.warning(f"Failed to initialize from credentials file '{cred_path}': {e}")
+
+        # Try application default credentials
+        try:
+            cred = credentials.ApplicationDefault()
+            project_id = os.getenv('FIREBASE_PROJECT_ID') or os.getenv('GOOGLE_CLOUD_PROJECT')
+            options = {'projectId': project_id} if project_id else None
+            app = firebase_admin.initialize_app(cred, options=options) if options else firebase_admin.initialize_app(cred)
+            logging.info("Firebase Admin SDK initialized using Application Default Credentials")
+            if not project_id:
+                logging.warning('No project_id set in env; consider setting FIREBASE_PROJECT_ID or GOOGLE_CLOUD_PROJECT')
+            return app
+        except Exception as e:
+            logging.error(f"Failed to initialize Firebase Admin SDK using any method: {e}")
+            raise e
+
     except Exception as e:
-        logging.error(f"Failed to initialize Firebase Admin SDK: {str(e)}")
+        logging.error(f"Firebase initialization error: {str(e)}")
         raise e
 
+
 def get_firebase_app():
-    """Get Firebase app instance"""
-    global firebase_app
-    if firebase_app is None:
-        firebase_app = init_firebase()
-    return firebase_app
+    """Return the initialized firebase app, initializing it if necessary."""
+    try:
+        if firebase_admin._apps:
+            return firebase_admin.get_app()
+    except Exception:
+        pass
+    return init_firebase()
 
 class FirebaseAuth:
     """Firebase Authentication helper class"""

@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 from models.user import User
 from models.user_meal import UserMeal
 from datetime import datetime, timedelta
+from bson import ObjectId
 import logging
 
 admin_bp = Blueprint('admin_blueprint', __name__)
@@ -49,18 +50,328 @@ def get_users_stats():
     try:
         users = User.get_all_users()
         total_users = len(users)
-        physicians = sum(1 for u in users if u.role == 'physician')
+        physicians = sum(1 for u in users if (u.role or '').lower() == 'physician')
         disabled_users = sum(1 for u in users if u.is_currently_disabled())
+
+        # Active users should include only roles 'user' and 'admin', excluding disabled and physicians
+        active_users = sum(
+            1 for u in users
+            if (u.role or '').lower() in ['user', 'admin'] and not u.is_currently_disabled()
+        )
         
         return jsonify({
             'total_users': total_users,
             'physicians': physicians,
             'regular_users': total_users - physicians,
             'disabled_users': disabled_users,
-            'active_users': total_users - disabled_users
+            'active_users': active_users
         })
     except Exception as e:
         logging.error(f"[ADMIN] Error getting user stats: {str(e)}")
+        return jsonify(error=str(e)), 500
+
+
+@admin_bp.route("/users/analytics", methods=["GET"])
+def get_users_analytics():
+    """Return registrations per day and active/inactive counts between start and end dates
+    Query params:
+      - start: ISO datetime string
+      - end: ISO datetime string
+    If missing, defaults to last 30 days.
+    """
+    try:
+        db = __import__('config.database', fromlist=['get_db']).database.get_db()
+    except Exception:
+        from config.database import get_db
+        db = get_db()
+
+    try:
+        start_str = request.args.get('start')
+        end_str = request.args.get('end')
+        now = datetime.utcnow()
+        if start_str and end_str:
+            try:
+                start = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+                end = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+            except Exception:
+                return jsonify(error='Invalid date format for start/end'), 400
+        else:
+            end = now
+            start = now - timedelta(days=30)
+
+        # Aggregate registrations per day
+        pipeline = [
+            {"$match": {"created_at": {"$gte": start, "$lte": end}}},
+            {"$project": {"date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}}}},
+            {"$group": {"_id": "$date", "count": {"$sum": 1}}},
+            {"$sort": {"_id": 1}}
+        ]
+
+        agg = list(db.users.aggregate(pipeline))
+        counts_by_date = {item['_id']: item['count'] for item in agg}
+
+        # Build full series for each day in range
+        series = []
+        cur = start
+        while cur.date() <= end.date():
+            key = cur.strftime('%Y-%m-%d')
+            # return ISO date string at UTC midnight so frontend date adapter can parse
+            iso_date = f"{key}T00:00:00Z"
+            series.append({"date": iso_date, "count": counts_by_date.get(key, 0)})
+            cur = cur + timedelta(days=1)
+
+        # Compute active, temporarily disabled, and permanently disabled counts
+        active_count = 0
+        temporary_disabled_count = 0
+        permanent_disabled_count = 0
+        temp_ids = []
+        perm_ids = []
+        active_ids = []
+
+        cursor = db.users.find({}, {"disable_history": 1})
+        now = datetime.utcnow()
+        for u in cursor:
+            uid = str(u.get('_id'))
+            temp_disabled = False
+            perm_disabled = False
+            for rec in u.get('disable_history', []):
+                # permanent disable
+                if rec.get('is_permanent', False):
+                    perm_disabled = True
+                    break
+
+                # active temporary disable record
+                if rec.get('is_active', False) and not rec.get('is_permanent', False):
+                    temp_disabled = True
+                    break
+
+                # end_date in the future => temporary disable
+                end_date = rec.get('end_date')
+                if end_date:
+                    try:
+                        if isinstance(end_date, str):
+                            ed = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                        else:
+                            ed = end_date
+                        if ed > now and not rec.get('is_permanent', False):
+                            temp_disabled = True
+                            break
+                    except Exception:
+                        continue
+
+            if perm_disabled:
+                permanent_disabled_count += 1
+                perm_ids.append(uid)
+            elif temp_disabled:
+                temporary_disabled_count += 1
+                temp_ids.append(uid)
+            else:
+                active_count += 1
+                active_ids.append(uid)
+
+        logging.info(f"[ADMIN] users analytics counts - active: {active_count}, temporary: {temporary_disabled_count}, permanent: {permanent_disabled_count}")
+
+        result = {
+            'registration': series,
+            'active_count': active_count,
+            'temporary_disabled_count': temporary_disabled_count,
+            'permanent_disabled_count': permanent_disabled_count
+        }
+
+        # If debug flag is provided, return lists of ids for inspection
+        debug_flag = request.args.get('debug')
+        if debug_flag in ['1', 'true', 'True']:
+            result['temporary_ids'] = temp_ids
+            result['permanent_ids'] = perm_ids
+            result['active_ids'] = active_ids
+
+        return jsonify(result)
+
+    except Exception as e:
+        logging.error(f"[ADMIN] Error in users analytics: {str(e)}", exc_info=True)
+        return jsonify(error=str(e)), 500
+
+@admin_bp.route("/meals/top-foods", methods=["GET"])
+def get_top_foods():
+    """Return top foods (most common meal names) within a timeframe
+    Query params:
+      - start: ISO datetime string
+      - end: ISO datetime string
+      - limit: max number of foods to return (default 10)
+    """
+    try:
+        db = __import__('config.database', fromlist=['get_db']).database.get_db()
+    except Exception:
+        from config.database import get_db
+        db = get_db()
+
+    try:
+        start_str = request.args.get('start')
+        end_str = request.args.get('end')
+        limit = request.args.get('limit', 10, type=int)
+        
+        now = datetime.utcnow()
+        if start_str and end_str:
+            try:
+                start = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+                end = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+            except Exception:
+                return jsonify(error='Invalid date format for start/end'), 400
+        else:
+            end = now
+            start = now - timedelta(days=30)
+
+        # Aggregate meals by meal_name within timeframe
+        pipeline = [
+            {"$match": {
+                "meal_datetime": {"$gte": start, "$lte": end},
+                "meal_name": {"$exists": True, "$ne": None, "$ne": ""}
+            }},
+            {"$group": {
+                "_id": "$meal_name",
+                "count": {"$sum": 1}
+            }},
+            {"$sort": {"count": -1}},
+            {"$limit": limit}
+        ]
+
+        agg = list(db.user_meals.aggregate(pipeline))
+        
+        top_foods = [
+            {
+                "food": item['_id'],
+                "count": item['count']
+            }
+            for item in agg
+        ]
+
+        return jsonify({
+            'top_foods': top_foods,
+            'timeframe': {
+                'start': start.isoformat(),
+                'end': end.isoformat()
+            }
+        })
+
+    except Exception as e:
+        logging.error(f"[ADMIN] Error in top foods: {str(e)}", exc_info=True)
+        return jsonify(error=str(e)), 500
+
+@admin_bp.route("/meals/averages", methods=["GET"])
+def get_meal_averages():
+    """Return average daily meals and average calories per day
+    Query params:
+      - start: ISO datetime string
+      - end: ISO datetime string
+    Returns overall averages and per-user breakdown
+    """
+    try:
+        db = __import__('config.database', fromlist=['get_db']).database.get_db()
+    except Exception:
+        from config.database import get_db
+        db = get_db()
+
+    try:
+        start_str = request.args.get('start')
+        end_str = request.args.get('end')
+        
+        now = datetime.utcnow()
+        if start_str and end_str:
+            try:
+                start = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+                end = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+            except Exception:
+                return jsonify(error='Invalid date format for start/end'), 400
+        else:
+            end = now
+            start = now - timedelta(days=30)
+
+        # Calculate number of days in timeframe
+        days_count = max(1, (end - start).days + 1)
+
+        # Get all meals in timeframe
+        meals = list(db.user_meals.find({
+            "meal_datetime": {"$gte": start, "$lte": end}
+        }))
+
+        if not meals:
+            return jsonify({
+                'overall': {
+                    'avg_daily_meals': 0,
+                    'avg_daily_calories': 0,
+                    'total_meals': 0,
+                    'total_calories': 0
+                },
+                'per_user': [],
+                'timeframe': {
+                    'start': start.isoformat(),
+                    'end': end.isoformat(),
+                    'days': days_count
+                }
+            })
+
+        # Calculate overall stats
+        total_meals = len(meals)
+        total_calories = sum(
+            float(m.get('nutrients', {}).get('Calories', 0) or 0)
+            for m in meals
+        )
+
+        # Group meals by user
+        user_meals = {}
+        for meal in meals:
+            user_id = str(meal.get('user_id'))
+            if user_id not in user_meals:
+                user_meals[user_id] = {
+                    'meals': [],
+                    'total_calories': 0
+                }
+            user_meals[user_id]['meals'].append(meal)
+            user_meals[user_id]['total_calories'] += float(
+                meal.get('nutrients', {}).get('Calories', 0) or 0
+            )
+
+        # Calculate per-user averages
+        per_user_stats = []
+        for user_id, data in user_meals.items():
+            # Get user info
+            user = db.users.find_one({'_id': ObjectId(user_id)})
+            user_name = 'Unknown'
+            if user:
+                first = user.get('first_name', '')
+                last = user.get('last_name', '')
+                user_name = f"{first} {last}".strip() or user.get('email', 'Unknown')
+
+            meal_count = len(data['meals'])
+            per_user_stats.append({
+                'user_id': user_id,
+                'user_name': user_name,
+                'total_meals': meal_count,
+                'total_calories': round(data['total_calories'], 2),
+                'avg_daily_meals': round(meal_count / days_count, 2),
+                'avg_daily_calories': round(data['total_calories'] / days_count, 2)
+            })
+
+        # Sort by avg_daily_meals descending
+        per_user_stats.sort(key=lambda x: x['avg_daily_meals'], reverse=True)
+
+        return jsonify({
+            'overall': {
+                'avg_daily_meals': round(total_meals / days_count, 2),
+                'avg_daily_calories': round(total_calories / days_count, 2),
+                'total_meals': total_meals,
+                'total_calories': round(total_calories, 2)
+            },
+            'per_user': per_user_stats,
+            'timeframe': {
+                'start': start.isoformat(),
+                'end': end.isoformat(),
+                'days': days_count
+            }
+        })
+
+    except Exception as e:
+        logging.error(f"[ADMIN] Error in meal averages: {str(e)}", exc_info=True)
         return jsonify(error=str(e)), 500
 
 @admin_bp.route("/users/create", methods=["POST"])
@@ -94,38 +405,54 @@ def create_user():
         return jsonify(error='Password must be at least 6 characters'), 400
     
     try:
-        # Create user in Firebase
-        firebase_user = auth.create_user(
-            email=email,
-            password=password,
-            display_name=f"{first_name} {last_name}"
-        )
-        
-        # Set custom claims for role
-        auth.set_custom_user_claims(firebase_user.uid, {'role': role})
-        
-        # Create user record in MongoDB
+        firebase_created = False
+        uid = None
+
+        # Try to create user in Firebase; if it fails (credentials or other issues)
+        # fall back to creating a local MongoDB-only user with a generated UID.
+        try:
+            firebase_user = auth.create_user(
+                email=email,
+                password=password,
+                display_name=f"{first_name} {last_name}"
+            )
+            # Set custom claims for role (only if firebase succeeded)
+            auth.set_custom_user_claims(firebase_user.uid, {'role': role})
+            uid = firebase_user.uid
+            firebase_created = True
+        except auth.EmailAlreadyExistsError:
+            return jsonify(error='Email already registered in Firebase'), 400
+        except Exception as fe:
+            # Log and continue — we'll create a local user record instead
+            logging.warning(f"Firebase user creation failed, falling back to local user: {fe}")
+            uid = str(ObjectId())
+            firebase_created = False
+
+        # Create user record in MongoDB (use firebase uid if available, otherwise generated uid)
         user = User(
-            uid=firebase_user.uid,
+            uid=uid,
             first_name=first_name,
             last_name=last_name,
             email=email,
             role=role
         )
         user.save()
-        
-        logging.info(f"New {role} created: {email}")
-        
+
+        logging.info(f"New {role} created: {email} (firebase_created={firebase_created})")
+
+        message = f'{role.capitalize()} created successfully'
+        if not firebase_created:
+            message += ' (firebase unavailable; created local user only)'
+
         return jsonify(
             success=True,
-            message=f'{role.capitalize()} created successfully',
-            user=user.to_safe_dict()
+            message=message,
+            user=user.to_safe_dict(),
+            firebase_created=firebase_created
         ), 201
-        
-    except auth.EmailAlreadyExistsError:
-        return jsonify(error='Email already registered in Firebase'), 400
+
     except Exception as e:
-        logging.error(f"Error creating user: {str(e)}")
+        logging.error(f"Error creating user: {str(e)}", exc_info=True)
         return jsonify(error=f'Failed to create user: {str(e)}'), 500
 
 @admin_bp.route("/users/<user_id>/meals", methods=["GET"])
@@ -163,6 +490,110 @@ def get_user_meals(uid):
         return jsonify(meals=result['meals'], count=result.get('count', 0))
     else:
         return jsonify(error=result.get('error', 'Unknown error')), 400
+
+@admin_bp.route("/users/<uid>/sleep", methods=["GET"])
+def get_user_sleep_data(uid):
+    """Get sleep data for a specific user
+    Query params:
+      - start: ISO datetime string
+      - end: ISO datetime string
+      - days: number of days (default 30)
+    Returns sleep records and average sleep hours
+    """
+    try:
+        db = __import__('config.database', fromlist=['get_db']).database.get_db()
+    except Exception:
+        from config.database import get_db
+        db = get_db()
+
+    try:
+        # Try to find user by UID first, then by MongoDB ID
+        user = User.find_by_uid(uid)
+        if not user:
+            user = User.find_by_id(uid)
+        if not user:
+            return jsonify(error='User not found'), 404
+
+        # Get timeframe parameters
+        start_str = request.args.get('start')
+        end_str = request.args.get('end')
+        days_param = request.args.get('days', 30, type=int)
+        
+        now = datetime.utcnow()
+        if start_str and end_str:
+            try:
+                start = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+                end = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+            except Exception:
+                return jsonify(error='Invalid date format for start/end'), 400
+        else:
+            end = now
+            start = now - timedelta(days=days_param)
+
+        # Convert datetime to date strings for comparison (YYYY-MM-DD format)
+        start_date_str = start.strftime('%Y-%m-%d')
+        end_date_str = end.strftime('%Y-%m-%d')
+
+        # Get sleep daily records - filter by date field, not created_at
+        sleep_records = list(db.sleep_daily_records.find({
+            'user_id': str(user._id),
+            'date': {'$gte': start_date_str, '$lte': end_date_str}
+        }).sort('date', -1))
+
+        # Convert ObjectId to string and format dates
+        formatted_records = []
+        total_hours = 0
+        count = 0
+
+        for record in sleep_records:
+            record['_id'] = str(record['_id'])
+            formatted_records.append({
+                'id': str(record.get('_id')),
+                'date': record.get('date'),
+                'bedtime': record.get('bedtime'),
+                'wake_time': record.get('wake_time'),
+                'sleep_duration_hours': record.get('sleep_duration_hours'),
+                'source': record.get('source'),
+                'sleep_quality': record.get('sleep_quality'),
+                'notes': record.get('notes'),
+                'created_at': record.get('created_at').isoformat() if record.get('created_at') else None
+            })
+            
+            if record.get('sleep_duration_hours'):
+                total_hours += float(record.get('sleep_duration_hours'))
+                count += 1
+
+        # Calculate average
+        avg_sleep_hours = round(total_hours / count, 2) if count > 0 else 0
+
+        # Get baseline if exists
+        baseline = db.sleep_baselines.find_one({'user_id': str(user._id)})
+        baseline_data = None
+        if baseline:
+            baseline_data = {
+                'baseline_avg_sleep_hours': baseline.get('baseline_avg_sleep_hours'),
+                'usual_bedtime': baseline.get('usual_bedtime'),
+                'usual_wake_time': baseline.get('usual_wake_time'),
+                'baseline_nights_6h_plus_per_week': baseline.get('baseline_nights_6h_plus_per_week'),
+                'baseline_bedtime_consistency': baseline.get('baseline_bedtime_consistency')
+            }
+
+        return jsonify({
+            'success': True,
+            'sleep_records': formatted_records,
+            'total_records': len(formatted_records),
+            'avg_sleep_hours': avg_sleep_hours,
+            'baseline': baseline_data,
+            'timeframe': {
+                'start': start.isoformat(),
+                'end': end.isoformat(),
+                'days': (end - start).days + 1
+            }
+        })
+
+    except Exception as e:
+        logging.error(f"[ADMIN] Error fetching user sleep data: {str(e)}", exc_info=True)
+        return jsonify(error=str(e)), 500
 
 @admin_bp.route("/users/<uid>/disable", methods=["POST"])
 def disable_user(uid):
