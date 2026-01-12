@@ -15,7 +15,8 @@ import {
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import healthConnectManager, {
+import {
+  initializeHealthConnect,
   getActivityData,
   requestAllHealthPermissions,
   openHealthConnectSettingsPage,
@@ -445,38 +446,47 @@ const StepCounterScreen = ({ navigation }) => {
     try {
       console.log('🔧 Initializing services...');
 
-      // Initialize step detection
-      await stepDetectionService.initialize();
-      stepDetectionService.start();
-
-      const unsubscribe = stepDetectionService.addListener((steps) => {
-        if (isMountedRef.current) {
-          setPhoneSensorSteps(steps);
-        }
-      });
-
-      const currentSteps = stepDetectionService.getStepCount();
-      setPhoneSensorSteps(currentSteps);
-      setLastSyncedSteps(currentSteps);
-
-      console.log('✅ Phone sensor started:', currentSteps, 'steps');
-
-      // Initialize Health Connect
-      await healthConnectManager.initialize();
+      // Initialize Health Connect FIRST
+      await initializeHealthConnect();
       const permissionsGranted = await requestAllHealthPermissions();
 
       setHasPermissions(permissionsGranted);
 
       if (permissionsGranted) {
         console.log('✅ Health Connect permissions granted');
+        console.log('⚠️ Phone sensor will NOT be started (Health Connect is active)');
+        // Don't start phone sensor - Health Connect handles everything
+        // This prevents duplicate counting and saves battery
+        
       } else {
         console.log('⚠️ Health Connect permissions denied');
+        console.log('📱 Starting phone sensor as fallback');
+        
+        // ONLY start phone sensor if Health Connect not available
+        await stepDetectionService.initialize();
+        stepDetectionService.start();
+
+        const unsubscribe = stepDetectionService.addListener((steps) => {
+          if (isMountedRef.current) {
+            setPhoneSensorSteps(steps);
+          }
+        });
+
+        const currentSteps = stepDetectionService.getStepCount();
+        setPhoneSensorSteps(currentSteps);
+        setLastSyncedSteps(currentSteps);
+
+        console.log('✅ Phone sensor started:', currentSteps, 'steps');
+        
+        await updateTodaySteps();
+        await performAutoSync();
+        
+        return unsubscribe;
       }
 
       await updateTodaySteps();
       await performAutoSync();
 
-      return unsubscribe;
     } catch (error) {
       console.error('❌ Initialization error:', error);
       toast.error('Failed to initialize step tracking');

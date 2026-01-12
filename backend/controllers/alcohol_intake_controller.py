@@ -2,376 +2,600 @@
 Alcohol Intake Controller
 
 Handles HTTP requests for alcohol intake tracking and risk assessment.
+Follows the same pattern as sleep tracking with baseline + daily logs.
 """
 
 from flask import jsonify, request
 import logging
-from models.alcohol_intake import AlcoholIntake
+from models.alcohol_intake import (
+    AlcoholBaseline,
+    AlcoholDailyRecord,
+    AlcoholMetrics,
+    AlcoholRiskAssessment,
+    AlcoholRiskCategory,
+    DrinkingPattern
+)
 from models.user import User
 
 logger = logging.getLogger(__name__)
 
 
-def create_or_update_alcohol_intake():
+def get_current_user_id():
+    """Get the current authenticated user's ID from Firebase auth middleware"""
+    return getattr(request, 'current_user_id', None)
+
+
+# ==================== BASELINE ENDPOINTS ====================
+
+def create_baseline():
     """
-    Create or update alcohol intake data for authenticated user.
+    Create alcohol baseline (onboarding questionnaire).
+    This represents typical drinking pattern over past 3 months.
     
-    Request Body (all fields optional):
+    Request Body:
     {
-        "average_drinks_per_day": 2.5,
-        "drinking_days_per_week": 3,
-        "binge_frequency_per_month": 1
+        "baseline_drinking_days_per_week": 2.0,
+        "baseline_drinks_per_occasion": 3.0,
+        "baseline_binge_frequency_per_month": 1,
+        "drinking_pattern": "weekends",
+        "years_at_current_pattern": 2,
+        "drinks_with_meals": true
     }
     
-    Returns:
-        JSON response with alcohol intake data and risk assessment
+    Response:
+    {
+        "success": true,
+        "message": "Alcohol baseline created successfully",
+        "data": { ... baseline data ... }
+    }
     """
     try:
-        # Get user_id from request context (set by middleware)
-        user_id = getattr(request, 'current_user_id', None)
+        user_id = get_current_user_id()
         if not user_id:
-            return jsonify({
-                'success': False,
-                'message': 'User not authenticated'
-            }), 401
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
         
         data = request.get_json()
-        
         if not data:
+            return jsonify({'success': False, 'message': 'No data provided'}), 400
+        
+        # Check if baseline already exists
+        if AlcoholBaseline.exists_for_user(user_id):
             return jsonify({
                 'success': False,
-                'message': 'Request body is required'
-            }), 400
+                'message': 'Baseline already exists. Use PUT /baseline to update.'
+            }), 409
         
-        # Get user gender for gender-specific risk thresholds
-        user_gender = None
-        try:
-            user = User.find_by_id(user_id)
-            if user:
-                user_gender = (user.sex or '').lower()
-        except Exception as e:
-            logger.warning(f"Could not retrieve user gender: {str(e)}")
+        # Validate required fields
+        required_fields = ['baseline_drinking_days_per_week', 'baseline_drinks_per_occasion', 'baseline_binge_frequency_per_month']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'success': False, 'message': f'Missing required field: {field}'}), 400
         
-        # Create or update alcohol intake record
-        alcohol_intake = AlcoholIntake.create_or_update(user_id, data, user_gender)
+        # Create baseline
+        baseline = AlcoholBaseline(
+            user_id=user_id,
+            baseline_drinking_days_per_week=data['baseline_drinking_days_per_week'],
+            baseline_drinks_per_occasion=data['baseline_drinks_per_occasion'],
+            baseline_binge_frequency_per_month=data['baseline_binge_frequency_per_month'],
+            drinking_pattern=data.get('drinking_pattern', DrinkingPattern.NONE),
+            years_at_current_pattern=data.get('years_at_current_pattern', 0),
+            drinks_with_meals=data.get('drinks_with_meals', False)
+        )
+        baseline.save()
         
-        logger.info(f"Alcohol intake updated for user {user_id}: {alcohol_intake['alcohol_risk_category']}")
+        logger.info(f"Alcohol baseline created for user {user_id}")
         
         return jsonify({
             'success': True,
-            'message': 'Alcohol intake data saved successfully',
-            'data': alcohol_intake
-        }), 200
+            'message': 'Alcohol baseline created successfully',
+            'data': baseline.to_dict()
+        }), 201
         
     except ValueError as e:
-        logger.warning(f"Validation error in alcohol intake: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 400
+        logger.warning(f"Validation error in alcohol baseline creation: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 400
         
     except Exception as e:
-        logger.error(f"Error creating/updating alcohol intake: {str(e)}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'message': 'Failed to save alcohol intake data'
-        }), 500
+        logger.error(f"Error creating alcohol baseline: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'message': 'Internal server error'}), 500
 
 
-def get_alcohol_intake():
+def get_baseline():
     """
-    Get alcohol intake data for authenticated user.
+    Get user's alcohol baseline.
     
-    Returns:
-        JSON response with alcohol intake data
+    Response:
+    {
+        "success": true,
+        "data": { ... baseline data ... },
+        "has_baseline": true
+    }
     """
     try:
-        # Get user_id from request context (set by middleware)
-        user_id = getattr(request, 'current_user_id', None)
+        user_id = get_current_user_id()
         if not user_id:
-            return jsonify({
-                'success': False,
-                'message': 'User not authenticated'
-            }), 401
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
         
-        alcohol_intake = AlcoholIntake.get_by_user_id(user_id)
+        baseline = AlcoholBaseline.find_by_user_id(user_id)
         
-        if not alcohol_intake:
+        if not baseline:
             return jsonify({
                 'success': True,
-                'message': 'No alcohol intake data found',
-                'data': None
+                'data': None,
+                'has_baseline': False
             }), 200
         
         return jsonify({
             'success': True,
-            'message': 'Alcohol intake data retrieved successfully',
-            'data': alcohol_intake
+            'data': baseline.to_dict(),
+            'has_baseline': True
         }), 200
         
     except Exception as e:
-        logger.error(f"Error retrieving alcohol intake: {str(e)}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'message': 'Failed to retrieve alcohol intake data'
-        }), 500
+        logger.error(f"Error retrieving alcohol baseline: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'message': 'Internal server error'}), 500
 
 
-def delete_alcohol_intake():
+def update_baseline():
     """
-    Delete alcohol intake data for authenticated user.
+    Update existing alcohol baseline (retake questionnaire).
     
-    Returns:
-        JSON response confirming deletion
+    Request Body: Same as create_baseline
+    
+    Response:
+    {
+        "success": true,
+        "message": "Alcohol baseline updated successfully",
+        "data": { ... baseline data ... }
+    }
     """
     try:
-        # Get user_id from request context (set by middleware)
-        user_id = getattr(request, 'current_user_id', None)
+        user_id = get_current_user_id()
         if not user_id:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': 'No data provided'}), 400
+        
+        baseline = AlcoholBaseline.find_by_user_id(user_id)
+        if not baseline:
             return jsonify({
                 'success': False,
-                'message': 'User not authenticated'
-            }), 401
+                'message': 'No baseline found. Use POST /baseline to create one.'
+            }), 404
         
-        deleted = AlcoholIntake.delete_by_user_id(user_id)
+        # Update fields if provided
+        if 'baseline_drinking_days_per_week' in data:
+            baseline.baseline_drinking_days_per_week = float(data['baseline_drinking_days_per_week'])
+        if 'baseline_drinks_per_occasion' in data:
+            baseline.baseline_drinks_per_occasion = float(data['baseline_drinks_per_occasion'])
+        if 'baseline_binge_frequency_per_month' in data:
+            baseline.baseline_binge_frequency_per_month = int(data['baseline_binge_frequency_per_month'])
+        if 'drinking_pattern' in data:
+            baseline.drinking_pattern = data['drinking_pattern']
+        if 'years_at_current_pattern' in data:
+            baseline.years_at_current_pattern = int(data['years_at_current_pattern'])
+        if 'drinks_with_meals' in data:
+            baseline.drinks_with_meals = bool(data['drinks_with_meals'])
+        
+        baseline.save()
+        
+        logger.info(f"Alcohol baseline updated for user {user_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Alcohol baseline updated successfully',
+            'data': baseline.to_dict()
+        }), 200
+        
+    except ValueError as e:
+        logger.warning(f"Validation error in alcohol baseline update: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 400
+        
+    except Exception as e:
+        logger.error(f"Error updating alcohol baseline: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'message': 'Internal server error'}), 500
+
+
+def check_baseline():
+    """
+    Check if user has completed baseline.
+    
+    Response:
+    {
+        "success": true,
+        "has_baseline": true/false
+    }
+    """
+    try:
+        user_id = get_current_user_id()
+        if not user_id:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        
+        has_baseline = AlcoholBaseline.exists_for_user(user_id)
+        
+        return jsonify({
+            'success': True,
+            'has_baseline': has_baseline
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error checking alcohol baseline: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'message': 'Internal server error'}), 500
+
+
+# ==================== DAILY RECORD ENDPOINTS ====================
+
+def log_daily_alcohol():
+    """
+    Log daily alcohol consumption.
+    
+    Request Body:
+    {
+        "date": "2024-01-15",
+        "drinks_consumed": 2.0,
+        "was_binge_episode": false,
+        "drinking_context": "social",
+        "time_of_day": "evening",
+        "notes": "Dinner with friends"
+    }
+    
+    Response:
+    {
+        "success": true,
+        "message": "Alcohol consumption logged successfully",
+        "data": { ... record data ... }
+    }
+    """
+    try:
+        user_id = get_current_user_id()
+        if not user_id:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': 'No data provided'}), 400
+        
+        # Validate required fields
+        if 'date' not in data or 'drinks_consumed' not in data:
+            return jsonify({'success': False, 'message': 'Missing required fields: date, drinks_consumed'}), 400
+        
+        # Validate drinks_consumed
+        drinks = float(data['drinks_consumed'])
+        if drinks < 0 or drinks > 20:
+            return jsonify({'success': False, 'message': 'drinks_consumed must be between 0 and 20'}), 400
+        
+        # Get user gender for binge determination
+        user_gender = None
+        try:
+            user = User.get_by_id(user_id)
+            user_gender = user.get('gender', '').lower() if user else None
+        except Exception as e:
+            logger.warning(f"Could not get user gender: {str(e)}")
+        
+        # Auto-determine binge episode if not specified
+        was_binge = data.get('was_binge_episode')
+        if was_binge is None:
+            binge_threshold = 4 if user_gender == 'female' else 5
+            was_binge = drinks >= binge_threshold
+        
+        # Create or update daily record
+        record = AlcoholDailyRecord(
+            user_id=user_id,
+            date=data['date'],
+            drinks_consumed=drinks,
+            was_binge_episode=bool(was_binge),
+            drinking_context=data.get('drinking_context', 'other'),
+            time_of_day=data.get('time_of_day', 'evening'),
+            notes=data.get('notes')
+        )
+        record.save()
+        
+        # Recompute metrics
+        metrics = AlcoholMetrics.compute_for_user(user_id, user_gender)
+        metrics.save()
+        
+        logger.info(f"Alcohol consumption logged for user {user_id} on {data['date']}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Alcohol consumption logged successfully',
+            'data': record.to_dict()
+        }), 201
+        
+    except ValueError as e:
+        logger.warning(f"Validation error in alcohol log: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 400
+        
+    except Exception as e:
+        logger.error(f"Error logging alcohol consumption: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'message': 'Internal server error'}), 500
+
+
+def get_daily_records():
+    """
+    Get daily alcohol records.
+    
+    Query Parameters:
+    - start_date: Start date (YYYY-MM-DD)
+    - end_date: End date (YYYY-MM-DD)
+    - days: Number of days to fetch (default: 30)
+    
+    Response:
+    {
+        "success": true,
+        "data": [ ... records ... ],
+        "count": 15
+    }
+    """
+    try:
+        user_id = get_current_user_id()
+        if not user_id:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        days = int(request.args.get('days', 30))
+        
+        records = AlcoholDailyRecord.find_by_user_date_range(
+            user_id,
+            start_date=start_date,
+            end_date=end_date,
+            days=days
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': [r.to_dict() for r in records],
+            'count': len(records)
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error retrieving daily alcohol records: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'message': 'Internal server error'}), 500
+
+
+def delete_daily_record(date):
+    """
+    Delete daily alcohol record for a specific date.
+    
+    Path Parameters:
+    - date: Date to delete (YYYY-MM-DD)
+    
+    Response:
+    {
+        "success": true,
+        "message": "Record deleted successfully"
+    }
+    """
+    try:
+        user_id = get_current_user_id()
+        if not user_id:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        
+        deleted = AlcoholDailyRecord.delete_by_user_and_date(user_id, date)
         
         if not deleted:
             return jsonify({
                 'success': False,
-                'message': 'No alcohol intake data found to delete'
+                'message': f'No record found for date {date}'
             }), 404
         
-        logger.info(f"Alcohol intake deleted for user {user_id}")
+        # Recompute metrics
+        user_gender = None
+        try:
+            user = User.get_by_id(user_id)
+            user_gender = user.get('gender', '').lower() if user else None
+        except:
+            pass
+        
+        metrics = AlcoholMetrics.compute_for_user(user_id, user_gender)
+        metrics.save()
+        
+        logger.info(f"Alcohol record deleted for user {user_id} on {date}")
         
         return jsonify({
             'success': True,
-            'message': 'Alcohol intake data deleted successfully'
+            'message': 'Record deleted successfully'
         }), 200
         
     except Exception as e:
-        logger.error(f"Error deleting alcohol intake: {str(e)}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'message': 'Failed to delete alcohol intake data'
-        }), 500
+        logger.error(f"Error deleting alcohol record: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'message': 'Internal server error'}), 500
 
 
-def get_alcohol_intake_history():
+# ==================== METRICS ENDPOINTS ====================
+
+def get_metrics():
     """
-    Get current alcohol intake assessment for authenticated user.
-    Note: Only one assessment is stored per user.
+    Get computed alcohol metrics.
     
-    Returns:
-        JSON response with current assessment data
+    Query Parameters:
+    - refresh: Force refresh metrics (true/false)
+    
+    Response:
+    {
+        "success": true,
+        "data": { ... metrics ... }
+    }
     """
     try:
-        # Get user_id from request context (set by middleware)
-        user_id = getattr(request, 'current_user_id', None)
+        user_id = get_current_user_id()
         if not user_id:
-            return jsonify({
-                'success': False,
-                'message': 'User not authenticated'
-            }), 401
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
         
-        alcohol_intake = AlcoholIntake.get_by_user_id(user_id)
+        refresh = request.args.get('refresh', 'false').lower() == 'true'
         
-        if not alcohol_intake:
-            return jsonify({
-                'success': True,
-                'message': 'No alcohol intake assessment found',
-                'data': None
-            }), 200
+        # Get user gender
+        user_gender = None
+        try:
+            user = User.get_by_id(user_id)
+            user_gender = user.get('gender', '').lower() if user else None
+        except:
+            pass
+        
+        if refresh:
+            metrics = AlcoholMetrics.compute_for_user(user_id, user_gender)
+            metrics.save()
+        else:
+            metrics = AlcoholMetrics.find_by_user_id(user_id)
+            if not metrics:
+                metrics = AlcoholMetrics.compute_for_user(user_id, user_gender)
+                metrics.save()
         
         return jsonify({
             'success': True,
-            'message': 'Alcohol intake assessment retrieved successfully',
-            'data': alcohol_intake
+            'data': metrics.to_dict() if metrics else None
         }), 200
         
     except Exception as e:
-        logger.error(f"Error retrieving alcohol intake assessment: {str(e)}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'message': 'Failed to retrieve alcohol intake assessment'
-        }), 500
+        logger.error(f"Error retrieving alcohol metrics: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'message': 'Internal server error'}), 500
 
+
+def refresh_metrics():
+    """
+    Force refresh alcohol metrics.
+    
+    Response:
+    {
+        "success": true,
+        "message": "Metrics refreshed successfully",
+        "data": { ... metrics ... }
+    }
+    """
+    try:
+        user_id = get_current_user_id()
+        if not user_id:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        
+        # Get user gender
+        user_gender = None
+        try:
+            user = User.get_by_id(user_id)
+            user_gender = user.get('gender', '').lower() if user else None
+        except:
+            pass
+        
+        metrics = AlcoholMetrics.compute_for_user(user_id, user_gender)
+        metrics.save()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Metrics refreshed successfully',
+            'data': metrics.to_dict()
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error refreshing alcohol metrics: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'message': 'Internal server error'}), 500
+
+
+# ==================== RISK ASSESSMENT ENDPOINTS ====================
 
 def get_risk_assessment():
     """
-    Get detailed risk assessment based on alcohol intake.
+    Get comprehensive risk assessment based on baseline and daily data.
     
-    Returns:
-        JSON response with comprehensive risk assessment
+    Response:
+    {
+        "success": true,
+        "data": { ... risk assessment ... }
+    }
     """
     try:
-        # Get user_id from request context (set by middleware)
-        user_id = getattr(request, 'current_user_id', None)
+        user_id = get_current_user_id()
         if not user_id:
-            return jsonify({
-                'success': False,
-                'message': 'User not authenticated'
-            }), 401
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
         
-        alcohol_intake = AlcoholIntake.get_by_user_id(user_id)
+        # Get user gender
+        user_gender = None
+        try:
+            user = User.get_by_id(user_id)
+            user_gender = user.get('gender', '').lower() if user else None
+        except:
+            pass
         
-        if not alcohol_intake:
-            return jsonify({
-                'success': True,
-                'message': 'No alcohol intake data for risk assessment',
-                'data': {
-                    'has_data': False,
-                    'risk_level': 'unknown',
-                    'recommendations': ['Please provide your alcohol consumption data for a complete risk assessment']
-                }
-            }), 200
-        
-        # Generate recommendations based on risk category
-        recommendations = _generate_recommendations(alcohol_intake)
-        
-        risk_assessment = {
-            'has_data': True,
-            'current_consumption': {
-                'drinks_per_week': alcohol_intake['drinks_per_week'],
-                'average_drinks_per_day': alcohol_intake['average_drinks_per_day'],
-                'drinking_days_per_week': alcohol_intake['drinking_days_per_week'],
-                'binge_frequency_per_month': alcohol_intake['binge_frequency_per_month']
-            },
-            'risk_level': alcohol_intake['alcohol_risk_category'],
-            'diabetes_risk_score': alcohol_intake['diabetes_risk_score'],
-            'diabetes_risk_multiplier': alcohol_intake['diabetes_risk_multiplier'],
-            'risk_explanation': alcohol_intake['risk_explanation'],
-            'recommendations': recommendations,
-            'created_at': alcohol_intake['created_at'],
-            'last_updated': alcohol_intake['last_updated']
-        }
+        assessment = AlcoholRiskAssessment.generate_assessment(user_id, user_gender)
         
         return jsonify({
             'success': True,
             'message': 'Risk assessment generated successfully',
-            'data': risk_assessment
+            'data': assessment
         }), 200
         
     except Exception as e:
         logger.error(f"Error generating risk assessment: {str(e)}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'message': 'Failed to generate risk assessment'
-        }), 500
+        return jsonify({'success': False, 'message': 'Internal server error'}), 500
 
 
-def get_statistics():
+# ==================== SUMMARY ENDPOINT ====================
+
+def get_alcohol_summary():
     """
-    Get aggregate statistics on alcohol intake patterns (Admin only).
+    Get comprehensive dashboard summary (baseline + metrics + risk).
     
-    Query Parameters:
-        start_date (optional): ISO format date
-        end_date (optional): ISO format date
-    
-    Returns:
-        JSON response with statistics
+    Response:
+    {
+        "success": true,
+        "data": {
+            "has_baseline": true,
+            "baseline": { ... },
+            "metrics": { ... },
+            "risk_assessment": { ... },
+            "recent_records": [ ... ]
+        }
+    }
     """
     try:
-        # Note: Add admin authentication check in route decorator
+        user_id = get_current_user_id()
+        if not user_id:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
         
-        from datetime import datetime
+        # Get user gender
+        user_gender = None
+        try:
+            user = User.get_by_id(user_id)
+            user_gender = user.get('gender', '').lower() if user else None
+        except:
+            pass
         
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
+        # Get baseline
+        baseline = AlcoholBaseline.find_by_user_id(user_id)
         
-        # Parse dates if provided
-        start_dt = datetime.fromisoformat(start_date) if start_date else None
-        end_dt = datetime.fromisoformat(end_date) if end_date else None
+        # Get or compute metrics
+        metrics = AlcoholMetrics.find_by_user_id(user_id)
+        if not metrics:
+            metrics = AlcoholMetrics.compute_for_user(user_id, user_gender)
+            metrics.save()
         
-        stats = AlcoholIntake.get_statistics(start_dt, end_dt)
+        # Get risk assessment
+        risk_assessment = AlcoholRiskAssessment.generate_assessment(user_id, user_gender)
+        
+        # Get recent records
+        recent_records = AlcoholDailyRecord.find_by_user_date_range(user_id, days=30)
         
         return jsonify({
             'success': True,
-            'message': 'Statistics retrieved successfully',
-            'data': stats
+            'data': {
+                'has_baseline': baseline is not None,
+                'baseline': baseline.to_dict() if baseline else None,
+                'metrics': metrics.to_dict() if metrics else None,
+                'risk_assessment': risk_assessment,
+                'recent_records': [r.to_dict() for r in recent_records],
+                'record_count': len(recent_records)
+            }
         }), 200
         
-    except ValueError as e:
-        return jsonify({
-            'success': False,
-            'message': f'Invalid date format: {str(e)}'
-        }), 400
-        
     except Exception as e:
-        logger.error(f"Error retrieving statistics: {str(e)}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'message': 'Failed to retrieve statistics'
-        }), 500
+        logger.error(f"Error generating alcohol summary: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'message': 'Internal server error'}), 500
 
 
-def _generate_recommendations(alcohol_intake):
-    """
-    Generate personalized recommendations based on alcohol intake.
-    
-    Args:
-        alcohol_intake (dict): Alcohol intake data
-    
-    Returns:
-        list: List of recommendation strings
-    """
-    recommendations = []
-    risk_category = alcohol_intake['alcohol_risk_category']
-    drinks_per_week = alcohol_intake['drinks_per_week']
-    binge_frequency = alcohol_intake['binge_frequency_per_month']
-    
-    if risk_category == 'none':
-        recommendations.append('Excellent! Avoiding alcohol reduces your diabetes risk.')
-        recommendations.append('Continue your alcohol-free lifestyle for optimal health.')
-    
-    elif risk_category == 'light':
-        recommendations.append('Your alcohol consumption is within low-risk limits.')
-        recommendations.append('Maintain current intake or consider reducing further.')
-        recommendations.append('Stay within 1 drink per day for optimal health benefits.')
-    
-    elif risk_category == 'moderate':
-        recommendations.append('Your alcohol intake is at moderate risk level.')
-        recommendations.append('Consider reducing to ≤7 drinks per week to lower diabetes risk.')
-        recommendations.append('Avoid drinking on consecutive days to give your body recovery time.')
-        recommendations.append('Monitor your blood glucose levels regularly.')
-    
-    elif risk_category == 'heavy':
-        recommendations.append('⚠️ Your alcohol intake is at high risk level for diabetes.')
-        recommendations.append('Strongly consider reducing consumption to <14 drinks per week.')
-        recommendations.append('Consult with a healthcare provider about safe reduction strategies.')
-        recommendations.append('Heavy drinking increases diabetes risk by 43%.')
-        recommendations.append('Consider joining a support group or counseling program.')
-    
-    elif risk_category == 'binge':
-        recommendations.append('⚠️ Binge drinking significantly increases diabetes risk.')
-        recommendations.append('Avoid consuming 4+ drinks in one sitting.')
-        recommendations.append('Seek professional support to address binge drinking patterns.')
-        recommendations.append('Binge drinking can cause acute blood sugar spikes.')
-        recommendations.append('Consider evidence-based interventions like SBIRT (Screening, Brief Intervention, and Referral to Treatment).')
-    
-    # Additional recommendations for high binge frequency
-    if binge_frequency >= 4:
-        recommendations.append('Your binge drinking frequency is very concerning - please seek medical help.')
-    
-    # General recommendations
-    recommendations.append('Always eat food when drinking to slow alcohol absorption.')
-    recommendations.append('Stay hydrated by drinking water between alcoholic beverages.')
-    
-    return recommendations
+# ==================== INITIALIZATION ====================
 
-
-def _calculate_trend(alcohol_intake):
-    """
-    Calculate trend in alcohol consumption.
-    Note: Trend tracking is not available as only one assessment is stored per user.
-    
-    Args:
-        alcohol_intake (dict): Alcohol intake data
-    
-    Returns:
-        dict: Trend information
-    """
-    # Since we only keep one assessment, no trend can be calculated
-    return {
-        'status': 'single_assessment',
-        'message': 'Trend tracking requires multiple assessments over time'
-    }
+def init_alcohol_tracking_indexes():
+    """Initialize database indexes for alcohol tracking"""
+    from models.alcohol_intake import ensure_all_alcohol_indexes
+    ensure_all_alcohol_indexes()

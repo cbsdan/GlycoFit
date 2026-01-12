@@ -313,22 +313,12 @@ const AssessmentResultsScreen = ({ navigation, route }) => {
           {risk_level !== 'low' && (
             <TouchableOpacity 
               style={styles.actionButton}
-              onPress={() => navigation.navigate('FindPhysician')}
+              onPress={() => navigation.navigate('Main', { screen: 'FindPhysician' })}
             >
               <Icon name="doctor" size={20} color="#FFFFFF" />
               <Text style={styles.actionButtonText}>Find a Physician</Text>
             </TouchableOpacity>
           )}
-
-          <TouchableOpacity 
-            style={[styles.actionButton, styles.actionButtonSecondary]}
-            onPress={() => navigation.goBack()}
-          >
-            <Icon name="pencil" size={20} color={colors.primary} />
-            <Text style={[styles.actionButtonText, styles.actionButtonTextSecondary]}>
-              Review Answers
-            </Text>
-          </TouchableOpacity>
 
           <TouchableOpacity 
             style={[styles.actionButton, styles.actionButtonSecondary]}

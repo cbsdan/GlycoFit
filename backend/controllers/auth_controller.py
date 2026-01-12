@@ -9,6 +9,8 @@ import logging
 from datetime import datetime
 import os
 import tempfile
+import random
+import string
 
 class AuthController:
     
@@ -104,14 +106,24 @@ class AuthController:
             last_name = data.get('lastName')
             email = data.get('email')
             
-            # Validate required fields
-            if not all([uid, first_name, last_name, email]):
+            # Validate required fields (only uid and email are required)
+            if not all([uid, email]):
                 logging.warning("Registration failed: Missing required fields")
                 return jsonify({
                     'success': False,
                     'message': 'Validation errors',
-                    'errors': ['UID, firstName, lastName, and email are required']
+                    'errors': ['UID and email are required']
                 }), 400
+            
+            # Generate default values for firstName and lastName if not provided
+            if not first_name or not first_name.strip():
+                first_name = "User"
+                logging.info("Using default firstName: User")
+            
+            if not last_name or not last_name.strip():
+                # Generate random 6 alphanumeric characters
+                last_name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+                logging.info(f"Generated random lastName: {last_name}")
             
             email = email.lower().strip()
             
@@ -223,10 +235,6 @@ class AuthController:
             
             # Validate user data (you can add custom validation here)
             validation_errors = []
-            if len(first_name.strip()) < 1:
-                validation_errors.append('First name is required')
-            if len(last_name.strip()) < 1:
-                validation_errors.append('Last name is required')
             if '@' not in email:
                 validation_errors.append('Invalid email format')
             

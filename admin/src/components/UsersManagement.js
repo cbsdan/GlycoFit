@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Table,
@@ -19,6 +19,7 @@ import {
   Checkbox,
   Typography,
 } from '@mui/material';
+import AdminCreatePhysician from './AdminCreatePhysician';
 import userService from '../services/userService';
 import MealModal from './MealModal';
 
@@ -30,6 +31,23 @@ function UsersManagement() {
   const [dialogType, setDialogType] = useState('disable');
   const [formData, setFormData] = useState({ reason: '', isPermanent: false, endDate: '' });
   const [mealModalOpen, setMealModalOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [query, setQuery] = useState('');
+
+  const filteredUsers = useMemo(() => {
+    if (!query) return users;
+    const q = query.toLowerCase().trim();
+    const tokens = q.split(/\s+/).filter(Boolean);
+    return users.filter(u => {
+      const first = (u.first_name || '').toLowerCase();
+      const last = (u.last_name || '').toLowerCase();
+      const full = `${first} ${last}`.trim();
+      const email = (u.email || '').toLowerCase();
+      const role = (u.role || '').toLowerCase();
+      const id = (u._id || u.id || '').toString().toLowerCase();
+      return tokens.every(t => full.includes(t) || first.includes(t) || last.includes(t) || email.includes(t) || role.includes(t) || id.includes(t));
+    });
+  }, [users, query]);
 
   useEffect(() => {
     fetchUsers();
@@ -73,13 +91,13 @@ function UsersManagement() {
     try {
       if (dialogType === 'disable') {
         await userService.disableUser(
-          selectedUser._id || selectedUser.id,
+          selectedUser.uid,
           formData.reason,
           formData.endDate || null,
           formData.isPermanent
         );
       } else if (dialogType === 'enable') {
-        await userService.enableUser(selectedUser._id || selectedUser.id, formData.reason);
+        await userService.enableUser(selectedUser.uid, formData.reason);
       }
       fetchUsers();
       handleCloseDialog();
@@ -94,9 +112,23 @@ function UsersManagement() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom sx={{ mb: 3 }}>
-        Users Management
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, gap: 2 }}>
+        <Typography variant="h4" gutterBottom>
+          Users Management
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <TextField
+            size="small"
+            placeholder="Search name or email..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            sx={{ width: { xs: 160, sm: 280 } }}
+          />
+          <Button variant="contained" color="primary" onClick={() => setCreateDialogOpen(true)}>
+            Create Physician
+          </Button>
+        </Box>
+      </Box>
       <TableContainer component={Paper}>
         <Table>
           <TableHead sx={{ bgcolor: '#f5f5f5' }}>
@@ -109,7 +141,7 @@ function UsersManagement() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {users.map((user) => (
+            {filteredUsers.map((user) => (
               <TableRow key={user._id || user.id}>
                 <TableCell>{`${user.first_name} ${user.last_name}`}</TableCell>
                 <TableCell>{user.email}</TableCell>
@@ -211,6 +243,17 @@ function UsersManagement() {
           userName={`${selectedUser.first_name} ${selectedUser.last_name}`}
         />
       )}
+
+      {/* Create Physician Dialog (moved from sidebar) */}
+      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Create Physician</DialogTitle>
+        <DialogContent>
+          <AdminCreatePhysician onSuccess={() => { setCreateDialogOpen(false); fetchUsers(); }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

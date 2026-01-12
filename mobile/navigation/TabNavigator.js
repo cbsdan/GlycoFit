@@ -11,24 +11,46 @@ import MeasureScreen from '../screens/MeasureScreen';
 import PredictionScreen from '../screens/PredictionScreen';
 import FindPhysicianScreen from '../screens/FindPhysicianScreen';
 import SettingsScreen from '../screens/SettingsScreen';
-import HealthDataScreen from '../screens/HealthDataScreen';
-import SyncedHealthDataScreen from '../screens/SyncedHealthDataScreen';
 import StepCounterScreen from '../screens/StepCounterScreen';
 import FoodScannerScreen from '../screens/FoodScannerScreen';
+import FoodTrackerScreen from '../screens/FoodTrackerScreen';
+import FoodBaselineScreen from '../screens/FoodBaselineScreen';
+import FoodIntakeScreen from '../screens/FoodIntakeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SmokingIntakeScreen from '../screens/SmokingIntakeScreen';
+import SmokingBaselineScreen from '../screens/SmokingBaselineScreen';
+import SmokingDailyLogScreen from '../screens/SmokingDailyLogScreen';
+import AlcoholIntakeScreen from '../screens/AlcoholIntakeScreen';
+import AlcoholTrackingScreen from '../screens/AlcoholTrackingScreen';
+import AlcoholBaselineScreen from '../screens/AlcoholBaselineScreen';
+import AlcoholDailyLogScreen from '../screens/AlcoholDailyLogScreen';
+import SleepTrackingScreen from '../screens/SleepTrackingScreen';
+import SleepBaselineScreen from '../screens/SleepBaselineScreen';
+import SleepDailyLogScreen from '../screens/SleepDailyLogScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-// Measure Stack Navigator - handles navigation within Measure tab
+// Tracker Stack Navigator - handles navigation within Tracker tab
 const MeasureStack = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MeasureMain" component={MeasureScreen} />
       <Stack.Screen name="StepCounter" component={StepCounterScreen} />
+      <Stack.Screen name="FoodTracker" component={FoodTrackerScreen} />
       <Stack.Screen name="FoodScanner" component={FoodScannerScreen} />
+      <Stack.Screen name="FoodBaseline" component={FoodBaselineScreen} />
+      <Stack.Screen name="FoodIntake" component={FoodIntakeScreen} />
       <Stack.Screen name="SmokingIntake" component={SmokingIntakeScreen} />
+      <Stack.Screen name="SmokingBaseline" component={SmokingBaselineScreen} />
+      <Stack.Screen name="SmokingDailyLog" component={SmokingDailyLogScreen} />
+      <Stack.Screen name="AlcoholIntake" component={AlcoholIntakeScreen} />
+      <Stack.Screen name="AlcoholTracking" component={AlcoholTrackingScreen} />
+      <Stack.Screen name="AlcoholBaseline" component={AlcoholBaselineScreen} />
+      <Stack.Screen name="AlcoholDailyLog" component={AlcoholDailyLogScreen} />
+      <Stack.Screen name="SleepTracking" component={SleepTrackingScreen} />
+      <Stack.Screen name="SleepBaseline" component={SleepBaselineScreen} />
+      <Stack.Screen name="SleepDailyLog" component={SleepDailyLogScreen} />
     </Stack.Navigator>
   );
 };
@@ -39,8 +61,6 @@ const SettingsStack = () => {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="SettingsMain" component={SettingsScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
-      <Stack.Screen name="HealthData" component={HealthDataScreen} />
-      <Stack.Screen name="SyncedHealthData" component={SyncedHealthDataScreen} />
     </Stack.Navigator>
   );
 };
@@ -57,11 +77,11 @@ const TabNavigator = () => {
 
           if (route.name === 'Home') {
             iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Measure') {
+          } else if (route.name === 'Tracker') {
             iconName = focused ? 'heart-pulse' : 'heart-pulse';
           } else if (route.name === 'FindPhysician') {
             iconName = focused ? 'doctor' : 'doctor';
-          } else if (route.name === 'Prediction') {
+          } else if (route.name === 'Assessment') {
             iconName = focused ? 'chart-line' : 'chart-line';
           } else if (route.name === 'Settings') {
             iconName = focused ? 'cog' : 'cog-outline';
@@ -80,7 +100,7 @@ const TabNavigator = () => {
           height: 60 + insets.bottom,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 9,
           fontWeight: '600',
           marginBottom: 5,
         },
@@ -95,10 +115,10 @@ const TabNavigator = () => {
         }}
       />
       <Tab.Screen 
-        name="Measure" 
+        name="Tracker" 
         component={MeasureStack}
         options={{
-          title: 'Measure',
+          title: 'Tracker',
         }}
       />
       <Tab.Screen 
@@ -109,10 +129,10 @@ const TabNavigator = () => {
         }}
       />
       <Tab.Screen 
-        name="Prediction" 
+        name="Assessment" 
         component={PredictionScreen}
         options={{
-          title: 'Prediction',
+          title: 'Assessment',
         }}
       />
       <Tab.Screen 

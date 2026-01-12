@@ -48,8 +48,13 @@ def save_daily_activity():
         activity_data = {
             'steps': data.get('steps', 0),
             'distance': data.get('distance', 0),
-            'active_calories': data.get('active_calories', 0),
-            'total_calories': data.get('total_calories', 0)
+            'active_calories': data.get('activeCalories') or data.get('active_calories', 0),  # Support both camelCase and snake_case
+            'total_calories': data.get('totalCalories') or data.get('total_calories', 0),      # Support both camelCase and snake_case
+            'source': data.get('source'),  # health_connect or phone_sensor
+            'phone_sensor_steps': data.get('phoneSensorSteps', 0),
+            'health_connect_steps': data.get('healthConnectSteps', 0),
+            'streak': data.get('streak', 0),
+            'achievements': data.get('achievements', [])
         }
         print(f"📊 Activity data to save: {activity_data}")
         

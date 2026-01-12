@@ -58,7 +58,7 @@ class GeminiService:
             prompt = f"""
 You are a nutrition estimation model that identifies food from images and predicts nutritional values using realistic data referenced from common nutrition databases such as USDA, FDA, MyFitnessPal, or standard food labels.{user_note_context}
 
-STRONG RULES TO FOLLOW:
+CRITICAL REQUIREMENTS - YOU MUST FOLLOW ALL OF THESE:
 1. Identify the food in the image with the most likely meal or product name.
 2. When predicting nutrition, base your estimates on typical values from known databases and food labels for similar foods. Avoid unrealistic guesses.
 3. Always specify the serving size used.
@@ -74,7 +74,17 @@ STRONG RULES TO FOLLOW:
 }}
 10. Return your response **ONLY** as a valid JSON object with no extra text.
 
-For valid food images, use exactly this JSON format:
+**MANDATORY REQUIREMENT #11 - INGREDIENT NUTRIENTS:**
+YOU MUST ALWAYS detect all visible ingredients and return the nutritional breakdown for EACH ingredient in the "ingredient_nutrients" array.
+- For example, if the image shows "Sirloin Steak with White Rice", you MUST provide TWO entries in ingredient_nutrients:
+  1. One for "Sirloin Steak" with its individual nutrients
+  2. One for "White Rice" with its individual nutrients
+- The sum of ALL ingredient-level nutrients MUST exactly equal the overall "nutrients" totals.
+- NEVER return an empty ingredient_nutrients array if you can detect food components.
+- If it's a single-ingredient food, still provide ONE entry in ingredient_nutrients for that ingredient.
+- Do not reduce, normalize, or omit any values. Totals must be mathematically consistent.
+
+For valid food images, use exactly this JSON format (INGREDIENT_NUTRIENTS IS REQUIRED):
 {{
     "success": true,
     "meal_name": "Name of the food/meal",
@@ -97,6 +107,40 @@ For valid food images, use exactly this JSON format:
             "box_2d": [x_min, y_min, x_max, y_max],
             "label": "Ingredient or component name"
         }}
+    ],
+    "ingredient_nutrients": [
+        {{
+            "ingredient": "First ingredient name (e.g., 'Sirloin Steak')",
+            "serving_size": "Ingredient-specific serving size (e.g., '6 oz')",
+            "nutrients": {{
+                "Calories": <number>,
+                "Carbs (g)": <number>,
+                "Added Sugars (g)": <number>,
+                "Fiber (g)": <number>,
+                "Protein (g)": <number>,
+                "Fat (g)": <number>,
+                "Saturated Fat (g)": <number>,
+                "Unsaturated Fat (g)": <number>,
+                "Sodium (mg)": <number>,
+                "Glycemic Load": <number>
+            }}
+        }},
+        {{
+            "ingredient": "Second ingredient name (e.g., 'White Rice')",
+            "serving_size": "Ingredient-specific serving size (e.g., '1 cup')",
+            "nutrients": {{
+                "Calories": <number>,
+                "Carbs (g)": <number>,
+                "Added Sugars (g)": <number>,
+                "Fiber (g)": <number>,
+                "Protein (g)": <number>,
+                "Fat (g)": <number>,
+                "Saturated Fat (g)": <number>,
+                "Unsaturated Fat (g)": <number>,
+                "Sodium (mg)": <number>,
+                "Glycemic Load": <number>
+            }}
+        }}
     ]
 }}
 
@@ -116,11 +160,15 @@ Bounding box guidelines:
 - Estimate reasonable coordinates based on typical image dimensions (e.g., 1000x1000)
 
 Recipe/Ingredient detection guidelines:
-- List all identifiable ingredients or components visible in the food
-- For complex meals, break down into individual components (e.g., "Braised Pork Cubes", "Steamed White Rice", "Scallion Garnish")
+- List all identifiable ingredients or components visible in the food in BOTH "recipes" and "ingredient_nutrients" arrays
+- For complex meals, break down into individual components (e.g., "Sirloin Steak", "White Rice", "Scallion Garnish")
 - For simple foods, list the main item and any visible toppings or accompaniments
-- Provide accurate bounding boxes for each detected component
-- If no distinct components can be identified, return an empty recipes array
+- Provide accurate bounding boxes for each detected component in the "recipes" array
+- CRITICAL: For EACH item in the "recipes" array, you MUST provide a corresponding entry in "ingredient_nutrients" with full nutritional breakdown
+- Example: If recipes has 2 items like Sirloin Steak and White Rice, then ingredient_nutrients MUST have 2 entries for those same items
+- If no distinct components can be identified, treat the entire meal as ONE ingredient and provide ONE entry in ingredient_nutrients
+- Nutrients listed in "ingredient_nutrients" must sum exactly to the values in "nutrients"
+- NEVER return an empty ingredient_nutrients array - always provide at least ONE ingredient entry
 
 Confidence rating guidelines:
 - 90-100%: Very clear image, easily identifiable food, confident in nutritional estimates
@@ -182,7 +230,29 @@ Provide realistic nutritional estimates based on typical serving sizes. Return O
                     if not isinstance(result['recipes'], list):
                         result['recipes'] = []
                     
-                    logging.info(f"Gemini successfully analyzed food: {result['meal_name']} (Confidence: {result['confidence_percentage']}%, Recipes: {len(result['recipes'])})")
+                    # Ensure ingredient_nutrients field is present
+                    if 'ingredient_nutrients' not in result:
+                        result['ingredient_nutrients'] = []
+                    
+                    # Validate ingredient_nutrients structure
+                    if not isinstance(result['ingredient_nutrients'], list):
+                        result['ingredient_nutrients'] = []
+                    
+                    # Validate each ingredient nutrient entry
+                    for ingredient in result['ingredient_nutrients']:
+                        if not isinstance(ingredient, dict):
+                            continue
+                        # Ensure required fields are present
+                        if 'ingredient' not in ingredient:
+                            ingredient['ingredient'] = 'Unknown Ingredient'
+                        if 'nutrients' not in ingredient:
+                            ingredient['nutrients'] = {}
+                        # Ensure all required nutrients are present in ingredient
+                        for nutrient in required_nutrients:
+                            if nutrient not in ingredient['nutrients']:
+                                ingredient['nutrients'][nutrient] = 0.0
+                    
+                    logging.info(f"Gemini successfully analyzed food: {result['meal_name']} (Confidence: {result['confidence_percentage']}%, Recipes: {len(result['recipes'])}, Ingredients: {len(result['ingredient_nutrients'])})")
                     return result
                 else:
                     # Food not detected

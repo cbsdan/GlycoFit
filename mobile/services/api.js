@@ -437,7 +437,7 @@ const predictNutrientsOnly = async (imageUri, note = '') => {
   }
 };
 
-const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePublicId, servingSize = null, confidenceRate = null, recipes = []) => {
+const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePublicId, servingSize = null, confidenceRate = null, recipes = [], ingredientNutrients = [], ingredientProportions = {}, mealDatetime = null) => {
   try{
     const data = {
       nutrients,
@@ -447,7 +447,10 @@ const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePubl
       temp_image_public_id: tempImagePublicId,
       serving_size: servingSize,
       confidence_rate: confidenceRate,
-      recipes: recipes
+      recipes: recipes,
+      ingredient_nutrients: ingredientNutrients,
+      ingredient_proportions: ingredientProportions,
+      meal_datetime: mealDatetime  // Add meal datetime
     };
 
     const response = await api.post('/gemini/save-meal', data, {
@@ -490,7 +493,7 @@ const getMealById = async (mealId) => {
   }
 };
 
-const updateMeal = async (mealId, mealName = null, notes = null, foodType = null, nutrients = null, servingSize = null) => {
+const updateMeal = async (mealId, mealName = null, notes = null, foodType = null, nutrients = null, servingSize = null, ingredientNutrients = null, ingredientProportions = null) => {
   try {
     const updateData = {};
     if (mealName !== null) updateData.meal_name = mealName;
@@ -498,6 +501,8 @@ const updateMeal = async (mealId, mealName = null, notes = null, foodType = null
     if (foodType !== null) updateData.food_type = foodType;
     if (nutrients !== null) updateData.nutrients = nutrients;
     if (servingSize !== null) updateData.serving_size = servingSize;
+    if (ingredientNutrients !== null) updateData.ingredient_nutrients = ingredientNutrients;
+    if (ingredientProportions !== null) updateData.ingredient_proportions = ingredientProportions;
 
     const response = await api.put(`/users/meals/${mealId}`, updateData);
     return response.data;
@@ -547,7 +552,6 @@ const saveDailyActivity = async (activityData) => {
     throw error;
   }
 };
-
 // Physician Management APIs for Patients
 const getAvailablePhysicians = async () => {
   try {
@@ -1377,9 +1381,419 @@ export const getLatestSmokingIntake = async () => {
   }
 };
 
+// ==================== Smoking Tracking Management (New Pattern) ====================
+
+/**
+ * Create smoking baseline (required at onboarding)
+ * @param {string} smoking_status - Status: never/current/former
+ * @param {number} years_smoked - Years smoked (if not never)
+ * @param {number} typical_cigarettes_per_day - Typical daily cigarettes (if not never)
+ * @param {string} quit_date - Date quit smoking (if former, YYYY-MM-DD)
+ * @param {number} start_age - Age started smoking (optional)
+ */
+const createSmokingBaseline = async (baselineData) => {
+  try {
+    const response = await api.post('/smoking-tracking/baseline', baselineData);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating smoking baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get user's smoking baseline
+ */
+const getSmokingBaseline = async () => {
+  try {
+    const response = await api.get('/smoking-tracking/baseline');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching smoking baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Check if user has baseline (quick check without full data)
+ */
+const checkSmokingBaseline = async () => {
+  try {
+    const response = await api.get('/smoking-tracking/baseline/check');
+    return response.data;
+  } catch (error) {
+    console.error('Error checking smoking baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Update smoking baseline (only allowed if not locked)
+ * @param {object} updates - Fields to update
+ */
+const updateSmokingBaseline = async (updates) => {
+  try {
+    const response = await api.put('/smoking-tracking/baseline', updates);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating smoking baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Log daily smoking record
+ * @param {string} date - Date (YYYY-MM-DD)
+ * @param {number} cigarettes_count - Number of cigarettes smoked
+ * @param {string} notes - Optional notes
+ */
+const logDailySmoking = async (recordData) => {
+  try {
+    const response = await api.post('/smoking-tracking/daily', recordData);
+    return response.data;
+  } catch (error) {
+    console.error('Error logging daily smoking:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get daily smoking records for a date range
+ * @param {string} startDate - Start date (YYYY-MM-DD)
+ * @param {string} endDate - End date (YYYY-MM-DD)
+ * @param {number} limit - Max records to return
+ */
+const getDailySmokingRecords = async (startDate = null, endDate = null, limit = 30) => {
+  try {
+    const params = {};
+    if (startDate) params.start_date = startDate;
+    if (endDate) params.end_date = endDate;
+    if (limit) params.limit = limit;
+    
+    const response = await api.get('/smoking-tracking/daily', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching daily smoking records:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Delete a daily smoking record
+ * @param {string} date - Date to delete (YYYY-MM-DD)
+ */
+const deleteDailySmokingRecord = async (date) => {
+  try {
+    const response = await api.delete(`/smoking-tracking/daily/${date}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting daily smoking record:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get smoking metrics (computed averages, pack-years, etc.)
+ */
+const getSmokingMetrics = async () => {
+  try {
+    const response = await api.get('/smoking-tracking/metrics');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching smoking metrics:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Refresh smoking metrics (force recalculation)
+ */
+const refreshSmokingMetrics = async () => {
+  try {
+    const response = await api.post('/smoking-tracking/metrics/refresh');
+    return response.data;
+  } catch (error) {
+    console.error('Error refreshing smoking metrics:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get current smoking risk assessment
+ */
+const getSmokingRiskAssessment = async () => {
+  try {
+    const response = await api.get('/smoking-tracking/risk');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching smoking risk assessment:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get smoking risk assessment history
+ * @param {number} limit - Number of historical records
+ */
+const getSmokingRiskHistory = async (limit = 10) => {
+  try {
+    const response = await api.get('/smoking-tracking/risk/history', { params: { limit } });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching smoking risk history:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get smoking tracking summary (dashboard data)
+ * @param {number} days - Days of history to include
+ */
+const getSmokingSummary = async (days = 7) => {
+  try {
+    const response = await api.get('/smoking-tracking/summary', { params: { days } });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching smoking summary:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
 // ==================== Alcohol Intake Management ====================
 
 /**
+ * Create alcohol baseline (required at onboarding)
+ * @param {number} baselineDrinkingDaysPerWeek - Typical drinking days per week (0-7)
+ * @param {number} baselineDrinksPerOccasion - Average drinks per drinking day (0-20)
+ * @param {number} baselineBingeFrequencyPerMonth - Binge episodes per month (0-31)
+ * @param {string} drinkingPattern - Pattern: none/occasional/weekends/regular/daily
+ * @param {number} yearsAtCurrentPattern - Years at this consumption level (0-50)
+ * @param {boolean} drinksWithMeals - Whether drinks are typically with food
+ * @returns {Promise<Object>} Created baseline
+ */
+export const createAlcoholBaseline = async (
+  baselineDrinkingDaysPerWeek,
+  baselineDrinksPerOccasion,
+  baselineBingeFrequencyPerMonth,
+  drinkingPattern = 'none',
+  yearsAtCurrentPattern = 0,
+  drinksWithMeals = false
+) => {
+  try {
+    const response = await api.post('/alcohol-intake/baseline', {
+      baseline_drinking_days_per_week: baselineDrinkingDaysPerWeek,
+      baseline_drinks_per_occasion: baselineDrinksPerOccasion,
+      baseline_binge_frequency_per_month: baselineBingeFrequencyPerMonth,
+      drinking_pattern: drinkingPattern,
+      years_at_current_pattern: yearsAtCurrentPattern,
+      drinks_with_meals: drinksWithMeals
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error creating alcohol baseline:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get user's alcohol baseline
+ * @returns {Promise<Object>} Baseline data
+ */
+export const getAlcoholBaseline = async () => {
+  try {
+    const response = await api.get('/alcohol-intake/baseline');
+    return response.data.data; // Extract the nested data object
+  } catch (error) {
+    console.error('Error fetching alcohol baseline:', error);
+    throw error;
+  }
+};
+
+/**
+ * Check if user has completed alcohol baseline
+ * @returns {Promise<Object>} { has_baseline: boolean }
+ */
+export const checkAlcoholBaseline = async () => {
+  try {
+    const response = await api.get('/alcohol-intake/baseline/check');
+    return response.data;
+  } catch (error) {
+    console.error('Error checking alcohol baseline:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update alcohol baseline (retake questionnaire)
+ * @param {number} baselineDrinkingDaysPerWeek - Typical drinking days per week (0-7)
+ * @param {number} baselineDrinksPerOccasion - Average drinks per drinking day (0-20)
+ * @param {number} baselineBingeFrequencyPerMonth - Binge episodes per month (0-31)
+ * @param {string} drinkingPattern - Pattern: none/occasional/weekends/regular/daily
+ * @param {number} yearsAtCurrentPattern - Years at this consumption level (0-50)
+ * @param {boolean} drinksWithMeals - Whether drinks are typically with food
+ * @returns {Promise<Object>} Updated baseline
+ */
+export const updateAlcoholBaseline = async (
+  baselineDrinkingDaysPerWeek,
+  baselineDrinksPerOccasion,
+  baselineBingeFrequencyPerMonth,
+  drinkingPattern = null,
+  yearsAtCurrentPattern = null,
+  drinksWithMeals = null
+) => {
+  try {
+    const payload = {
+      baseline_drinking_days_per_week: baselineDrinkingDaysPerWeek,
+      baseline_drinks_per_occasion: baselineDrinksPerOccasion,
+      baseline_binge_frequency_per_month: baselineBingeFrequencyPerMonth,
+    };
+    if (drinkingPattern !== null) payload.drinking_pattern = drinkingPattern;
+    if (yearsAtCurrentPattern !== null) payload.years_at_current_pattern = yearsAtCurrentPattern;
+    if (drinksWithMeals !== null) payload.drinks_with_meals = drinksWithMeals;
+    
+    const response = await api.put('/alcohol-intake/baseline', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating alcohol baseline:', error);
+    throw error;
+  }
+};
+
+/**
+ * Log daily alcohol consumption
+ * @param {string} date - Date (YYYY-MM-DD)
+ * @param {number} drinksConsumed - Number of standard drinks (0-20)
+ * @param {boolean} wasBingeEpisode - Whether it was a binge episode (optional)
+ * @param {string} drinkingContext - Context: meal/social/stress/celebration/other/none
+ * @param {string} timeOfDay - Time: morning/afternoon/evening/night
+ * @param {string} notes - Optional notes
+ * @returns {Promise<Object>} Created/updated record
+ */
+export const logDailyAlcohol = async (
+  date,
+  drinksConsumed,
+  wasBingeEpisode = null,
+  drinkingContext = 'other',
+  timeOfDay = 'evening',
+  notes = null
+) => {
+  try {
+    const payload = {
+      date,
+      drinks_consumed: drinksConsumed,
+      drinking_context: drinkingContext,
+      time_of_day: timeOfDay,
+    };
+    if (wasBingeEpisode !== null) payload.was_binge_episode = wasBingeEpisode;
+    if (notes) payload.notes = notes;
+    
+    const response = await api.post('/alcohol-intake/daily', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error logging daily alcohol:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get daily alcohol records
+ * @param {string} startDate - Start date (optional)
+ * @param {string} endDate - End date (optional)
+ * @param {number} days - Number of days (default: 30)
+ * @returns {Promise<Object>} List of records
+ */
+export const getDailyAlcoholRecords = async (startDate = null, endDate = null, days = 30) => {
+  try {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    if (days) params.append('days', days);
+    
+    const response = await api.get(`/alcohol-intake/daily?${params.toString()}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching daily alcohol records:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete daily alcohol record
+ * @param {string} date - Date to delete (YYYY-MM-DD)
+ * @returns {Promise<Object>} Delete result
+ */
+export const deleteDailyAlcoholRecord = async (date) => {
+  try {
+    const response = await api.delete(`/alcohol-intake/daily/${date}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting daily alcohol record:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get computed alcohol metrics
+ * @param {boolean} refresh - Force refresh metrics
+ * @returns {Promise<Object>} Computed metrics
+ */
+export const getAlcoholMetrics = async (refresh = false) => {
+  try {
+    const params = refresh ? '?refresh=true' : '';
+    const response = await api.get(`/alcohol-intake/metrics${params}`);
+    return response.data.data; // Extract the nested data object
+  } catch (error) {
+    console.error('Error fetching alcohol metrics:', error);
+    throw error;
+  }
+};
+
+/**
+ * Force refresh alcohol metrics
+ * @returns {Promise<Object>} Refreshed metrics
+ */
+export const refreshAlcoholMetrics = async () => {
+  try {
+    const response = await api.post('/alcohol-intake/metrics/refresh');
+    return response.data.data; // Extract the nested data object
+  } catch (error) {
+    console.error('Error refreshing alcohol metrics:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get comprehensive alcohol risk assessment
+ * @returns {Promise<Object>} Risk assessment with recommendations
+ */
+export const getAlcoholRiskAssessment = async () => {
+  try {
+    const response = await api.get('/alcohol-intake/risk');
+    return response.data.data; // Extract the nested data object
+  } catch (error) {
+    console.error('Error fetching alcohol risk assessment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get comprehensive alcohol summary for dashboard
+ * @returns {Promise<Object>} Complete alcohol status (baseline + metrics + risk + records)
+ */
+export const getAlcoholSummary = async () => {
+  try {
+    const response = await api.get('/alcohol-intake/summary');
+    return response.data.data; // Extract the nested data object
+  } catch (error) {
+    console.error('Error fetching alcohol summary:', error);
+    throw error;
+  }
+};
+
+// ==================== LEGACY ALCOHOL INTAKE (DEPRECATED) ====================
+
+/**
+ * @deprecated Use createAlcoholBaseline() and logDailyAlcohol() instead
  * Save or update alcohol intake record
  * @param {Object} alcoholData - Alcohol intake data
  * @returns {Promise<Object>} Saved alcohol intake record with risk assessment
@@ -1395,6 +1809,7 @@ export const saveAlcoholIntake = async (alcoholData) => {
 };
 
 /**
+ * @deprecated Use getAlcoholSummary() instead
  * Get current alcohol intake record
  * @returns {Promise<Object>} Current alcohol intake record
  */
@@ -1409,6 +1824,7 @@ export const getAlcoholIntake = async () => {
 };
 
 /**
+ * @deprecated Use getDailyAlcoholRecords() instead
  * Get alcohol intake history
  * @returns {Promise<Object>} Current and historical alcohol intake data
  */
@@ -1423,20 +1839,7 @@ export const getAlcoholIntakeHistory = async () => {
 };
 
 /**
- * Get comprehensive risk assessment based on alcohol intake
- * @returns {Promise<Object>} Risk assessment with recommendations and trend analysis
- */
-export const getAlcoholRiskAssessment = async () => {
-  try {
-    const response = await api.get('/alcohol-intake/risk-assessment');
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching alcohol risk assessment:', error);
-    throw error;
-  }
-};
-
-/**
+ * @deprecated Functionality removed - delete individual daily records instead
  * Delete alcohol intake record
  * @returns {Promise<Object>} Delete confirmation
  */
@@ -1446,6 +1849,368 @@ export const deleteAlcoholIntake = async () => {
     return response.data;
   } catch (error) {
     console.error('Error deleting alcohol intake:', error);
+    throw error;
+  }
+};
+
+// ==================== SLEEP TRACKING API ====================
+
+/**
+ * Create sleep baseline (required at onboarding, can only be done once)
+ * @param {number} baselineAvgSleepHours - Average hours of sleep (0-24)
+ * @param {number} baselineNights6hPlusPerWeek - Nights with 6+ hours (0-7)
+ * @param {number} baselineBedtimeConsistency - Consistency rating (1-5)
+ * @param {string} usualBedtime - Typical bedtime (HH:MM, optional)
+ * @param {string} usualWakeTime - Typical wake time (HH:MM, optional)
+ * @returns {Promise<Object>} Created baseline
+ */
+export const createSleepBaseline = async (
+  baselineAvgSleepHours,
+  baselineNights6hPlusPerWeek,
+  baselineBedtimeConsistency,
+  usualBedtime = null,
+  usualWakeTime = null
+) => {
+  try {
+    const payload = {
+      baseline_avg_sleep_hours: baselineAvgSleepHours,
+      baseline_nights_6h_plus_per_week: baselineNights6hPlusPerWeek,
+      baseline_bedtime_consistency: baselineBedtimeConsistency,
+    };
+    if (usualBedtime) payload.usual_bedtime = usualBedtime;
+    if (usualWakeTime) payload.usual_wake_time = usualWakeTime;
+    
+    const response = await api.post('/sleep-tracking/baseline', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating sleep baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get user's sleep baseline
+ * @returns {Promise<Object>} Baseline data
+ */
+export const getSleepBaseline = async () => {
+  try {
+    const response = await api.get('/sleep-tracking/baseline');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching sleep baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Check if user has completed sleep baseline
+ * @returns {Promise<Object>} { has_baseline: boolean }
+ */
+export const checkSleepBaseline = async () => {
+  try {
+    const response = await api.get('/sleep-tracking/baseline/check');
+    return response.data;
+  } catch (error) {
+    console.error('Error checking sleep baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Update sleep baseline (retake questionnaire)
+ * @param {number} baselineAvgSleepHours - Average hours of sleep (0-24)
+ * @param {number} baselineNights6hPlusPerWeek - Nights with 6+ hours (0-7)
+ * @param {number} baselineBedtimeConsistency - Consistency rating (1-5)
+ * @param {string} usualBedtime - Typical bedtime (HH:MM, optional)
+ * @param {string} usualWakeTime - Typical wake time (HH:MM, optional)
+ * @returns {Promise<Object>} Updated baseline
+ */
+export const updateSleepBaseline = async (
+  baselineAvgSleepHours,
+  baselineNights6hPlusPerWeek,
+  baselineBedtimeConsistency,
+  usualBedtime = null,
+  usualWakeTime = null
+) => {
+  try {
+    const payload = {
+      baseline_avg_sleep_hours: baselineAvgSleepHours,
+      baseline_nights_6h_plus_per_week: baselineNights6hPlusPerWeek,
+      baseline_bedtime_consistency: baselineBedtimeConsistency,
+    };
+    if (usualBedtime) payload.usual_bedtime = usualBedtime;
+    if (usualWakeTime) payload.usual_wake_time = usualWakeTime;
+    
+    const response = await api.put('/sleep-tracking/baseline', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating sleep baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Log manual daily sleep record
+ * @param {string} date - Date (YYYY-MM-DD)
+ * @param {string} bedtime - Bedtime (HH:MM, 24-hour)
+ * @param {number} sleepDurationHours - Sleep duration (0-24)
+ * @param {string} wakeTime - Wake time (HH:MM, optional)
+ * @param {number} sleepQuality - Quality rating 1-5 (optional)
+ * @param {string} notes - Notes (optional)
+ * @returns {Promise<Object>} Created/updated record
+ */
+export const logDailySleep = async (
+  date,
+  bedtime,
+  sleepDurationHours,
+  wakeTime = null,
+  sleepQuality = null,
+  notes = null
+) => {
+  try {
+    const payload = {
+      date,
+      bedtime,
+      sleep_duration_hours: sleepDurationHours,
+    };
+    if (wakeTime) payload.wake_time = wakeTime;
+    if (sleepQuality) payload.sleep_quality = sleepQuality;
+    if (notes) payload.notes = notes;
+    
+    const response = await api.post('/sleep-tracking/daily', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error logging daily sleep:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get daily sleep records
+ * @param {string} startDate - Start date (optional)
+ * @param {string} endDate - End date (optional)
+ * @param {number} days - Number of days (default: 30)
+ * @param {string} source - Filter by source (manual, health_connect)
+ * @returns {Promise<Object>} List of records
+ */
+export const getDailySleepRecords = async (startDate = null, endDate = null, days = 30, source = null) => {
+  try {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    if (days) params.append('days', days);
+    if (source) params.append('source', source);
+    
+    const response = await api.get(`/sleep-tracking/daily?${params.toString()}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching daily sleep records:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Delete daily sleep record
+ * @param {string} date - Date to delete (YYYY-MM-DD)
+ * @param {string} source - Source filter (optional)
+ * @returns {Promise<Object>} Delete result
+ */
+export const deleteDailySleepRecord = async (date, source = null) => {
+  try {
+    const params = source ? `?source=${source}` : '';
+    const response = await api.delete(`/sleep-tracking/daily/${date}${params}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting daily sleep record:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Sync Health Connect sleep data
+ * @param {Array} records - Array of sleep records from Health Connect
+ * @returns {Promise<Object>} Sync result
+ */
+export const syncHealthConnectSleep = async (records) => {
+  try {
+    const response = await api.post('/sleep-tracking/health-connect/sync', { records });
+    return response.data;
+  } catch (error) {
+    console.error('Error syncing Health Connect sleep:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get computed sleep metrics
+ * @returns {Promise<Object>} Computed metrics
+ */
+export const getSleepMetrics = async () => {
+  try {
+    const response = await api.get('/sleep-tracking/metrics');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching sleep metrics:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Force refresh sleep metrics
+ * @returns {Promise<Object>} Refreshed metrics
+ */
+export const refreshSleepMetrics = async () => {
+  try {
+    const response = await api.post('/sleep-tracking/metrics/refresh');
+    return response.data;
+  } catch (error) {
+    console.error('Error refreshing sleep metrics:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get latest sleep risk assessment
+ * @returns {Promise<Object>} Risk assessment
+ */
+export const getSleepRiskAssessment = async () => {
+  try {
+    const response = await api.get('/sleep-tracking/risk');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching sleep risk assessment:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get sleep risk assessment history
+ * @param {number} limit - Maximum records (default: 30)
+ * @returns {Promise<Object>} Risk history
+ */
+export const getSleepRiskHistory = async (limit = 30) => {
+  try {
+    const response = await api.get(`/sleep-tracking/risk/history?limit=${limit}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching sleep risk history:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get comprehensive sleep summary for dashboard
+ * @returns {Promise<Object>} Complete sleep status
+ */
+export const getSleepSummary = async () => {
+  try {
+    const response = await api.get('/sleep-tracking/summary');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching sleep summary:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Clean up duplicate sleep records
+ * @returns {Promise<Object>} Cleanup result
+ */
+export const cleanupDuplicateSleepRecords = async () => {
+  try {
+    const response = await api.post('/sleep-tracking/cleanup-duplicates');
+    return response.data;
+  } catch (error) {
+    console.error('Error cleaning up duplicates:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+// ==================== FOOD RISK ASSESSMENT API ====================
+
+/**
+ * Get baseline assessment questions
+ * @returns {Promise<Object>} List of baseline questions
+ */
+export const getFoodBaselineQuestions = async () => {
+  try {
+    const response = await api.get('/food-risk/baseline/questions');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching baseline questions:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Submit baseline assessment
+ * @param {Object} responses - User responses to baseline questions
+ * @returns {Promise<Object>} Created baseline assessment
+ */
+export const submitFoodBaseline = async (responses) => {
+  try {
+    const response = await api.post('/food-risk/baseline/submit', { responses });
+    return response.data;
+  } catch (error) {
+    console.error('Error submitting baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get user's food baseline assessment
+ * @returns {Promise<Object>} Baseline assessment data
+ */
+export const getFoodBaseline = async () => {
+  try {
+    const response = await api.get('/food-risk/baseline');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get comprehensive food risk assessment
+ * @param {number} days - Number of days to analyze (default: 7)
+ * @returns {Promise<Object>} Risk assessment with scores and breakdown
+ */
+export const getFoodRiskAssessment = async (days = 7) => {
+  try {
+    const response = await api.get(`/food-risk/assessment?days=${days}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching risk assessment:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get personalized food recommendations
+ * @returns {Promise<Object>} Recommendations based on risk assessment
+ */
+export const getFoodRecommendations = async () => {
+  try {
+    const response = await api.get('/food-risk/recommendations');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching recommendations:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get daily log analysis
+ * @param {number} days - Number of days to analyze (default: 7)
+ * @returns {Promise<Object>} Daily log analysis
+ */
+export const getFoodDailyLogAnalysis = async (days = 7) => {
+  try {
+    const response = await api.get(`/food-risk/daily-log-analysis?days=${days}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching daily log analysis:', error.response?.data || error.message);
     throw error;
   }
 };
@@ -1509,5 +2274,43 @@ api.saveSmokingIntake = saveSmokingIntake;
 api.getSmokingIntakeHistory = getSmokingIntakeHistory;
 api.getLatestSmokingIntake = getLatestSmokingIntake;
 api.deleteSmokingSession = deleteSmokingSession;
+
+// Smoking Tracking endpoints (new pattern)
+api.createSmokingBaseline = createSmokingBaseline;
+api.getSmokingBaseline = getSmokingBaseline;
+api.checkSmokingBaseline = checkSmokingBaseline;
+api.updateSmokingBaseline = updateSmokingBaseline;
+api.logDailySmoking = logDailySmoking;
+api.getDailySmokingRecords = getDailySmokingRecords;
+api.deleteDailySmokingRecord = deleteDailySmokingRecord;
+api.getSmokingMetrics = getSmokingMetrics;
+api.refreshSmokingMetrics = refreshSmokingMetrics;
+api.getSmokingRiskAssessment = getSmokingRiskAssessment;
+api.getSmokingRiskHistory = getSmokingRiskHistory;
+api.getSmokingSummary = getSmokingSummary;
+
+// Sleep Tracking endpoints
+api.createSleepBaseline = createSleepBaseline;
+api.getSleepBaseline = getSleepBaseline;
+api.checkSleepBaseline = checkSleepBaseline;
+api.updateSleepBaseline = updateSleepBaseline;
+api.logDailySleep = logDailySleep;
+api.getDailySleepRecords = getDailySleepRecords;
+api.deleteDailySleepRecord = deleteDailySleepRecord;
+api.syncHealthConnectSleep = syncHealthConnectSleep;
+api.getSleepMetrics = getSleepMetrics;
+api.refreshSleepMetrics = refreshSleepMetrics;
+api.getSleepRiskAssessment = getSleepRiskAssessment;
+api.getSleepRiskHistory = getSleepRiskHistory;
+api.getSleepSummary = getSleepSummary;
+api.cleanupDuplicateSleepRecords = cleanupDuplicateSleepRecords;
+
+// Food Risk Assessment endpoints
+api.getFoodBaselineQuestions = getFoodBaselineQuestions;
+api.submitFoodBaseline = submitFoodBaseline;
+api.getFoodBaseline = getFoodBaseline;
+api.getFoodRiskAssessment = getFoodRiskAssessment;
+api.getFoodRecommendations = getFoodRecommendations;
+api.getFoodDailyLogAnalysis = getFoodDailyLogAnalysis;
 
 export default api;

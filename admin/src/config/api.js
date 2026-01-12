@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { auth } from './firebase';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://192.168.83.77:4000/api/v1';
+const API_BASE_URL = 'http://192.168.68.112:4000/api/v1';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,

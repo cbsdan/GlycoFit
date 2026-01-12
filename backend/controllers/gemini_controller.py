@@ -131,10 +131,11 @@ class GeminiController:
                         'serving_size': analysis_result.get('serving_size', ''),
                         'confidence_percentage': analysis_result.get('confidence_percentage', 50),
                         'recipes': analysis_result.get('recipes', []),
+                        'ingredient_nutrients': analysis_result.get('ingredient_nutrients', []),
                         'temp_image_url': image_url,
                         'temp_image_public_id': image_public_id,
                         'filename': image_file.filename,
-                        'valid_food_types': UserMeal.VALID_MEAL_TYPES
+                        'valid_food_types': UserMeal.VALID_MEAL_TYPES,
                     }
                 }
                 
@@ -210,6 +211,8 @@ class GeminiController:
             serving_size = data.get('serving_size')
             confidence_rate = data.get('confidence_rate')
             recipes = data.get('recipes', [])
+            ingredient_nutrients = data.get('ingredient_nutrients', [])
+            ingredient_proportions = data.get('ingredient_proportions', {})
             
             logging.info(f"Saving Gemini meal for user {user_id} - temp_image_public_id: {temp_image_public_id}")
             
@@ -270,7 +273,9 @@ class GeminiController:
                     food_type=food_type,
                     serving_size=serving_size,
                     confidence_rate=confidence_rate,
-                    recipes=recipes
+                    recipes=recipes,
+                    ingredient_nutrients=ingredient_nutrients,
+                    ingredient_proportions=ingredient_proportions
                 )
                 
                 if result['success']:

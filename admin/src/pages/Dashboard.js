@@ -5,15 +5,25 @@ import PersonOffIcon from '@mui/icons-material/PersonOff';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import StatCard from '../components/common/StatCard';
+import UsersStatsModal from '../components/UsersStatsModal';
+import ActiveUsersModal from '../components/ActiveUsersModal';
+import PhysiciansModal from '../components/PhysiciansModal';
+import DisabledUsersModal from '../components/DisabledUsersModal';
+import TopFoodsChart from '../components/TopFoodsChart';
+import MealAveragesCard from '../components/MealAveragesCard';
 import { useAuth } from '../contexts/AuthContext';
 import { motion } from 'framer-motion';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:4000/api/v1';
+const API_BASE_URL = 'http://192.168.68.112:4000/api/v1';
 
 function Dashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const { currentUser } = useAuth();
+  const [openUsersModal, setOpenUsersModal] = useState(false);
+  const [openActiveUsersModal, setOpenActiveUsersModal] = useState(false);
+  const [openPhysiciansModal, setOpenPhysiciansModal] = useState(false);
+  const [openDisabledUsersModal, setOpenDisabledUsersModal] = useState(false);
 
   const getAuthHeaders = useCallback(async () => {
     if (!currentUser) return {};
@@ -93,6 +103,7 @@ function Dashboard() {
             subtitle="All registered users"
             icon={<PeopleIcon />}
             color="#667eea"
+            onClick={() => setOpenUsersModal(true)}
           />
         </Grid>
         <Grid item xs={12} sm={6} lg={3}>
@@ -102,8 +113,41 @@ function Dashboard() {
             subtitle="Currently active"
             icon={<VerifiedUserIcon />}
             color="#06b6d4"
+            onClick={() => setOpenActiveUsersModal(true)}
           />
         </Grid>
+
+          <UsersStatsModal
+            open={openUsersModal}
+            onClose={() => setOpenUsersModal(false)}
+            apiBase={API_BASE_URL}
+            getAuthHeaders={getAuthHeaders}
+            initialStats={stats || {}}
+          />
+          {openActiveUsersModal && (
+            <ActiveUsersModal
+              open={openActiveUsersModal}
+              onClose={() => setOpenActiveUsersModal(false)}
+              apiBase={API_BASE_URL}
+              getAuthHeaders={getAuthHeaders}
+            />
+          )}
+          {openPhysiciansModal && (
+            <PhysiciansModal
+              open={openPhysiciansModal}
+              onClose={() => setOpenPhysiciansModal(false)}
+              apiBase={API_BASE_URL}
+              getAuthHeaders={getAuthHeaders}
+            />
+          )}
+          {openDisabledUsersModal && (
+            <DisabledUsersModal
+              open={openDisabledUsersModal}
+              onClose={() => setOpenDisabledUsersModal(false)}
+              apiBase={API_BASE_URL}
+              getAuthHeaders={getAuthHeaders}
+            />
+          )}
         <Grid item xs={12} sm={6} lg={3}>
           <StatCard
             title="Physicians"
@@ -111,6 +155,7 @@ function Dashboard() {
             subtitle="Medical professionals"
             icon={<LocalHospitalIcon />}
             color="#10b981"
+            onClick={() => setOpenPhysiciansModal(true)}
           />
         </Grid>
         <Grid item xs={12} sm={6} lg={3}>
@@ -120,7 +165,30 @@ function Dashboard() {
             subtitle="Temporarily disabled"
             icon={<PersonOffIcon />}
             color="#f59e0b"
+            onClick={() => setOpenDisabledUsersModal(true)}
           />
+        </Grid>
+      </Grid>
+
+      <Grid container spacing={3} sx={{ mt: 2 }}>
+        <Grid item xs={12} md={6} lg={4}>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+          >
+            <MealAveragesCard apiBase={API_BASE_URL} getAuthHeaders={getAuthHeaders} />
+          </motion.div>
+        </Grid>
+
+        <Grid item xs={12} md={6} lg={8}>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.25 }}
+          >
+            <TopFoodsChart apiBase={API_BASE_URL} getAuthHeaders={getAuthHeaders} />
+          </motion.div>
         </Grid>
       </Grid>
 
@@ -129,7 +197,7 @@ function Dashboard() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
           >
             <Paper 
               elevation={0}

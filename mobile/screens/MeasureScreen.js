@@ -15,12 +15,12 @@ const MeasureScreen = ({ navigation }) => {
 
   const measurementOptions = [
     {
-      id: 'food-scanner',
-      title: 'Food Scanner',
-      subtitle: 'Scan and log your meals',
-      icon: 'camera',
+      id: 'food-tracker',
+      title: 'Food Tracker',
+      subtitle: 'Track meals & assess prediabetes risk',
+      icon: 'food-apple',
       color: '#27AE60',
-      action: () => navigation.navigate('FoodScanner'),
+      action: () => navigation.navigate('FoodTracker'),
     },
     {
       id: 'step-counter',
@@ -29,6 +29,14 @@ const MeasureScreen = ({ navigation }) => {
       icon: 'walk',
       color: '#F39C12',
       action: () => navigation.navigate('StepCounter'),
+    },
+    {
+      id: 'sleep-tracking',
+      title: 'Sleep Tracking',
+      subtitle: 'Track sleep patterns and duration',
+      icon: 'moon-waning-crescent',
+      color: '#3498DB',
+      action: () => navigation.navigate('SleepTracking'),
     },
     {
       id: 'smoking-intake',
@@ -44,7 +52,7 @@ const MeasureScreen = ({ navigation }) => {
       subtitle: 'Track alcohol consumption patterns',
       icon: 'glass-wine',
       color: '#9B59B6',
-      action: () => navigation.navigate('AlcoholIntake'),
+      action: () => navigation.navigate('AlcoholTracking'),
     },
   ];
 
@@ -125,9 +133,9 @@ const MeasureScreen = ({ navigation }) => {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.header}>
-          <Text style={styles.title}>Health Measurements</Text>
+          <Text style={styles.title}>Lifetsyle Tracker</Text>
           <Text style={styles.subtitle}>
-            Track your vital signs and health metrics to get better insights into your well-being.
+            Track your lifestyle to get better insights into your well-being.
           </Text>
         </View>
 

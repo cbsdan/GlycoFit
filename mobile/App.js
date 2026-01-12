@@ -28,6 +28,9 @@ import PhysicianMessagesScreen from './screens/PhysicianMessagesScreen';
 import ChatBotScreen from './screens/ChatBotScreen';
 import HealthMetricsSetupScreen from './screens/HealthMetricsSetupScreen';
 import AlcoholIntakeScreen from './screens/AlcoholIntakeScreen';
+import AlcoholTrackingScreen from './screens/AlcoholTrackingScreen';
+import AlcoholBaselineScreen from './screens/AlcoholBaselineScreen';
+import AlcoholDailyLogScreen from './screens/AlcoholDailyLogScreen';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingScreen from './components/LoadingScreen';
 import StepCounterScreen from './screens/StepCounterScreen';
@@ -494,6 +497,42 @@ function AppNavigator() {
               {(props) => (
                 <UniversalScreenWrapper>
                   <AlcoholIntakeScreen {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="AlcoholTracking" 
+              options={{ 
+                headerShown: false
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <AlcoholTrackingScreen {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="AlcoholBaseline" 
+              options={{ 
+                headerShown: false
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <AlcoholBaselineScreen {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="AlcoholDailyLog" 
+              options={{ 
+                headerShown: false
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <AlcoholDailyLogScreen {...props} />
                 </UniversalScreenWrapper>
               )}
             </Stack.Screen>
