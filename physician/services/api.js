@@ -416,12 +416,56 @@ export const consultationAPI = {
     }
   },
 
+  getPending: async () => {
+    try {
+      const response = await api.get('/physician/consultations/pending');
+      return response.data;
+    } catch (error) {
+      console.error('Get pending consultations error:', error);
+      throw error;
+    }
+  },
+
+  getSchedule: async (startDate = null, endDate = null) => {
+    try {
+      const params = {};
+      if (startDate) params.start_date = startDate;
+      if (endDate) params.end_date = endDate;
+      const response = await api.get('/physician/consultations/schedule', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Get consultation schedule error:', error);
+      throw error;
+    }
+  },
+
   getById: async (id) => {
     try {
       const response = await api.get(`/physician/consultations/${id}`);
       return response.data;
     } catch (error) {
       console.error('Get consultation error:', error);
+      throw error;
+    }
+  },
+
+  approve: async (id, data) => {
+    try {
+      // data should contain: meeting_link, meeting_password (optional), platform, scheduled_date (optional), scheduled_time (optional)
+      const response = await api.post(`/physician/consultations/${id}/approve`, data);
+      return response.data;
+    } catch (error) {
+      console.error('Approve consultation error:', error);
+      throw error;
+    }
+  },
+
+  reject: async (id, reason = '') => {
+    try {
+      const response = await api.post(`/physician/consultations/${id}/reject`, { reason });
+      return response.data;
+    } catch (error) {
+      console.error('Reject consultation error:', error);
       throw error;
     }
   },

@@ -35,20 +35,30 @@ export const ToastProvider = ({ children, position = 'top' }) => {
   const showToast = (options) => {
     const { type, message, duration = 3000 } = options;
     
-    dispatch({
-      type: ADD_TOAST,
-      payload: {
-        type,
-        message,
-        duration,
-        onHide: (id) => {
-          dispatch({
-            type: REMOVE_TOAST,
-            payload: id,
-          });
+    // Use setTimeout to avoid useInsertionEffect warning
+    setTimeout(() => {
+      dispatch({
+        type: ADD_TOAST,
+        payload: {
+          type,
+          message,
+          duration,
+          onHide: (id) => {
+            setTimeout(() => {
+              dispatch({
+                type: REMOVE_TOAST,
+                payload: id,
+              });
+            }, 0);
+          },
         },
-      },
-    });
+      });
+    }, 0);
+  };
+  
+  // showToast function that accepts (message, type) for backward compatibility
+  const showToastCompat = (message, type = 'INFO') => {
+    showToast({ message, type: type.toUpperCase() });
   };
   
   const toast = {
@@ -57,6 +67,8 @@ export const ToastProvider = ({ children, position = 'top' }) => {
     error: (message, options = {}) => showToast({ message, type: 'ERROR', ...options }),
     info: (message, options = {}) => showToast({ message, type: 'INFO', ...options }),
     warning: (message, options = {}) => showToast({ message, type: 'WARNING', ...options }),
+    // Add showToast for backward compatibility with screens using { showToast } = useToast()
+    showToast: showToastCompat,
   };
   
   return (

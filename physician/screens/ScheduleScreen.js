@@ -8,11 +8,12 @@ import {
     Modal,
     ActivityIndicator,
     RefreshControl,
+    Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
-import { appointmentAPI } from '../services/api';
+import { appointmentAPI, consultationAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 
 export default function ScheduleScreen() {
@@ -23,22 +24,35 @@ export default function ScheduleScreen() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [appointments, setAppointments] = useState([]);
+    const [consultations, setConsultations] = useState([]);
 
     useEffect(() => {
-        fetchAppointments();
+        fetchData();
     }, [selectedDate]);
 
-    const fetchAppointments = async () => {
+    const fetchData = async () => {
         try {
             setLoading(true);
-            const dateStr = selectedDate.toISOString();
-            const response = await appointmentAPI.getAll({ date: dateStr });
-            if (response.success) {
-                setAppointments(response.data);
+            
+            // Get start and end of the selected month for consultations
+            const startOfMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+            const endOfMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59);
+            
+            // Fetch both appointments and consultations
+            const [appointmentsRes, consultationsRes] = await Promise.all([
+                appointmentAPI.getAll({ date: selectedDate.toISOString() }),
+                consultationAPI.getSchedule(startOfMonth.toISOString(), endOfMonth.toISOString())
+            ]);
+            
+            if (appointmentsRes.success) {
+                setAppointments(appointmentsRes.data);
+            }
+            if (consultationsRes.success) {
+                setConsultations(consultationsRes.data);
             }
         } catch (error) {
-            console.error('Error fetching appointments:', error);
-            showToast('Failed to load appointments', 'error');
+            console.error('Error fetching data:', error);
+            showToast('Failed to load schedule', 'error');
         } finally {
             setLoading(false);
         }
@@ -46,7 +60,7 @@ export default function ScheduleScreen() {
 
     const onRefresh = async () => {
         setRefreshing(true);
-        await fetchAppointments();
+        await fetchData();
         setRefreshing(false);
     };
 
@@ -55,7 +69,7 @@ export default function ScheduleScreen() {
             const response = await appointmentAPI.confirm(appointmentId);
             if (response.success) {
                 showToast('Appointment confirmed', 'success');
-                fetchAppointments();
+                fetchData();
             }
         } catch (error) {
             console.error('Error confirming appointment:', error);
@@ -68,12 +82,54 @@ export default function ScheduleScreen() {
             const response = await appointmentAPI.cancel(appointmentId);
             if (response.success) {
                 showToast('Appointment cancelled', 'success');
-                fetchAppointments();
+                fetchData();
             }
         } catch (error) {
             console.error('Error cancelling appointment:', error);
             showToast('Failed to cancel appointment', 'error');
         }
+    };
+
+    const openMeetingLink = (link) => {
+        if (link) {
+            Linking.openURL(link);
+        }
+    };
+
+    const formatTime = (dateString, timeString) => {
+        if (timeString) return timeString;
+        if (!dateString) return 'N/A';
+        const date = new Date(dateString);
+        return date.toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+    };
+
+    // Get consultations for a specific day
+    const getConsultationsForDay = (day) => {
+        if (!day) return [];
+        const targetDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day);
+        return consultations.filter(c => {
+            const consultDate = new Date(c.scheduled_date);
+            return consultDate.getDate() === day && 
+                   consultDate.getMonth() === selectedDate.getMonth() &&
+                   consultDate.getFullYear() === selectedDate.getFullYear();
+        });
+    };
+
+    // Get today's consultations
+    const getTodayConsultations = () => {
+        const today = new Date();
+        return consultations.filter(c => {
+            const consultDate = new Date(c.scheduled_date);
+            return consultDate.toDateString() === today.toDateString();
+        });
+    };
+
+    // Check if a day has consultations
+    const dayHasConsultations = (day) => {
+        return getConsultationsForDay(day).length > 0;
     };
 
     if (loading) {
@@ -87,51 +143,17 @@ export default function ScheduleScreen() {
         );
     }
 
-    // Placeholder data kept for structure
-    const oldAppointments = [
-        {
-            id: 1,
-            patientName: 'Sarah Williams',
-            time: '09:00 AM',
-            duration: '30 min',
-            type: 'Follow-up',
-            status: 'confirmed',
-        },
-        {
-            id: 2,
-            patientName: 'Robert Brown',
-            time: '10:30 AM',
-            duration: '45 min',
-            type: 'Initial Consultation',
-            status: 'confirmed',
-        },
-        {
-            id: 3,
-            patientName: 'Emily Davis',
-            time: '02:00 PM',
-            duration: '30 min',
-            type: 'Prescription Renewal',
-            status: 'pending',
-        },
-        {
-            id: 4,
-            patientName: 'Michael Johnson',
-            time: '03:30 PM',
-            duration: '40 min',
-            type: 'Blood Sugar Review',
-            status: 'confirmed',
-        },
-    ];
-
     const medicationReminders = [];
 
     const getStatusColor = (status) => {
         switch (status) {
             case 'confirmed':
+            case 'approved':
                 return theme.success;
             case 'pending':
                 return theme.warning;
             case 'cancelled':
+            case 'rejected':
                 return theme.error;
             default:
                 return theme.secondary;
@@ -214,57 +236,173 @@ export default function ScheduleScreen() {
                     </View>
 
                     <View style={styles.daysGrid}>
-                        {getDaysInMonth().map((day, index) => (
-                            <TouchableOpacity
-                                key={index}
-                                style={[
-                                    styles.dayCell,
-                                    day === new Date().getDate() &&
-                                    selectedDate.getMonth() === new Date().getMonth() && {
-                                        backgroundColor: theme.primary,
-                                    },
-                                ]}
-                                disabled={!day}
-                            >
-                                {day && (
-                                    <>
-                                        <Text
-                                            style={[
-                                                styles.dayNumber,
-                                                {
-                                                    color:
-                                                        day === new Date().getDate() &&
-                                                            selectedDate.getMonth() === new Date().getMonth()
-                                                            ? '#FFFFFF'
-                                                            : theme.text,
-                                                },
-                                            ]}
-                                        >
-                                            {day}
-                                        </Text>
-                                        {day === new Date().getDate() && (
-                                            <View
+                        {getDaysInMonth().map((day, index) => {
+                            const isToday = day === new Date().getDate() &&
+                                selectedDate.getMonth() === new Date().getMonth() &&
+                                selectedDate.getFullYear() === new Date().getFullYear();
+                            const hasConsultation = dayHasConsultations(day);
+                            
+                            return (
+                                <TouchableOpacity
+                                    key={index}
+                                    style={[
+                                        styles.dayCell,
+                                        isToday && {
+                                            backgroundColor: theme.primary,
+                                        },
+                                    ]}
+                                    disabled={!day}
+                                >
+                                    {day && (
+                                        <>
+                                            <Text
                                                 style={[
-                                                    styles.dayDot,
-                                                    { backgroundColor: '#FFFFFF' },
+                                                    styles.dayNumber,
+                                                    {
+                                                        color: isToday ? '#FFFFFF' : theme.text,
+                                                    },
                                                 ]}
-                                            />
-                                        )}
-                                    </>
-                                )}
-                            </TouchableOpacity>
-                        ))}
+                                            >
+                                                {day}
+                                            </Text>
+                                            {hasConsultation && (
+                                                <View
+                                                    style={[
+                                                        styles.dayDot,
+                                                        { backgroundColor: isToday ? '#FFFFFF' : theme.success },
+                                                    ]}
+                                                />
+                                            )}
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+                            );
+                        })}
                     </View>
                 </View>
 
-                {/* Today's Appointments */}
+                {/* Today's Consultations */}
+                <View style={styles.section}>
+                    <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                        Today's Consultations
+                    </Text>
+
+                    {getTodayConsultations().length > 0 ? (
+                        getTodayConsultations().map((consultation) => (
+                            <TouchableOpacity
+                                key={consultation.id}
+                                style={[
+                                    styles.appointmentCard,
+                                    {
+                                        backgroundColor: theme.card,
+                                        borderColor: theme.success,
+                                        borderWidth: 1,
+                                        ...theme.shadow,
+                                    },
+                                ]}
+                                onPress={() => openMeetingLink(consultation.meeting_link)}
+                            >
+                                <View style={styles.timeIndicator}>
+                                    <Ionicons name="time" size={20} color={theme.primary} />
+                                    <Text style={[styles.appointmentTime, { color: theme.text }]}>
+                                        {formatTime(consultation.scheduled_date, consultation.scheduled_time)}
+                                    </Text>
+                                </View>
+
+                                <View style={styles.appointmentInfo}>
+                                    <View style={styles.appointmentHeader}>
+                                        <Text style={[styles.appointmentPatient, { color: theme.text }]}>
+                                            {consultation.patient?.first_name} {consultation.patient?.last_name}
+                                        </Text>
+                                        <View
+                                            style={[
+                                                styles.statusBadge,
+                                                {
+                                                    backgroundColor: theme.success + '20',
+                                                },
+                                            ]}
+                                        >
+                                            <Text
+                                                style={[
+                                                    styles.statusText,
+                                                    { color: theme.success },
+                                                ]}
+                                            >
+                                                APPROVED
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.appointmentDetails}>
+                                        <Ionicons
+                                            name="videocam"
+                                            size={14}
+                                            color={theme.secondary}
+                                        />
+                                        <Text
+                                            style={[styles.appointmentType, { color: theme.secondary }]}
+                                        >
+                                            Google Meet
+                                        </Text>
+                                        <Text style={[styles.separator, { color: theme.secondary }]}>
+                                            •
+                                        </Text>
+                                        <Ionicons
+                                            name="hourglass-outline"
+                                            size={14}
+                                            color={theme.secondary}
+                                        />
+                                        <Text
+                                            style={[styles.appointmentDuration, { color: theme.secondary }]}
+                                        >
+                                            {consultation.duration_minutes} min
+                                        </Text>
+                                    </View>
+
+                                    {consultation.meeting_link && (
+                                        <View style={[styles.meetingLinkContainer, { backgroundColor: theme.primary + '10' }]}>
+                                            <Ionicons name="link" size={14} color={theme.primary} />
+                                            <Text 
+                                                style={[styles.meetingLinkText, { color: theme.primary }]}
+                                                numberOfLines={1}
+                                            >
+                                                {consultation.meeting_link}
+                                            </Text>
+                                        </View>
+                                    )}
+                                </View>
+
+                                <TouchableOpacity 
+                                    style={[styles.joinButton, { backgroundColor: theme.success }]}
+                                    onPress={() => openMeetingLink(consultation.meeting_link)}
+                                >
+                                    <Ionicons name="videocam" size={16} color="#FFFFFF" />
+                                </TouchableOpacity>
+                            </TouchableOpacity>
+                        ))
+                    ) : (
+                        <View
+                            style={[
+                                styles.emptyCard,
+                                { backgroundColor: theme.card, borderColor: theme.border }
+                            ]}
+                        >
+                            <Ionicons name="calendar-outline" size={40} color={theme.secondary} />
+                            <Text style={[styles.emptyStateText, { color: theme.secondary }]}>
+                                No consultations scheduled for today
+                            </Text>
+                        </View>
+                    )}
+                </View>
+
+                {/* Today's Appointments (Legacy) */}
+                {appointments.length > 0 && (
                 <View style={styles.section}>
                     <Text style={[styles.sectionTitle, { color: theme.text }]}>
                         Today's Appointments
                     </Text>
 
-                    {appointments.length > 0 ? (
-                        appointments.map((appointment) => (
+                    {appointments.map((appointment) => (
                             <TouchableOpacity
                                 key={appointment.id}
                                 style={[
@@ -344,19 +482,9 @@ export default function ScheduleScreen() {
                                 </TouchableOpacity>
                             </TouchableOpacity>
                         ))
-                    ) : (
-                        <View
-                            style={[
-                                { backgroundColor: theme.card },
-                                { alignItems: "center", justifyContent: "center" }
-                            ]}
-                        >
-                            <Text style={[styles.emptyStateText, { color: theme.secondary }]}>
-                                No appointments
-                            </Text>
-                        </View>
-                    )}
+                    }
                 </View>
+                )}
 
                 {/* Medication Reminders */}
                 <View style={styles.section}>
@@ -604,6 +732,33 @@ const styles = StyleSheet.create({
     },
     appointmentDuration: {
         fontSize: 13,
+    },
+    meetingLinkContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 8,
+        padding: 8,
+        borderRadius: 6,
+        gap: 6,
+    },
+    meetingLinkText: {
+        flex: 1,
+        fontSize: 12,
+    },
+    joinButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 8,
+    },
+    emptyCard: {
+        padding: 32,
+        borderRadius: 12,
+        borderWidth: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     moreButton: {
         padding: 4,
