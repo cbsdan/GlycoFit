@@ -13,6 +13,7 @@ import api from './services/api';
 import IntroductionScreen from './screens/IntroductionScreen';
 import LoginScreen from './screens/LoginScreen';
 import PatientChatScreen from './screens/PatientChatScreen';
+import PatientDetailScreen from './screens/PatientDetailScreen';
 import TabNavigator from './navigation/TabNavigator';
 
 const Stack = createNativeStackNavigator();
@@ -130,6 +131,13 @@ function AppContent() {
             <Stack.Screen 
               name="PatientChat" 
               component={PatientChatScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen 
+              name="PatientDetail" 
+              component={PatientDetailScreen}
               options={{
                 animation: 'slide_from_right',
               }}

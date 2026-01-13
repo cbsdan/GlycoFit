@@ -518,6 +518,63 @@ class HealthData:
             raise e
 
     @staticmethod
+    def get_latest_by_type(user_id, data_type):
+        """
+        Get the latest health data entry for a user and data type
+        
+        Args:
+            user_id: User's UID
+            data_type: Type of data (blood_glucose, heart_rate, steps, etc.)
+            
+        Returns:
+            Dict with value and timestamp or None
+        """
+        try:
+            db = get_db()
+            latest = db.health_data.find_one(
+                {'user_id': user_id, 'data_type': data_type},
+                sort=[('timestamp', -1)]
+            )
+            
+            if latest:
+                return {
+                    'value': latest.get('value'),
+                    'timestamp': latest.get('timestamp'),
+                    'unit': latest.get('unit')
+                }
+            return None
+        except Exception as e:
+            logging.error(f"Error getting latest {data_type}: {str(e)}")
+            return None
+
+    @staticmethod
+    def get_by_date_range(user_id, data_type, start_date, end_date):
+        """
+        Get health data entries within a date range
+        
+        Args:
+            user_id: User's UID
+            data_type: Type of data
+            start_date: Start datetime
+            end_date: End datetime
+            
+        Returns:
+            List of health data entries
+        """
+        try:
+            db = get_db()
+            cursor = db.health_data.find({
+                'user_id': user_id,
+                'data_type': data_type,
+                'timestamp': {'$gte': start_date, '$lte': end_date}
+            }).sort('timestamp', -1)
+            
+            return list(cursor)
+        except Exception as e:
+            logging.error(f"Error getting {data_type} by date range: {str(e)}")
+            return []
+
+    @staticmethod
     def get_latest_sync_timestamp(user_id, data_type):
         """
         Get the timestamp of the latest synced data for a user and data type

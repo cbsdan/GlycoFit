@@ -2,8 +2,11 @@ from flask import request, jsonify, g
 from models.user import User
 from models.physician import Physician
 from models.patient_physician import PatientPhysician
+from models.health_data import HealthData
+from models.prescription import Prescription
+from models.consultation import Consultation
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 def get_patient_requests():
@@ -195,7 +198,7 @@ def get_physician_patients():
         }), 500
 
 def get_patient_details(patient_id):
-    """Get details of a specific patient"""
+    """Get details of a specific patient with comprehensive health data"""
     try:
         current_user = g.current_user
         
@@ -231,13 +234,77 @@ def get_patient_details(patient_id):
         patient_data = patient.to_safe_dict()
         patient_data['relationship'] = relationship.to_safe_dict()
         
-        # TODO: Add comprehensive health data
+        # Get real health data
+        health_data = {}
+        try:
+            # Get latest glucose reading
+            latest_glucose = HealthData.get_latest_by_type(patient_id, 'blood_glucose')
+            if latest_glucose:
+                health_data['latest_glucose'] = latest_glucose.get('value')
+                health_data['glucose_timestamp'] = latest_glucose.get('timestamp')
+            
+            # Get latest heart rate
+            latest_hr = HealthData.get_latest_by_type(patient_id, 'heart_rate')
+            if latest_hr:
+                health_data['latest_heart_rate'] = latest_hr.get('value')
+            
+            # Get today's steps
+            today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            steps_data = HealthData.get_by_date_range(patient_id, 'steps', today_start, datetime.utcnow())
+            if steps_data:
+                health_data['today_steps'] = sum(s.get('value', 0) for s in steps_data)
+            
+            # Get today's calories burned
+            calories_data = HealthData.get_by_date_range(patient_id, 'active_calories', today_start, datetime.utcnow())
+            if calories_data:
+                health_data['today_calories'] = int(sum(c.get('value', 0) for c in calories_data))
+            
+            # Get average sleep (last 7 days)
+            week_ago = datetime.utcnow() - timedelta(days=7)
+            sleep_data = HealthData.get_by_date_range(patient_id, 'sleep', week_ago, datetime.utcnow())
+            if sleep_data:
+                avg_sleep = sum(s.get('value', 0) for s in sleep_data) / len(sleep_data)
+                health_data['avg_sleep_hours'] = avg_sleep
+            
+            # Get weight
+            latest_weight = HealthData.get_latest_by_type(patient_id, 'weight')
+            if latest_weight:
+                health_data['weight'] = latest_weight.get('value')
+                # Calculate BMI if height is available
+                if patient.height:
+                    height_m = patient.height / 100  # assuming height in cm
+                    health_data['bmi'] = latest_weight.get('value') / (height_m ** 2)
+                    
+        except Exception as health_error:
+            logging.warning(f"Error fetching health data for patient {patient_id}: {str(health_error)}")
+        
+        patient_data['health_data'] = health_data
+        
+        # Get health info summary
         patient_data['health_info'] = {
-            'glucose_level': 120,
-            'medications': 2,
+            'glucose_level': health_data.get('latest_glucose'),
+            'heart_rate': health_data.get('latest_heart_rate'),
             'last_visit': relationship.acceptance_date.isoformat() if relationship.acceptance_date else None,
-            'condition': 'Type 2 Diabetes'  # Should come from health records
+            'condition': getattr(patient, 'diabetic_type', None) or 'Type 2 Diabetes'
         }
+        
+        # Get active prescriptions
+        try:
+            prescriptions = Prescription.get_patient_prescriptions(patient_id, status='active')
+            patient_data['prescriptions'] = [p.to_safe_dict() for p in prescriptions] if prescriptions else []
+            patient_data['health_info']['medications'] = len(patient_data['prescriptions'])
+        except Exception as rx_error:
+            logging.warning(f"Error fetching prescriptions for patient {patient_id}: {str(rx_error)}")
+            patient_data['prescriptions'] = []
+            patient_data['health_info']['medications'] = 0
+        
+        # Get consultations history
+        try:
+            consultations = Consultation.get_patient_consultations(patient_id)
+            patient_data['consultations'] = [c.to_safe_dict() for c in consultations[:10]] if consultations else []
+        except Exception as consult_error:
+            logging.warning(f"Error fetching consultations for patient {patient_id}: {str(consult_error)}")
+            patient_data['consultations'] = []
         
         return jsonify({
             'success': True,
