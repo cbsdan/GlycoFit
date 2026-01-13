@@ -88,9 +88,22 @@ class StepTrackingService:
             metrics_data['active_days_7d'] = metrics_data['days_with_data_7d']
             metrics_data['active_days_30d'] = metrics_data['days_with_data_30d']
             
-            # Source tracking (all from user_activity = health_connect)
+            # ✅ FIXED: Source tracking - check actual source field in records
             if metrics_data['days_with_data_30d'] > 0:
-                metrics_data['dominant_source'] = 'health_connect'
+                # Count records by source
+                health_connect_count = sum(1 for r in records_30d if r.get('source') == 'health_connect')
+                phone_sensor_count = sum(1 for r in records_30d if r.get('source') == 'phone_sensor')
+                
+                # Determine dominant source
+                if health_connect_count > 0 and phone_sensor_count > 0:
+                    metrics_data['dominant_source'] = 'mixed'
+                elif health_connect_count > 0:
+                    metrics_data['dominant_source'] = 'health_connect'
+                elif phone_sensor_count > 0:
+                    metrics_data['dominant_source'] = 'phone_sensor'
+                else:
+                    # Fallback if source field is missing
+                    metrics_data['dominant_source'] = 'unknown'
             else:
                 metrics_data['dominant_source'] = 'baseline_only'
             

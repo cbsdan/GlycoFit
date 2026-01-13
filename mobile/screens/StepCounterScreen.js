@@ -11,6 +11,7 @@ import {
   Dimensions,
   AppState,
   Animated,
+  Alert,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
@@ -61,7 +62,6 @@ const StepCounterScreen = ({ navigation }) => {
     totalCalories: 0,
     exerciseSessions: [],
     dailyData: [],
-    hourlyData: [],
   });
   const [hasPermissions, setHasPermissions] = useState(false);
   const [streak, setStreak] = useState({ current: 0, longest: 0 });
@@ -162,24 +162,6 @@ const StepCounterScreen = ({ navigation }) => {
     }
   }, [unlockedAchievements, achievementAnimation, toast]);
 
-  // Generate hourly data
-  const generateHourlyData = useCallback((stepsData) => {
-    const hourlyMap = new Map();
-    
-    // Initialize all hours with 0
-    for (let i = 0; i < 24; i++) {
-      hourlyMap.set(i, 0);
-    }
-
-    if (stepsData && Array.isArray(stepsData)) {
-      stepsData.forEach(record => {
-        const hour = new Date(record.startTime || record.time).getHours();
-        hourlyMap.set(hour, hourlyMap.get(hour) + (Number(record?.count) || 0));
-      });
-    }
-
-    return Array.from(hourlyMap.entries()).map(([hour, steps]) => ({ hour, steps }));
-  }, []);
 
   // Predict end of day steps
   const predictedSteps = useMemo(() => {
@@ -269,23 +251,54 @@ const StepCounterScreen = ({ navigation }) => {
   }, []);
 
   // Group data by day (optimized)
-  const groupDataByDay = useCallback((stepsData, distanceData, caloriesData) => {
-    const dayMap = new Map();
+const groupDataByDay = useCallback((stepsData, distanceData, caloriesData, activeCaloriesData) => {
+  console.log('🔍 groupDataByDay inputs:', {
+    stepsCount: stepsData?.length || 0,
+    distanceCount: distanceData?.length || 0,
+    caloriesCount: caloriesData?.length || 0,
+    activeCaloriesCount: activeCaloriesData?.length || 0
+  });
 
-    const processRecord = (record, field, getValue) => {
-      const date = new Date(record.startTime || record.time).toDateString();
-      if (!dayMap.has(date)) {
-        dayMap.set(date, { date, steps: 0, distance: 0, calories: 0 });
-      }
-      dayMap.get(date)[field] += getValue(record);
-    };
+  const dayMap = new Map();
 
-    stepsData?.forEach(record => processRecord(record, 'steps', r => Number(r?.count || 0)));
-    distanceData?.forEach(record => processRecord(record, 'distance', r => Number(r?.distance?.inMeters || 0)));
-    caloriesData?.forEach(record => processRecord(record, 'calories', r => Number(r?.energy?.inKilocalories || 0)));
+  const processRecord = (record, field, getValue) => {
+    const date = new Date(record.startTime || record.time).toDateString();
+    if (!dayMap.has(date)) {
+      dayMap.set(date, { date, steps: 0, distance: 0, calories: 0, activeCalories: 0 });
+    }
+    const value = getValue(record);
+    dayMap.get(date)[field] += value;
+  };
 
-    return Array.from(dayMap.values()).sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, []);
+  // Process all data
+  stepsData?.forEach(record => processRecord(record, 'steps', r => Number(r?.count || 0)));
+  distanceData?.forEach(record => processRecord(record, 'distance', r => Number(r?.distance?.inMeters || 0)));
+  caloriesData?.forEach(record => processRecord(record, 'calories', r => Number(r?.energy?.inKilocalories || 0)));
+  activeCaloriesData?.forEach(record => processRecord(record, 'activeCalories', r => Number(r?.energy?.inKilocalories || 0)));
+
+  // ✅ FIX: Calculate missing distance/calories from steps
+  const result = Array.from(dayMap.values()).map(day => {
+    // If no distance data, calculate from steps
+    if (day.distance === 0 && day.steps > 0) {
+      day.distance = stepDetectionService.calculateDistance(day.steps);
+      console.log(`📊 Calculated distance for ${day.date}: ${day.distance}m from ${day.steps} steps`);
+    }
+    
+    // If no calorie data, calculate from steps
+    if (day.calories === 0 && day.steps > 0) {
+      day.calories = stepDetectionService.calculateCalories(day.steps);
+      day.activeCalories = day.calories * 0.7; // Approximate 70% as active calories
+      console.log(`📊 Calculated calories for ${day.date}: ${day.calories} kcal from ${day.steps} steps`);
+    }
+    
+    return day;
+  }).sort((a, b) => new Date(b.date) - new Date(a.date));
+  
+  console.log('📊 groupDataByDay result (first 2 days):', result.slice(0, 2));
+  
+  return result;
+}, []);
+
 
   // Update today's steps
   const updateTodaySteps = useCallback(async () => {
@@ -295,7 +308,7 @@ const StepCounterScreen = ({ navigation }) => {
       let totalSteps = 0;
       let distance = 0;
       let calories = 0;
-      let hourlyData = [];
+      
 
       if (hasPermissions) {
         const { startDate, endDate } = getDateRange('today');
@@ -304,7 +317,7 @@ const StepCounterScreen = ({ navigation }) => {
         totalSteps = calculateTotalSteps(healthData.steps);
         distance = calculateTotalDistance(healthData.distance);
         calories = calculateTotalCalories(healthData.totalCalories);
-        hourlyData = generateHourlyData(healthData.steps);
+        
 
         console.log(`📊 Health Connect: ${totalSteps} steps`);
       } else {
@@ -322,70 +335,98 @@ const StepCounterScreen = ({ navigation }) => {
           distance,
           activeCalories: calories * 0.7,
           totalCalories: calories,
-          hourlyData,
+          
         }));
         checkAchievements(totalSteps);
       }
     } catch (error) {
       console.error('❌ Update error:', error);
     }
-  }, [phoneSensorSteps, hasPermissions, getDateRange, calculateTotalSteps, calculateTotalDistance, calculateTotalCalories, generateHourlyData, checkAchievements]);
+  }, [phoneSensorSteps, hasPermissions, getDateRange, calculateTotalSteps, calculateTotalDistance, calculateTotalCalories, checkAchievements]);
 
-  // Load activity data for week/month
-  const loadActivityData = useCallback(async () => {
-    if (!isMountedRef.current) return;
+const loadActivityData = useCallback(async () => {
+  if (!isMountedRef.current) return;
 
-    try {
-      console.log(`📊 Loading data for: ${selectedPeriod}`);
+  try {
+    console.log(`📊 Loading data for: ${selectedPeriod}`);
 
-      if (!hasPermissions) {
-        setActivityData({
-          steps: phoneSensorSteps,
-          distance: stepDetectionService.calculateDistance(phoneSensorSteps),
-          activeCalories: stepDetectionService.calculateCalories(phoneSensorSteps) * 0.7,
-          totalCalories: stepDetectionService.calculateCalories(phoneSensorSteps),
-          exerciseSessions: [],
-          dailyData: [],
-          hourlyData: [],
-        });
-        return;
-      }
-
-      const { startDate, endDate } = getDateRange(selectedPeriod);
-      const data = await getActivityData(startDate, endDate);
-
-      const totalSteps = calculateTotalSteps(data.steps);
-      const totalDistance = calculateTotalDistance(data.distance);
-      const totalActiveCalories = calculateTotalCalories(data.activeCalories);
-      const totalCalories = calculateTotalCalories(data.totalCalories);
-
-      const dailyData = selectedPeriod !== 'today'
-        ? groupDataByDay(data.steps, data.distance, data.totalCalories)
-        : [];
-
-      const streakData = calculateStreak(dailyData);
-      setStreak(streakData);
-
-      if (isMountedRef.current) {
-        setActivityData({
-          steps: totalSteps,
-          distance: totalDistance,
-          activeCalories: totalActiveCalories,
-          totalCalories: totalCalories,
-          exerciseSessions: data.exerciseSessions || [],
-          dailyData,
-          hourlyData: [],
-        });
-      }
-
-      console.log('✅ Data loaded');
-    } catch (error) {
-      console.error('❌ Load error:', error);
-      toast.error('Failed to load activity data');
+    if (!hasPermissions) {
+      setActivityData({
+        steps: phoneSensorSteps,
+        distance: stepDetectionService.calculateDistance(phoneSensorSteps),
+        activeCalories: stepDetectionService.calculateCalories(phoneSensorSteps) * 0.7,
+        totalCalories: stepDetectionService.calculateCalories(phoneSensorSteps),
+        exerciseSessions: [],
+        dailyData: [],
+      });
+      return;
     }
-  }, [selectedPeriod, phoneSensorSteps, hasPermissions, toast, getDateRange, calculateTotalSteps, calculateTotalDistance, calculateTotalCalories, groupDataByDay, calculateStreak]);
 
-  // Sync to backend
+    const { startDate, endDate } = getDateRange(selectedPeriod);
+    const data = await getActivityData(startDate, endDate);
+
+    console.log('📊 Raw data from Health Connect:', {
+      steps: data.steps?.length || 0,
+      distance: data.distance?.length || 0,
+      totalCalories: data.totalCalories?.length || 0,
+      activeCalories: data.activeCalories?.length || 0
+    });
+
+    const totalSteps = calculateTotalSteps(data.steps);
+    let totalDistance = calculateTotalDistance(data.distance);
+    let totalActiveCalories = calculateTotalCalories(data.activeCalories);
+    let totalCalories = calculateTotalCalories(data.totalCalories);
+
+    // ✅ FIX: Calculate missing totals from steps
+    if (totalDistance === 0 && totalSteps > 0) {
+      totalDistance = stepDetectionService.calculateDistance(totalSteps);
+      console.log(`📊 Calculated total distance: ${totalDistance}m from ${totalSteps} steps`);
+    }
+
+    if (totalCalories === 0 && totalSteps > 0) {
+      totalCalories = stepDetectionService.calculateCalories(totalSteps);
+      totalActiveCalories = totalCalories * 0.7;
+      console.log(`📊 Calculated total calories: ${totalCalories} kcal from ${totalSteps} steps`);
+    }
+
+    console.log('📊 Totals calculated:', {
+      totalSteps,
+      totalDistance,
+      totalActiveCalories,
+      totalCalories
+    });
+
+    const dailyData = selectedPeriod !== 'today'
+      ? groupDataByDay(
+          data.steps,           
+          data.distance,        
+          data.totalCalories,   
+          data.activeCalories   
+        )
+      : [];
+
+    const streakData = calculateStreak(dailyData);
+    setStreak(streakData);
+
+    if (isMountedRef.current) {
+      setActivityData({
+        steps: totalSteps,
+        distance: totalDistance,
+        activeCalories: totalActiveCalories,
+        totalCalories: totalCalories,
+        exerciseSessions: data.exerciseSessions || [],
+        dailyData,
+      });
+    }
+
+    console.log('✅ Data loaded successfully');
+  } catch (error) {
+    console.error('❌ Load error:', error);
+    toast.error('Failed to load activity data');
+  }
+}, [selectedPeriod, phoneSensorSteps, hasPermissions, toast, getDateRange, calculateTotalSteps, calculateTotalDistance, calculateTotalCalories, groupDataByDay, calculateStreak]);
+
+// Sync to backend
   const syncActivityToBackend = useCallback(async (silent = false) => {
     if (isSyncing || selectedPeriod !== 'today' || !isMountedRef.current) {
       return;
@@ -544,19 +585,23 @@ const checkBaseline = async () => {
   try {
     console.log('🔍 Checking for baseline...');
     
-    // Always load summary first
+    // Always load summary first with proper error handling
     try {
-      const summaryData = await getStepSummary(30);
-      console.log('📊 Summary loaded');
+      const summaryResponse = await getStepSummary(30);
+      console.log('📊 Raw summary response:', JSON.stringify(summaryResponse, null, 2));
+      
+      // Handle different response structures
+      const summaryData = summaryResponse?.data || summaryResponse;
+      console.log('📊 Summary data:', summaryData);
       setSummary(summaryData);
     } catch (summaryError) {
       console.error('❌ Failed to load summary:', summaryError);
       setSummary(null);
     }
 
-    // Then check baseline - USE API FUNCTION HERE
+    // Then check baseline
     try {
-      const response = await api.checkStepBaseline(); // ← Changed from checkStepBaseline() to api.checkStepBaseline()
+      const response = await api.checkStepBaseline();
       const exists = response?.has_baseline || false;
       
       console.log('📊 Baseline check result:', { exists });
@@ -565,8 +610,11 @@ const checkBaseline = async () => {
         const baselineResponse = await getStepBaseline();
         console.log('📊 Baseline data fetched:', baselineResponse);
         
+        // Extract baseline from response
+        const baseline = baselineResponse?.data || baselineResponse;
+        
         setHasBaseline(true);
-        setBaselineData(baselineResponse);
+        setBaselineData(baseline);
       } else {
         setHasBaseline(false);
         setBaselineData(null);
@@ -734,6 +782,69 @@ const checkBaseline = async () => {
     return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   }, []);
 
+  // Add this new function to show day details (add after formatDate function, around line 750):
+const showDayDetails = useCallback((day) => {
+  const date = new Date(day.date);
+  const dateStr = date.toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+  
+  // Calculate risk level
+  let riskLevel = '';
+  let riskColor = '';
+  let riskMessage = '';
+  let motivation = '';
+  
+  if (day.steps >= 10000) {
+    riskLevel = '✅ Excellent';
+    riskColor = 'success';
+    riskMessage = 'You\'re significantly reducing your diabetes risk!';
+    motivation = '🎉 Amazing work! You\'re in the optimal activity zone for metabolic health. Keep this up!';
+  } else if (day.steps >= 7000) {
+    riskLevel = '✓ Good';
+    riskColor = 'info';
+    riskMessage = 'You\'re on track for good metabolic health.';
+    motivation = '💪 Great job! You\'re meeting the threshold for diabetes risk reduction. Try to reach 10,000 for maximum benefits!';
+  } else if (day.steps >= 5000) {
+    riskLevel = '⚠️ Moderate Risk';
+    riskColor = 'warning';
+    riskMessage = 'Your activity level could be better for metabolic health.';
+    motivation = '👟 You\'re halfway there! Adding just 2,000 more steps (about 20 minutes of walking) would put you in the protective zone.';
+  } else if (day.steps >= 2500) {
+    riskLevel = '⚠️ High Risk';
+    riskColor = 'warning';
+    riskMessage = 'Low activity increases diabetes and metabolic syndrome risk.';
+    motivation = '🚶 Every step counts! Try breaking up long sitting periods. Even 10-minute walks after meals help control blood sugar.';
+  } else {
+    riskLevel = '❌ Very High Risk';
+    riskColor = 'danger';
+    riskMessage = 'Sedentary lifestyle significantly increases diabetes risk.';
+    motivation = '⚠️ Start small! Set a goal of 3,000 steps tomorrow. Park farther away, take stairs, or walk while on phone calls.';
+  }
+  
+  // Build the message
+  const goalProgress = Math.round((day.steps / DAILY_GOAL) * 100);
+  
+  let message = `📅 ${dateStr}\n\n`;
+  message += `Steps: ${day.steps.toLocaleString()}\n`;
+  message += `Distance: ${formatDistance(day.distance)}\n`;
+  message += `Calories: ${Math.round(day.activeCalories || day.calories || 0)} kcal\n`;
+  message += `Goal Progress: ${goalProgress}%\n\n`;
+  message += `🎯 Risk Assessment\n`;
+  message += `${riskLevel}\n\n`;
+  message += `${riskMessage}\n\n`;
+  message += `💡 Motivation\n`;
+  message += `${motivation}`;
+  
+  Alert.alert(
+    '📊 Daily Activity Details',
+    message,
+    [{ text: 'Got it!', style: 'default' }]
+  );
+}, [formatDistance]);
+
   // ADD THIS NEW FUNCTION
 const getDataSourceLabel = (source) => {
   switch (source) {
@@ -822,53 +933,90 @@ const getDataSourceLabel = (source) => {
     );
   }, [activityData.steps, unlockedAchievements, selectedPeriod, colors]);
 
-  // ADD ALL THESE NEW RENDER FUNCTIONS HERE
-
-// Data Source Card
-const renderDataSource = useCallback(() => {
-  const metrics = summary?.data?.metrics || summary?.metrics || null;
-  
-  if (!metrics?.dominant_source) {
-    console.log('⚠️ No dominant_source in metrics');
-    return null;
-  }
-
-  const sourceInfo = getDataSourceLabel(metrics.dominant_source);
-
-  return (
-    <View style={styles.dataSourceCard}>
-      <View style={[styles.dataSourceIcon, { backgroundColor: `${sourceInfo.color}20` }]}>
-        <Icon name={sourceInfo.icon} size={20} color={sourceInfo.color} />
-      </View>
-      <View style={styles.dataSourceInfo}>
-        <Text style={styles.dataSourceLabel}>Data Source: {sourceInfo.label}</Text>
-        <Text style={styles.dataSourceSubtext}>
-          {metrics.dominant_source === 'health_connect'
-            ? 'Automatically synced from Health Connect'
-            : metrics.dominant_source === 'mixed'
-              ? 'Combining phone sensor and Health Connect'
-              : 'Phone sensor only'}
-        </Text>
-      </View>
-    </View>
-  );
-}, [summary, colors]);
-
-// Metrics Grid
+// ALSO UPDATE renderMetricsGrid (around line 800):
 const renderMetricsGrid = useCallback(() => {
-  // Try multiple possible data paths
-  const metrics = summary?.data?.metrics || summary?.metrics || null;
+  console.log('🔍 renderMetricsGrid - Full summary:', JSON.stringify(summary, null, 2));
   
-  console.log('📊 Metrics check:', {
-    hasSummary: !!summary,
-    summaryKeys: summary ? Object.keys(summary) : [],
-    metrics: metrics,
-  });
+  // ✅ CORRECTED: summary already IS the data object
+  const metrics = summary?.metrics || null;
+  
+  console.log('📊 Extracted metrics:', metrics);
 
   if (!metrics) {
     console.log('⚠️ No metrics found in summary');
     return null;
   }
+
+  const showMetricDetail = (metricType, value, title) => {
+    let message = '';
+    let recommendation = '';
+    
+    switch (metricType) {
+      case 'avg_7d':
+        message = `Your 7-day average is ${Math.round(value).toLocaleString()} steps per day.\n\n`;
+        if (value >= 10000) {
+          message += '🎉 Excellent! You\'re meeting the recommended daily target.';
+          recommendation = 'Keep up the great work! Consistency is key for long-term health.';
+        } else if (value >= 7000) {
+          message += '👍 Good! You\'re on track for metabolic health.';
+          recommendation = 'Try to reach 10,000 steps daily for optimal benefits.';
+        } else if (value >= 5000) {
+          message += '💪 You\'re building a foundation.';
+          recommendation = 'Gradually increase by 500-1,000 steps per week to reach 7,000+.';
+        } else {
+          message += '⚠️ Low activity may increase diabetes risk.';
+          recommendation = 'Start with small goals: Add 1,000 steps daily this week. Try walking during phone calls or taking stairs.';
+        }
+        break;
+        
+      case 'avg_30d':
+        message = `Your 30-day average is ${Math.round(value).toLocaleString()} steps per day.\n\n`;
+        const change7to30 = ((metrics.avg_steps_7d - value) / value) * 100;
+        if (change7to30 > 5) {
+          message += '📈 You\'re trending upward! Your recent week shows improvement.';
+        } else if (change7to30 < -5) {
+          message += '📉 Recent activity has decreased. Let\'s refocus!';
+        } else {
+          message += '📊 Your activity level is steady.';
+        }
+        break;
+        
+      case 'active_days':
+        message = `You were active on ${value} out of 30 days.\n\n`;
+        const consistency = (value / 30) * 100;
+        if (consistency >= 80) {
+          message += '🔥 Amazing consistency!';
+          recommendation = 'Your regular activity is protecting your metabolic health.';
+        } else if (consistency >= 50) {
+          message += '✓ Moderate consistency.';
+          recommendation = 'Aim for 25+ active days per month (80%+) for best results.';
+        } else {
+          message += '⚠️ Low consistency detected.';
+          recommendation = 'Try setting daily movement reminders. Even 10-minute walks count!';
+        }
+        break;
+        
+      case 'goal_days':
+        message = `You met your daily goal on ${value} days this month.\n\n`;
+        if (value >= 20) {
+          message += '🏆 Outstanding! You\'re crushing your goals!';
+          recommendation = 'Consider increasing your daily target by 1,000 steps.';
+        } else if (value >= 10) {
+          message += '👏 Good progress!';
+          recommendation = 'Try to reach your goal 20+ days per month.';
+        } else {
+          message += '💪 Room for improvement.';
+          recommendation = 'Focus on hitting your goal at least 10 days this month. Build the habit gradually.';
+        }
+        break;
+    }
+    
+    Alert.alert(
+      title,
+      message + (recommendation ? '\n\n💡 Tip: ' + recommendation : ''),
+      [{ text: 'Got it', style: 'default' }]
+    );
+  };
 
   return (
     <View style={styles.metricsGrid}>
@@ -959,47 +1107,6 @@ const renderEducationCard = () => (
   </View>
 );
 
-  // Render hourly chart
-  const renderHourlyChart = useCallback(() => {
-    if (selectedPeriod !== 'today' || activityData.hourlyData.length === 0) return null;
-
-    const maxHourlySteps = Math.max(...activityData.hourlyData.map(h => h.steps), 100);
-    const currentHour = new Date().getHours();
-
-    return (
-      <View style={styles.chartCard}>
-        <Text style={styles.chartTitle}>Hourly Activity</Text>
-        <View style={styles.chartContainer}>
-          <View style={styles.chartBars}>
-            {activityData.hourlyData.map((hourData, index) => {
-              const height = (hourData.steps / maxHourlySteps) * 120;
-              const isCurrent = hourData.hour === currentHour;
-              return (
-                <View
-                  key={`hour-${index}`}
-                  style={[
-                    styles.hourlyBar,
-                    {
-                      height: Math.max(height, 2),
-                      opacity: hourData.steps > 0 ? 0.8 : 0.3,
-                      backgroundColor: isCurrent ? colors.primary : colors.primary + '80',
-                    },
-                  ]}
-                />
-              );
-            })}
-          </View>
-          <View style={styles.chartLabels}>
-            {[0, 6, 12, 18, 23].map(hour => (
-              <Text key={`hour-label-${hour}`} style={styles.chartLabel}>
-                {hour}h
-              </Text>
-            ))}
-          </View>
-        </View>
-      </View>
-    );
-  }, [selectedPeriod, activityData.hourlyData, colors]);
 
   // Render health insights
   const renderHealthInsights = useCallback(() => {
@@ -1065,122 +1172,122 @@ const renderEducationCard = () => (
   }, [selectedPeriod, hasPermissions, activityData.steps, phoneSensorSteps, colors.primary]);
 
   // Render chart
-  const renderChart = useCallback(() => {
-    if (selectedPeriod === 'today' || activityData.dailyData.length === 0) return null;
+ const renderChart = useCallback(() => {
+  if (selectedPeriod === 'today' || activityData.dailyData.length === 0) return null;
 
-    const displayData = activityData.dailyData.slice(0, selectedPeriod === 'week' ? 7 : 14);
+  const displayData = activityData.dailyData.slice(0, selectedPeriod === 'week' ? 7 : 14);
 
-    return (
-      <View style={styles.chartCard}>
+  return (
+    <View style={styles.chartCard}>
+      <View style={styles.chartHeader}>
         <Text style={styles.chartTitle}>Steps Overview</Text>
-        <View style={styles.chartContainer}>
-          <View style={styles.chartBars}>
-            {displayData.map((day, index) => {
-              const height = (day.steps / maxSteps) * 160;
-              return (
+        <Text style={styles.chartSubtitle}>Tap any bar for details</Text>
+      </View>
+      <View style={styles.chartContainer}>
+        <View style={styles.chartBars}>
+          {displayData.map((day, index) => {
+            const height = (day.steps / maxSteps) * 160;
+            const barColor = day.steps >= DAILY_GOAL ? '#27AE60' : 
+                           day.steps >= 7000 ? '#F39C12' : 
+                           day.steps >= 5000 ? '#FF9800' : 
+                           '#E74C3C';
+            
+            return (
+              <TouchableOpacity
+                key={`bar-${index}`}
+                style={styles.chartBarContainer}
+                onPress={() => showDayDetails(day)}
+                activeOpacity={0.7}
+              >
                 <View
-                  key={`bar-${index}`}
                   style={[
                     styles.chartBar,
                     {
                       height: Math.max(height, 2),
+                      backgroundColor: barColor,
                       opacity: day.steps > 0 ? 0.8 : 0.3,
                     },
                   ]}
                 />
-              );
-            })}
-          </View>
-          <View style={styles.chartLabels}>
-            {displayData.map((day, index) => (
-              <Text key={`label-${index}`} style={styles.chartLabel}>
-                {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' })[0]}
-              </Text>
-            ))}
-          </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <View style={styles.chartLabels}>
+          {displayData.map((day, index) => (
+            <Text key={`label-${index}`} style={styles.chartLabel}>
+              {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' })[0]}
+            </Text>
+          ))}
         </View>
       </View>
-    );
-  }, [selectedPeriod, activityData.dailyData, maxSteps]);
+      
+      {/* Color Legend */}
+      <View style={styles.chartLegend}>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: '#27AE60' }]} />
+          <Text style={styles.legendText}>10,000+</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: '#F39C12' }]} />
+          <Text style={styles.legendText}>7,000+</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: '#FF9800' }]} />
+          <Text style={styles.legendText}>5,000+</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: '#E74C3C' }]} />
+          <Text style={styles.legendText}>&lt;5,000</Text>
+        </View>
+      </View>
+    </View>
+  );
+}, [selectedPeriod, activityData.dailyData, maxSteps, showDayDetails, formatDistance]);
+
 
   // Render daily breakdown
-  const renderDailyBreakdown = useCallback(() => {
-    if (selectedPeriod === 'today' || activityData.dailyData.length === 0) return null;
+const renderDailyBreakdown = useCallback(() => {
+  if (selectedPeriod === 'today' || activityData.dailyData.length === 0) return null;
 
-    return (
-      <View style={styles.dailyBreakdownSection}>
-        <Text style={styles.sectionTitle}>Daily Breakdown</Text>
-        {activityData.dailyData.slice(0, 7).map((day, index) => (
-          <View key={`day-${index}`} style={styles.dailyCard}>
-            <View style={styles.dailyCardHeader}>
-              <Text style={styles.dailyDate}>{formatDate(day.date)}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                {day.steps >= DAILY_GOAL && (
-                  <Icon name="check-circle" size={20} color="#27AE60" style={{ marginRight: 8 }} />
-                )}
-                <Text style={styles.dailySteps}>{day.steps.toLocaleString()} steps</Text>
-              </View>
-            </View>
-            <View style={styles.dailyMetrics}>
-              <View style={styles.dailyMetric}>
-                <Text style={styles.dailyMetricValue}>{formatDistance(day.distance)}</Text>
-                <Text style={styles.dailyMetricLabel}>Distance</Text>
-              </View>
-              <View style={styles.dailyMetric}>
-                <Text style={styles.dailyMetricValue}>{Math.round(day.calories)}</Text>
-                <Text style={styles.dailyMetricLabel}>Calories</Text>
-              </View>
-              <View style={styles.dailyMetric}>
-                <Text style={styles.dailyMetricValue}>
-                  {Math.round((day.steps / DAILY_GOAL) * 100)}%
-                </Text>
-                <Text style={styles.dailyMetricLabel}>Goal</Text>
-              </View>
+  return (
+    <View style={styles.dailyBreakdownSection}>
+      <Text style={styles.sectionTitle}>Daily Breakdown</Text>
+      {activityData.dailyData.slice(0, 7).map((day, index) => (
+        <View key={`day-${index}`} style={styles.dailyCard}>
+          <View style={styles.dailyCardHeader}>
+            <Text style={styles.dailyDate}>{formatDate(day.date)}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {day.steps >= DAILY_GOAL && (
+                <Icon name="check-circle" size={20} color="#27AE60" style={{ marginRight: 8 }} />
+              )}
+              <Text style={styles.dailySteps}>{day.steps.toLocaleString()} steps</Text>
             </View>
           </View>
-        ))}
-      </View>
-    );
-  }, [selectedPeriod, activityData.dailyData, formatDate, formatDistance]);
-
-  // Add baseline button to header
-  const renderBaselineButton = () => (
-    <TouchableOpacity
-      style={styles.settingsButton}
-      onPress={async () => {
-        try {
-          console.log('🔧 Baseline button pressed');
-          console.log('📊 Current baseline state:', { hasBaseline, baselineData });
-          
-          // Always fetch latest baseline before navigating
-          const exists = await checkBaseline();
-          
-          if (exists && baselineData) {
-            // Edit mode - pass baseline data
-            console.log('✏️ Navigating to edit with baseline:', baselineData);
-            navigation.navigate('StepBaseline', { 
-              baseline: baselineData,
-              isEdit: true 
-            });
-          } else {
-            // Create mode
-            console.log('➕ Navigating to create new baseline');
-            navigation.navigate('StepBaseline', { 
-              isEdit: false 
-            });
-          }
-        } catch (error) {
-          console.error('❌ Error in baseline button:', error);
-          // Safe fallback - let the screen handle it
-          navigation.navigate('StepBaseline');
-        }
-      }}
-      accessibilityRole="button"
-      accessibilityLabel="Edit activity baseline settings"
-    >
-      <Icon name="account-edit" size={24} color={colors.text} />
-    </TouchableOpacity>
+          <View style={styles.dailyMetrics}>
+            <View style={styles.dailyMetric}>
+              <Text style={styles.dailyMetricValue}>{formatDistance(day.distance)}</Text>
+              <Text style={styles.dailyMetricLabel}>Distance</Text>
+            </View>
+            <View style={styles.dailyMetric}>
+              <Text style={styles.dailyMetricValue}>
+                {Math.round(day.activeCalories || day.calories || 0)}
+              </Text>
+              <Text style={styles.dailyMetricLabel}>Active Cal</Text>
+            </View>
+            <View style={styles.dailyMetric}>
+              <Text style={styles.dailyMetricValue}>
+                {Math.round((day.steps / DAILY_GOAL) * 100)}%
+              </Text>
+              <Text style={styles.dailyMetricLabel}>Goal</Text>
+            </View>
+          </View>
+        </View>
+      ))}
+    </View>
   );
+}, [selectedPeriod, activityData.dailyData, formatDate, formatDistance]);
+
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
@@ -1318,14 +1425,82 @@ educationBullet: {
   marginLeft: 8,
   lineHeight: 20,
 },
-    chartCard: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border },
-    chartTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 16 },
-    chartContainer: { height: 200 },
-    chartBars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 160, paddingHorizontal: 8 },
-    chartBar: { flex: 1, marginHorizontal: 2, backgroundColor: colors.primary, borderRadius: 4, minHeight: 2, opacity: 0.8 },
-    hourlyBar: { flex: 1, marginHorizontal: 1, borderRadius: 2, minHeight: 2 },
-    chartLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, paddingHorizontal: 8 },
-    chartLabel: { fontSize: 10, color: colors.secondary, flex: 1, textAlign: 'center' },
+     chartCard: { 
+    backgroundColor: colors.card, 
+    borderRadius: 16, 
+    padding: 16, 
+    marginBottom: 16, 
+    borderWidth: 1, 
+    borderColor: colors.border 
+  },
+  chartHeader: { 
+    marginBottom: 16 
+  },
+  chartTitle: { 
+    fontSize: 18, 
+    fontWeight: '700', 
+    color: colors.text 
+  },
+  chartSubtitle: { 
+    fontSize: 12, 
+    color: colors.secondary, 
+    marginTop: 4 
+  },
+  chartContainer: { 
+    height: 200 
+  },
+  chartBars: { 
+    flexDirection: 'row', 
+    alignItems: 'flex-end', 
+    justifyContent: 'space-between', 
+    height: 160, 
+    paddingHorizontal: 8 
+  },
+  chartBarContainer: { 
+    flex: 1, 
+    marginHorizontal: 2, 
+    alignItems: 'center', 
+    justifyContent: 'flex-end' 
+  },
+  chartBar: { 
+    width: '100%', 
+    borderRadius: 4, 
+    minHeight: 2 
+  },
+  chartLabels: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    marginTop: 8, 
+    paddingHorizontal: 8 
+  },
+  chartLabel: { 
+    fontSize: 10, 
+    color: colors.secondary, 
+    flex: 1, 
+    textAlign: 'center' 
+  },
+    chartLegend: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-around', 
+    marginTop: 16, 
+    paddingTop: 12, 
+    borderTopWidth: 1, 
+    borderTopColor: colors.border 
+  },
+  legendItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center' 
+  },
+  legendDot: { 
+    width: 8, 
+    height: 8, 
+    borderRadius: 4, 
+    marginRight: 4 
+  },
+  legendText: { 
+    fontSize: 11, 
+    color: colors.secondary 
+  },
     dailyBreakdownSection: { marginTop: 16 },
     sectionTitle: { fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 16 },
     dailyCard: { backgroundColor: colors.card, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: colors.border },
@@ -1383,7 +1558,7 @@ educationBullet: {
                 <Icon name="cog" size={24} color={colors.text} />
               </TouchableOpacity>
             )}
-            {renderBaselineButton()}
+           
           </View>
         </View>
 
@@ -1439,13 +1614,13 @@ educationBullet: {
 
         {/* ADD THESE NEW COMPONENTS HERE */}
         {renderMetricsGrid()}
-        {renderDataSource()}
         {renderRetakeBaseline()}
+        {renderEducationCard()}
+
 
         {renderStreakBadge()}
         {renderHealthInsights()}
         {renderAchievements()}
-        {renderHourlyChart()}
         {renderChart()}
 
         
