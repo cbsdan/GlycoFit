@@ -27,6 +27,7 @@ from routes.smoking_intake_routes import smoking_tracking_bp
 from routes.alcohol_intake_routes import alcohol_intake_bp
 from routes.sleep_tracking_routes import sleep_tracking_bp
 from routes.food_risk_routes import food_risk_bp
+from routes.step_tracking_routes import step_tracking_bp
 from controllers.chat_controller import register_socket_events
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
@@ -58,7 +59,7 @@ def create_app():
     app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max file size
     app.config['UPLOAD_FOLDER'] = 'uploads'
     
-    # CORS Configuration - Allow your mobile app and any localhost for development
+    # CORS Configuration
     CORS(app, origins=[
         "exp://192.168.*.*:*",  # Expo development
         "http://localhost:*",   # Local development
@@ -169,7 +170,6 @@ def create_app():
     
     @app.after_request
     def after_request(response):
-        # Log response details
         logging.info(f"Response Status: {response.status_code}")
         if response.status_code >= 400:
             logging.error(f"Error Response: {response.get_data(as_text=True)}")
@@ -190,6 +190,7 @@ def create_app():
     app.register_blueprint(smoking_tracking_bp, url_prefix='/api/v1/smoking-tracking')
     app.register_blueprint(alcohol_intake_bp, url_prefix='/api/v1/alcohol-intake')
     app.register_blueprint(sleep_tracking_bp, url_prefix='/api/v1/sleep-tracking')
+    app.register_blueprint(step_tracking_bp, url_prefix='/api/v1/step-tracking')  # ← ADD THIS
     app.register_blueprint(food_risk_bp, url_prefix='/api/v1/food-risk')
 
     # Health check endpoint

@@ -33,6 +33,8 @@ import AlcoholBaselineScreen from './screens/AlcoholBaselineScreen';
 import AlcoholDailyLogScreen from './screens/AlcoholDailyLogScreen';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingScreen from './components/LoadingScreen';
+import StepCounterScreen from './screens/StepCounterScreen';
+import StepBaselineScreen from './screens/StepBaselineScreen';
 import WelcomeScreen from './screens/WelcomeScreen';
 import DisclaimerScreen from './screens/DisclaimerScreen';
 import AboutScreen from './screens/AboutScreen';
@@ -356,6 +358,30 @@ function AppNavigator() {
               {(props) => (
                 <UniversalScreenWrapper>
                   <TabNavigator {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="StepCounter" 
+              options={{ 
+                headerShown: false
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <StepCounterScreen {...props} />
+                </UniversalScreenWrapper>
+              )}
+            </Stack.Screen>
+            <Stack.Screen 
+              name="StepBaseline" 
+              options={{ 
+                headerShown: false
+              }} 
+            >
+              {(props) => (
+                <UniversalScreenWrapper>
+                  <StepBaselineScreen {...props} />
                 </UniversalScreenWrapper>
               )}
             </Stack.Screen>
