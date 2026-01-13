@@ -22,7 +22,9 @@ import {
   openHealthConnectSettingsPage,
 } from '../services/healthConnectService';
 import stepDetectionService from '../services/stepDetectionService';
-import api from '../services/api';
+import { getStepBaseline, getStepSummary,checkStepBaseline } from '../services/api';
+import api from '../services/api'; // ADD THIS LINE
+import { useFocusEffect } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
@@ -64,6 +66,9 @@ const StepCounterScreen = ({ navigation }) => {
   const [hasPermissions, setHasPermissions] = useState(false);
   const [streak, setStreak] = useState({ current: 0, longest: 0 });
   const [unlockedAchievements, setUnlockedAchievements] = useState([]);
+  const [hasBaseline, setHasBaseline] = useState(false);
+  const [baselineData, setBaselineData] = useState(null);
+  const [summary, setSummary] = useState(null); // ADD THIS LINE
 
   // Refs
   const syncIntervalRef = useRef(null);
@@ -528,6 +533,73 @@ const StepCounterScreen = ({ navigation }) => {
     await syncActivityToBackend(false);
   }, [selectedPeriod, updateTodaySteps, syncActivityToBackend, toast]);
 
+  // Check for baseline on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      checkBaseline();
+    }, [])
+  );
+
+const checkBaseline = async () => {
+  try {
+    console.log('🔍 Checking for baseline...');
+    
+    // Always load summary first
+    try {
+      const summaryData = await getStepSummary(30);
+      console.log('📊 Summary loaded');
+      setSummary(summaryData);
+    } catch (summaryError) {
+      console.error('❌ Failed to load summary:', summaryError);
+      setSummary(null);
+    }
+
+    // Then check baseline - USE API FUNCTION HERE
+    try {
+      const response = await api.checkStepBaseline(); // ← Changed from checkStepBaseline() to api.checkStepBaseline()
+      const exists = response?.has_baseline || false;
+      
+      console.log('📊 Baseline check result:', { exists });
+      
+      if (exists) {
+        const baselineResponse = await getStepBaseline();
+        console.log('📊 Baseline data fetched:', baselineResponse);
+        
+        setHasBaseline(true);
+        setBaselineData(baselineResponse);
+      } else {
+        setHasBaseline(false);
+        setBaselineData(null);
+        
+        Alert.alert(
+          'Complete Activity Baseline',
+          'Before tracking your steps, please complete a quick baseline assessment to establish your typical activity patterns.',
+          [
+            {
+              text: 'Start Assessment',
+              onPress: () => navigation.navigate('StepBaseline', { isEdit: false }),
+            },
+          ],
+          { cancelable: false }
+        );
+      }
+      
+      return exists;
+    } catch (baselineError) {
+      console.log('⚠️ No baseline found:', baselineError);
+      setHasBaseline(false);
+      setBaselineData(null);
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ Error in checkBaseline:', error);
+    setHasBaseline(false);
+    setBaselineData(null);
+    setSummary(null);
+    return false;
+  }
+};
+
   // Initialize on mount
   useEffect(() => {
     let unsubscribe;
@@ -555,19 +627,17 @@ const StepCounterScreen = ({ navigation }) => {
   //   }
   // }, [selectedPeriod, hasPermissions, isLoading]);
 
-  // ...existing code...
-
-// Reload data when period changes
-useEffect(() => {
-  if (!isLoading) {
-    if (selectedPeriod === 'today') {
-      updateTodaySteps();
-    } else {
-      // Call loadActivityData for both week and month
-      loadActivityData();
+  // Reload data when period changes
+  useEffect(() => {
+    if (!isLoading) {
+      if (selectedPeriod === 'today') {
+        updateTodaySteps();
+      } else {
+        // Call loadActivityData for both week and month
+        loadActivityData();
+      }
     }
-  }
-}, [selectedPeriod, isLoading, updateTodaySteps, loadActivityData]);
+  }, [selectedPeriod, isLoading, updateTodaySteps, loadActivityData]);
 
   // Auto-sync based on step milestones
   useEffect(() => {
@@ -664,6 +734,20 @@ useEffect(() => {
     return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   }, []);
 
+  // ADD THIS NEW FUNCTION
+const getDataSourceLabel = (source) => {
+  switch (source) {
+    case 'health_connect':
+      return { label: 'Health Connect', icon: 'google-fit', color: '#4CAF50' };
+    case 'phone_sensor':
+      return { label: 'Phone Sensor', icon: 'cellphone', color: colors.primary };
+    case 'mixed':
+      return { label: 'Mixed Sources', icon: 'source-merge', color: '#FF9800' };
+    default:
+      return { label: 'Unknown', icon: 'help-circle', color: colors.secondary };
+  }
+};
+
   // Render streak badge
   const renderStreakBadge = useCallback(() => {
     if (streak.current === 0) return null;
@@ -737,6 +821,143 @@ useEffect(() => {
       </View>
     );
   }, [activityData.steps, unlockedAchievements, selectedPeriod, colors]);
+
+  // ADD ALL THESE NEW RENDER FUNCTIONS HERE
+
+// Data Source Card
+const renderDataSource = useCallback(() => {
+  const metrics = summary?.data?.metrics || summary?.metrics || null;
+  
+  if (!metrics?.dominant_source) {
+    console.log('⚠️ No dominant_source in metrics');
+    return null;
+  }
+
+  const sourceInfo = getDataSourceLabel(metrics.dominant_source);
+
+  return (
+    <View style={styles.dataSourceCard}>
+      <View style={[styles.dataSourceIcon, { backgroundColor: `${sourceInfo.color}20` }]}>
+        <Icon name={sourceInfo.icon} size={20} color={sourceInfo.color} />
+      </View>
+      <View style={styles.dataSourceInfo}>
+        <Text style={styles.dataSourceLabel}>Data Source: {sourceInfo.label}</Text>
+        <Text style={styles.dataSourceSubtext}>
+          {metrics.dominant_source === 'health_connect'
+            ? 'Automatically synced from Health Connect'
+            : metrics.dominant_source === 'mixed'
+              ? 'Combining phone sensor and Health Connect'
+              : 'Phone sensor only'}
+        </Text>
+      </View>
+    </View>
+  );
+}, [summary, colors]);
+
+// Metrics Grid
+const renderMetricsGrid = useCallback(() => {
+  // Try multiple possible data paths
+  const metrics = summary?.data?.metrics || summary?.metrics || null;
+  
+  console.log('📊 Metrics check:', {
+    hasSummary: !!summary,
+    summaryKeys: summary ? Object.keys(summary) : [],
+    metrics: metrics,
+  });
+
+  if (!metrics) {
+    console.log('⚠️ No metrics found in summary');
+    return null;
+  }
+
+  return (
+    <View style={styles.metricsGrid}>
+      <View style={styles.metricCard}>
+        <Icon name="walk" size={24} color={colors.primary} style={styles.metricIcon} />
+        <Text style={styles.metricValue}>
+          {Math.round(metrics.avg_steps_7d || 0).toLocaleString()}
+        </Text>
+        <Text style={styles.metricLabel}>Avg Steps (7 Days)</Text>
+      </View>
+
+      <View style={styles.metricCard}>
+        <Text style={styles.metricValue}>
+          {Math.round(metrics.avg_steps_30d || 0).toLocaleString()}
+        </Text>
+        <Text style={styles.metricLabel}>Avg Steps (30 Days)</Text>
+      </View>
+
+      <View style={styles.metricCard}>
+        <Icon name="calendar-check" size={24} color="#27AE60" style={styles.metricIcon} />
+        <Text style={styles.metricValue}>
+          {metrics.active_days_30d || 0}
+        </Text>
+        <Text style={styles.metricLabel}>Active Days (30d)</Text>
+      </View>
+
+      <View style={styles.metricCard}>
+        <Icon name="trophy" size={24} color="#F39C12" style={styles.metricIcon} />
+        <Text style={styles.metricValue}>
+          {metrics.days_met_goal_30d || 0}
+        </Text>
+        <Text style={styles.metricLabel}>Goal Days (30d)</Text>
+      </View>
+    </View>
+  );
+}, [summary, colors]);
+
+// REPLACE renderRetakeBaseline (around line 600):
+const renderRetakeBaseline = () => {
+  if (!hasBaseline || !baselineData) return null;
+
+  return (
+    <TouchableOpacity
+      style={styles.retakeBaselineButton}
+      onPress={() => {
+        console.log('🔄 Retake baseline pressed');
+        console.log('📊 Passing baseline data:', baselineData);
+        
+        navigation.navigate('StepBaseline', { 
+          baseline: baselineData,
+          isEdit: true 
+        });
+      }}
+      accessibilityRole="button"
+      accessibilityLabel="Update your activity baseline"
+    >
+      <Icon name="refresh" size={16} color={colors.secondary} />
+      <Text style={styles.retakeBaselineText}>Update Activity Baseline</Text>
+    </TouchableOpacity>
+  );
+};
+
+// Education Card
+const renderEducationCard = () => (
+  <View style={styles.educationCard}>
+    <Text style={styles.educationTitle}>📊 Why Track Steps?</Text>
+    <Text style={styles.educationText}>
+      Regular physical activity helps improve insulin sensitivity and reduce diabetes risk.
+    </Text>
+    <View style={styles.educationBullet}>
+      <Icon name="check-circle" size={16} color={colors.primary} />
+      <Text style={styles.educationBulletText}>
+        <Text style={{ fontWeight: '600' }}>7,000+ steps/day</Text> reduces diabetes risk
+      </Text>
+    </View>
+    <View style={styles.educationBullet}>
+      <Icon name="check-circle" size={16} color={colors.primary} />
+      <Text style={styles.educationBulletText}>
+        <Text style={{ fontWeight: '600' }}>Consistency</Text> matters more than daily peaks
+      </Text>
+    </View>
+    <View style={styles.educationBullet}>
+      <Icon name="check-circle" size={16} color={colors.primary} />
+      <Text style={styles.educationBulletText}>
+        <Text style={{ fontWeight: '600' }}>Low activity (&lt;5,000)</Text> increases metabolic risk
+      </Text>
+    </View>
+  </View>
+);
 
   // Render hourly chart
   const renderHourlyChart = useCallback(() => {
@@ -922,6 +1143,45 @@ useEffect(() => {
     );
   }, [selectedPeriod, activityData.dailyData, formatDate, formatDistance]);
 
+  // Add baseline button to header
+  const renderBaselineButton = () => (
+    <TouchableOpacity
+      style={styles.settingsButton}
+      onPress={async () => {
+        try {
+          console.log('🔧 Baseline button pressed');
+          console.log('📊 Current baseline state:', { hasBaseline, baselineData });
+          
+          // Always fetch latest baseline before navigating
+          const exists = await checkBaseline();
+          
+          if (exists && baselineData) {
+            // Edit mode - pass baseline data
+            console.log('✏️ Navigating to edit with baseline:', baselineData);
+            navigation.navigate('StepBaseline', { 
+              baseline: baselineData,
+              isEdit: true 
+            });
+          } else {
+            // Create mode
+            console.log('➕ Navigating to create new baseline');
+            navigation.navigate('StepBaseline', { 
+              isEdit: false 
+            });
+          }
+        } catch (error) {
+          console.error('❌ Error in baseline button:', error);
+          // Safe fallback - let the screen handle it
+          navigation.navigate('StepBaseline');
+        }
+      }}
+      accessibilityRole="button"
+      accessibilityLabel="Edit activity baseline settings"
+    >
+      <Icon name="account-edit" size={24} color={colors.text} />
+    </TouchableOpacity>
+  );
+
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     header: { padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
@@ -975,6 +1235,89 @@ useEffect(() => {
     metricIconContainer: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
     metricValue: { fontSize: 28, fontWeight: 'bold', color: colors.text, marginBottom: 4 },
     metricLabel: { fontSize: 14, color: colors.secondary, fontWeight: '500' },
+    // ADD ALL THESE NEW STYLES HERE
+// Data Source Card
+dataSourceCard: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: colors.card,
+  borderRadius: 12,
+  padding: 16,
+  marginBottom: 16,
+  borderWidth: 1,
+  borderColor: colors.border,
+},
+dataSourceIcon: {
+  width: 40,
+  height: 40,
+  borderRadius: 20,
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginRight: 12,
+},
+dataSourceInfo: {
+  flex: 1,
+},
+dataSourceLabel: {
+  fontSize: 14,
+  fontWeight: '600',
+  color: colors.text,
+},
+dataSourceSubtext: {
+  fontSize: 12,
+  color: colors.secondary,
+  marginTop: 2,
+},
+// Retake Baseline
+retakeBaselineButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: colors.card,
+  padding: 12,
+  borderRadius: 12,
+  marginBottom: 16,
+  borderWidth: 1,
+  borderColor: colors.border,
+},
+retakeBaselineText: {
+  fontSize: 13,
+  fontWeight: '600',
+  color: colors.secondary,
+  marginLeft: 8,
+},
+// Education Card
+educationCard: {
+  backgroundColor: `${colors.primary}10`,
+  borderRadius: 16,
+  padding: 20,
+  marginTop: 16,
+  borderWidth: 1,
+  borderColor: `${colors.primary}30`,
+},
+educationTitle: {
+  fontSize: 16,
+  fontWeight: '700',
+  color: colors.text,
+  marginBottom: 12,
+},
+educationText: {
+  fontSize: 14,
+  color: colors.secondary,
+  lineHeight: 22,
+  marginBottom: 8,
+},
+educationBullet: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  marginBottom: 8,
+},educationBulletText: {
+  flex: 1,
+  fontSize: 13,
+  color: colors.text,
+  marginLeft: 8,
+  lineHeight: 20,
+},
     chartCard: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border },
     chartTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 16 },
     chartContainer: { height: 200 },
@@ -1040,6 +1383,7 @@ useEffect(() => {
                 <Icon name="cog" size={24} color={colors.text} />
               </TouchableOpacity>
             )}
+            {renderBaselineButton()}
           </View>
         </View>
 
@@ -1092,6 +1436,11 @@ useEffect(() => {
             </View>
           )}
         </View>
+
+        {/* ADD THESE NEW COMPONENTS HERE */}
+        {renderMetricsGrid()}
+        {renderDataSource()}
+        {renderRetakeBaseline()}
 
         {renderStreakBadge()}
         {renderHealthInsights()}

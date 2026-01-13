@@ -27,6 +27,7 @@ from routes.smoking_intake_routes import smoking_tracking_bp
 from routes.alcohol_intake_routes import alcohol_intake_bp
 from routes.sleep_tracking_routes import sleep_tracking_bp
 from routes.food_risk_routes import food_risk_bp
+from routes.step_tracking_routes import step_tracking_bp
 from controllers.chat_controller import register_socket_events
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
@@ -189,6 +190,7 @@ def create_app():
     app.register_blueprint(smoking_tracking_bp, url_prefix='/api/v1/smoking-tracking')
     app.register_blueprint(alcohol_intake_bp, url_prefix='/api/v1/alcohol-intake')
     app.register_blueprint(sleep_tracking_bp, url_prefix='/api/v1/sleep-tracking')
+    app.register_blueprint(step_tracking_bp, url_prefix='/api/v1/step-tracking')  # ← ADD THIS
     app.register_blueprint(food_risk_bp, url_prefix='/api/v1/food-risk')
 
     # Health check endpoint

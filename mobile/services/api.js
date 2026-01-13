@@ -2215,6 +2215,108 @@ export const getFoodDailyLogAnalysis = async (days = 7) => {
   }
 };
 
+// ==================== STEP TRACKING API ====================
+
+/**
+ * Create step baseline (required at onboarding)
+ */
+export const createStepBaseline = async (
+  avgDailySteps,
+  activityLevel,
+  daysActive,
+  exerciseMinutes,
+  workType
+) => {
+  try {
+    const response = await api.post('/step-tracking/baseline', {
+      baseline_avg_daily_steps: avgDailySteps,
+      baseline_activity_level: activityLevel,
+      baseline_days_active_per_week: daysActive,
+      baseline_exercise_minutes_per_week: exerciseMinutes,
+      baseline_work_type: workType,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error creating step baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+
+/**
+ * Get user's step baseline
+ */
+export const getStepBaseline = async () => {
+  try {
+    const response = await api.get('/step-tracking/baseline');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching step baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+/**
+ * Check if user has completed step baseline
+ */
+export const checkStepBaseline = async () => {
+  try {
+    const response = await api.get('/step-tracking/baseline/check');
+    return response.data;
+  } catch (error) {
+    console.error('Error checking step baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+/**
+ * Update step baseline (retake questionnaire)
+ */
+export const updateStepBaseline = async (
+  avgDailySteps,
+  activityLevel,
+  daysActive,
+  exerciseMinutes,
+  workType
+) => {
+  try {
+    const response = await api.put('/step-tracking/baseline', {
+      baseline_avg_daily_steps: avgDailySteps,
+      baseline_activity_level: activityLevel,
+      baseline_days_active_per_week: daysActive,
+      baseline_exercise_minutes_per_week: exerciseMinutes,
+      baseline_work_type: workType,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error updating step baseline:', error.response?.data || error.message);
+    throw error;
+  }
+};
+/**
+ * Get computed step metrics
+ */
+export const getStepMetrics = async () => { // ← ADD export here
+  try {
+    const response = await api.get('/step-tracking/metrics');
+    return response.data;
+  } catch (error) {
+    console.error('Error getting step metrics:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get comprehensive step summary for dashboard
+ */
+export const getStepSummary = async (days = 7) => { // ← ADD export here
+  try {
+    const response = await api.get(`/step-tracking/summary?days=${days}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting step summary:', error);
+    throw error;
+  }
+};
+
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
 api.saveMeal = saveMeal;
@@ -2312,5 +2414,12 @@ api.getFoodBaseline = getFoodBaseline;
 api.getFoodRiskAssessment = getFoodRiskAssessment;
 api.getFoodRecommendations = getFoodRecommendations;
 api.getFoodDailyLogAnalysis = getFoodDailyLogAnalysis;
+
+// Make sure these lines exist at the bottom, BEFORE export default api;
+api.createStepBaseline = createStepBaseline;
+api.getStepBaseline = getStepBaseline;
+api.checkStepBaseline = checkStepBaseline;
+api.updateStepBaseline = updateStepBaseline;
+ 
 
 export default api;

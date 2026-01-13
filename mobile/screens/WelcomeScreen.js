@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -21,10 +21,6 @@ const WelcomeScreen = ({ navigation, onComplete }) => {
   const scrollViewRef = useRef(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const floatAnim = useRef(new Animated.Value(0)).current;
 
   const pages = [
     {
@@ -56,69 +52,13 @@ const WelcomeScreen = ({ navigation, onComplete }) => {
     },
   ];
 
-  useEffect(() => {
-    // Icon scale animation
+  React.useEffect(() => {
     Animated.spring(scaleAnim, {
       toValue: 1,
       tension: 50,
       friction: 7,
       useNativeDriver: true,
     }).start();
-
-    // Slide up animation for content
-    Animated.timing(slideAnim, {
-      toValue: 0,
-      duration: 600,
-      useNativeDriver: true,
-    }).start();
-
-    // Subtle rotation animation
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(rotateAnim, {
-          toValue: 1,
-          duration: 3000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(rotateAnim, {
-          toValue: 0,
-          duration: 3000,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-
-    // Pulse animation for active indicator
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.2,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-
-    // Float animation for icons
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(floatAnim, {
-          toValue: -10,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(floatAnim, {
-          toValue: 0,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
   }, [currentPage]);
 
   const handleScroll = (event) => {
@@ -173,11 +113,6 @@ const WelcomeScreen = ({ navigation, onComplete }) => {
     });
   };
 
-  const spin = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '5deg'],
-  });
-
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim, backgroundColor: colors.background }]}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
@@ -222,7 +157,6 @@ const WelcomeScreen = ({ navigation, onComplete }) => {
         showsHorizontalScrollIndicator={false}
         onScroll={handleScroll}
         scrollEventThrottle={16}
-        style={styles.mainScrollView}
       >
         {pages.map((page, index) => (
           <View key={page.id} style={styles.page}>
@@ -256,13 +190,13 @@ const WelcomeScreen = ({ navigation, onComplete }) => {
                     {feature}
                   </Text>
                 </View>
-              </Animated.View>
-            </ScrollView>
+              ))}
+            </View>
           </View>
         ))}
       </ScrollView>
 
-      {/* Enhanced Page Indicators with Animation */}
+      {/* Modern Page Indicators */}
       <View style={styles.indicatorContainer}>
         {pages.map((page, index) => (
           <Animated.View
@@ -271,28 +205,23 @@ const WelcomeScreen = ({ navigation, onComplete }) => {
               styles.indicator,
               currentPage === index && [
                 styles.activeIndicator,
-                { 
-                  backgroundColor: page.gradientColors[0],
-                  transform: [{ scale: currentPage === index ? pulseAnim : 1 }]
-                },
+                { backgroundColor: page.gradientColors[0] }
               ],
             ]}
           />
         ))}
       </View>
 
-      {/* Enhanced Navigation Buttons */}
+      {/* Navigation Buttons */}
       <View style={styles.bottomContainer}>
         {currentPage > 0 && (
-          <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-            <TouchableOpacity
-              style={styles.prevButton}
-              onPress={goToPreviousPage}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="arrow-back" size={24} color="#2196F3" />
-            </TouchableOpacity>
-          </Animated.View>
+          <TouchableOpacity
+            style={styles.prevButton}
+            onPress={goToPreviousPage}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={24} color="#2196F3" />
+          </TouchableOpacity>
         )}
 
         {currentPage < pages.length - 1 ? (
@@ -308,9 +237,7 @@ const WelcomeScreen = ({ navigation, onComplete }) => {
               activeOpacity={0.8}
             >
               <Text style={styles.nextButtonText}>Next</Text>
-              <Animated.View style={{ transform: [{ translateX: floatAnim }] }}>
-                <Ionicons name="arrow-forward" size={20} color="#FFF" />
-              </Animated.View>
+              <Ionicons name="arrow-forward" size={20} color="#FFF" />
             </TouchableOpacity>
           </LinearGradient>
         ) : (
@@ -326,15 +253,13 @@ const WelcomeScreen = ({ navigation, onComplete }) => {
               activeOpacity={0.8}
             >
               <Text style={styles.getStartedButtonText}>Get Started</Text>
-              <Animated.View style={{ transform: [{ translateX: floatAnim }] }}>
-                <Ionicons name="arrow-forward" size={20} color="#FFF" style={{ marginLeft: 8 }} />
-              </Animated.View>
+              <Ionicons name="arrow-forward" size={20} color="#FFF" style={{ marginLeft: 8 }} />
             </TouchableOpacity>
           </LinearGradient>
         )}
       </View>
 
-      {/* Enhanced Footer */}
+      {/* Modern Footer */}
       <View style={styles.footer}>
         <Text style={[styles.footerText, { color: colors.secondary }]}>
           Already have an account?{' '}
@@ -358,7 +283,7 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 35,
@@ -425,7 +350,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textAlign: 'center',
     letterSpacing: 0.3,
-    paddingHorizontal: 10,
   },
   description: {
     fontSize: 14,
@@ -443,7 +367,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 6,
     elevation: 3,
-    width: '100%',
   },
   detailsText: {
     fontSize: 13,
@@ -555,7 +478,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FAFAFA',
   },
   footerText: {
     fontSize: 13,
@@ -563,40 +485,6 @@ const styles = StyleSheet.create({
   loginLink: {
     fontSize: 13,
     fontWeight: '700',
-  },
-  floatingCircle1: {
-    position: 'absolute',
-    top: 100,
-    right: -50,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    overflow: 'hidden',
-  },
-  floatingCircle2: {
-    position: 'absolute',
-    bottom: 150,
-    left: -50,
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    overflow: 'hidden',
-  },
-  circleGradient: {
-    flex: 1,
-  },
-  iconRing: {
-    position: 'absolute',
-    width: 190,
-    height: 190,
-    borderRadius: 95,
-    borderWidth: 3,
-    borderColor: 'transparent',
-  },
-  detailsBlur: {
-    padding: 18,
-    borderRadius: 16,
-    overflow: 'hidden',
   },
 });
 
