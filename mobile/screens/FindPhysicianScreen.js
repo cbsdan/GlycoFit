@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Image,
   Modal,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -35,6 +36,16 @@ const FindPhysicianScreen = ({ navigation }) => {
   const [requestReason, setRequestReason] = useState('');
   const [requestUrgency, setRequestUrgency] = useState('low');
   const [sendingRequest, setSendingRequest] = useState(false);
+
+  // Consultation request states
+  const [consultationModalVisible, setConsultationModalVisible] = useState(false);
+  const [consultationPhysician, setConsultationPhysician] = useState(null);
+  const [consultationDate, setConsultationDate] = useState(new Date());
+  const [consultationTime, setConsultationTime] = useState('09:00');
+  const [consultationReason, setConsultationReason] = useState('');
+  const [sendingConsultation, setSendingConsultation] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -138,6 +149,58 @@ const FindPhysicianScreen = ({ navigation }) => {
     }
   };
 
+  // Consultation request functions
+  const openConsultationModal = (item) => {
+    setConsultationPhysician(item);
+    setConsultationDate(new Date());
+    setConsultationTime('09:00');
+    setConsultationReason('');
+    setConsultationModalVisible(true);
+  };
+
+  const handleSendConsultationRequest = async () => {
+    if (!consultationReason.trim()) {
+      toast.error('Please enter a reason for consultation');
+      return;
+    }
+
+    try {
+      setSendingConsultation(true);
+      // Use 'id' instead of '_id' - the API returns 'id' from to_safe_dict
+      const physicianId = consultationPhysician?.physician?.id || consultationPhysician?.physician?._id;
+      
+      console.log('=== CONSULTATION DEBUG ===');
+      console.log('consultationPhysician:', JSON.stringify(consultationPhysician, null, 2));
+      console.log('physicianId:', physicianId);
+      console.log('=== END DEBUG ===');
+      
+      if (!physicianId) {
+        toast.error('Unable to find physician ID');
+        return;
+      }
+      
+      await api.createConsultation(
+        physicianId,
+        consultationDate.toISOString(),
+        consultationTime,
+        'video',
+        30,
+        consultationReason.trim(),
+        ''
+      );
+      
+      toast.success('Consultation request sent!');
+      setConsultationModalVisible(false);
+      setConsultationReason('');
+      setConsultationPhysician(null);
+    } catch (error) {
+      console.error('Error sending consultation request:', error);
+      toast.error(error.response?.data?.message || 'Failed to send consultation request');
+    } finally {
+      setSendingConsultation(false);
+    }
+  };
+
   const openRequestModal = (physician) => {
     setSelectedPhysician(physician);
     setRequestModalVisible(true);
@@ -155,12 +218,26 @@ const FindPhysicianScreen = ({ navigation }) => {
   };
 
   const renderPhysicianCard = (physician) => {
-    const hasRelationship = physician.relationship_status;
-    const isPending = physician.relationship_status === 'pending';
-    const isActive = physician.relationship_status === 'active';
+    // Check if this physician is in myPhysicians or pendingRequests
+    const relationshipItem = myPhysicians.find(p => 
+      p.physician.id === physician.id || 
+      p.physician._id === physician.id ||
+      p.physician.id === physician._id ||
+      p.physician._id === physician._id
+    );
+    const pendingItem = pendingRequests.find(p => 
+      p.physician.id === physician.id || 
+      p.physician._id === physician.id ||
+      p.physician.id === physician._id ||
+      p.physician._id === physician._id
+    );
+    
+    const isActive = !!relationshipItem;
+    const isPending = !!pendingItem;
+    const hasRelationship = isActive || isPending;
 
     return (
-      <View key={physician.id} style={[styles.physicianCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+      <View key={physician.id || physician._id} style={[styles.physicianCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <View style={styles.physicianHeader}>
           <View style={styles.avatarContainer}>
             {physician.user.avatar?.url ? (
@@ -245,10 +322,37 @@ const FindPhysicianScreen = ({ navigation }) => {
           )}
           
           {isActive && (
-            <View style={[styles.statusBadge, { backgroundColor: '#27AE60' }]}>
-              <Icon name="check-circle" size={16} color="#FFFFFF" />
-              <Text style={styles.statusText}>Connected</Text>
-            </View>
+            <>
+              <View style={[styles.statusBadge, { backgroundColor: '#27AE60', marginBottom: 10 }]}>
+                <Icon name="check-circle" size={16} color="#FFFFFF" />
+                <Text style={styles.statusText}>Connected</Text>
+              </View>
+              <View style={styles.quickActionsRow}>
+                <TouchableOpacity
+                  style={[styles.quickActionButton, { backgroundColor: theme.primary }]}
+                  onPress={() => {
+                    if (relationshipItem) {
+                      navigation.navigate('PhysicianMessages', { relationship: relationshipItem });
+                    }
+                  }}
+                >
+                  <Icon name="chat" size={18} color="#FFFFFF" />
+                  <Text style={styles.quickActionText}>Message</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.quickActionButton, { backgroundColor: '#27AE60' }]}
+                  onPress={() => {
+                    if (relationshipItem) {
+                      openConsultationModal(relationshipItem);
+                    }
+                  }}
+                >
+                  <Icon name="video-plus" size={18} color="#FFFFFF" />
+                  <Text style={styles.quickActionText}>Request Consultation</Text>
+                </TouchableOpacity>
+              </View>
+            </>
           )}
         </View>
       </View>
@@ -292,6 +396,31 @@ const FindPhysicianScreen = ({ navigation }) => {
           </View>
           
           <Icon name="chevron-right" size={24} color={theme.secondary} />
+        </View>
+
+        {/* Quick Actions */}
+        <View style={styles.quickActionsRow}>
+          <TouchableOpacity
+            style={[styles.quickActionButton, { backgroundColor: theme.primary }]}
+            onPress={(e) => {
+              e.stopPropagation();
+              navigation.navigate('PhysicianMessages', { relationship: item });
+            }}
+          >
+            <Icon name="chat" size={18} color="#FFFFFF" />
+            <Text style={styles.quickActionText}>Message</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.quickActionButton, { backgroundColor: '#27AE60' }]}
+            onPress={(e) => {
+              e.stopPropagation();
+              openConsultationModal(item);
+            }}
+          >
+            <Icon name="video-plus" size={18} color="#FFFFFF" />
+            <Text style={styles.quickActionText}>Request Consultation</Text>
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity
@@ -559,6 +688,188 @@ const FindPhysicianScreen = ({ navigation }) => {
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Consultation Request Modal */}
+      <Modal
+        visible={consultationModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setConsultationModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Request Consultation</Text>
+              <TouchableOpacity onPress={() => setConsultationModalVisible(false)}>
+                <Icon name="close" size={24} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+
+            {consultationPhysician && (
+              <View style={styles.modalPhysicianInfo}>
+                <Text style={[styles.modalPhysicianName, { color: theme.text }]}>
+                  Dr. {consultationPhysician.physician.user.first_name} {consultationPhysician.physician.user.last_name}
+                </Text>
+                <Text style={[styles.modalPhysicianSpec, { color: theme.secondary }]}>
+                  {consultationPhysician.physician.specialization}
+                </Text>
+              </View>
+            )}
+
+            <ScrollView style={styles.modalForm}>
+              <Text style={[styles.label, { color: theme.text }]}>Preferred Date *</Text>
+              <TouchableOpacity
+                style={[styles.datePickerButton, { backgroundColor: theme.background, borderColor: theme.border }]}
+                onPress={() => setShowDatePicker(true)}
+              >
+                <Icon name="calendar" size={20} color={theme.primary} />
+                <Text style={[styles.datePickerText, { color: theme.text }]}>
+                  {consultationDate.toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    month: 'long',
+                    day: 'numeric',
+                    year: 'numeric'
+                  })}
+                </Text>
+              </TouchableOpacity>
+
+              <Text style={[styles.label, { color: theme.text, marginTop: 16 }]}>Preferred Time *</Text>
+              <TouchableOpacity
+                style={[styles.datePickerButton, { backgroundColor: theme.background, borderColor: theme.border }]}
+                onPress={() => setShowTimePicker(true)}
+              >
+                <Icon name="clock-outline" size={20} color={theme.primary} />
+                <Text style={[styles.datePickerText, { color: theme.text }]}>
+                  {consultationTime}
+                </Text>
+              </TouchableOpacity>
+
+              <Text style={[styles.label, { color: theme.text, marginTop: 16 }]}>Reason for Consultation *</Text>
+              <TextInput
+                style={[styles.textArea, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                placeholder="Describe the reason for your consultation..."
+                placeholderTextColor={theme.secondary}
+                multiline
+                numberOfLines={4}
+                value={consultationReason}
+                onChangeText={setConsultationReason}
+              />
+
+              <View style={[styles.infoBox, { backgroundColor: theme.info + '15' }]}>
+                <Icon name="information" size={20} color={theme.info || '#3498DB'} />
+                <Text style={[styles.infoText, { color: theme.info || '#3498DB' }]}>
+                  Your physician will review your request and provide a Google Meet link if approved.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.sendButton, { backgroundColor: '#27AE60' }]}
+                onPress={handleSendConsultationRequest}
+                disabled={sendingConsultation}
+              >
+                {sendingConsultation ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Icon name="video-plus" size={20} color="#FFFFFF" />
+                    <Text style={styles.sendButtonText}>Submit Request</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Date Picker Modal */}
+      <Modal
+        visible={showDatePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDatePicker(false)}
+      >
+        <View style={styles.pickerOverlay}>
+          <View style={[styles.pickerContent, { backgroundColor: theme.card }]}>
+            <Text style={[styles.pickerTitle, { color: theme.text }]}>Select Date</Text>
+            <ScrollView style={styles.pickerScroll}>
+              {Array.from({ length: 30 }, (_, i) => {
+                const date = new Date();
+                date.setDate(date.getDate() + i);
+                return (
+                  <TouchableOpacity
+                    key={i}
+                    style={[
+                      styles.pickerItem,
+                      consultationDate.toDateString() === date.toDateString() && { backgroundColor: theme.primary + '20' }
+                    ]}
+                    onPress={() => {
+                      setConsultationDate(date);
+                      setShowDatePicker(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.pickerItemText,
+                      { color: consultationDate.toDateString() === date.toDateString() ? theme.primary : theme.text }
+                    ]}>
+                      {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.pickerCloseButton, { borderColor: theme.border }]}
+              onPress={() => setShowDatePicker(false)}
+            >
+              <Text style={[styles.pickerCloseText, { color: theme.text }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Time Picker Modal */}
+      <Modal
+        visible={showTimePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTimePicker(false)}
+      >
+        <View style={styles.pickerOverlay}>
+          <View style={[styles.pickerContent, { backgroundColor: theme.card }]}>
+            <Text style={[styles.pickerTitle, { color: theme.text }]}>Select Time</Text>
+            <ScrollView style={styles.pickerScroll}>
+              {['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
+                '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
+                '16:00', '16:30', '17:00', '17:30', '18:00'].map((time) => (
+                <TouchableOpacity
+                  key={time}
+                  style={[
+                    styles.pickerItem,
+                    consultationTime === time && { backgroundColor: theme.primary + '20' }
+                  ]}
+                  onPress={() => {
+                    setConsultationTime(time);
+                    setShowTimePicker(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.pickerItemText,
+                    { color: consultationTime === time ? theme.primary : theme.text }
+                  ]}>
+                    {time}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.pickerCloseButton, { borderColor: theme.border }]}
+              onPress={() => setShowTimePicker(false)}
+            >
+              <Text style={[styles.pickerCloseText, { color: theme.text }]}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -872,6 +1183,95 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
+  },
+  // Quick actions for my physician cards
+  quickActionsRow: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  quickActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginHorizontal: 4,
+  },
+  quickActionText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  // Date picker styles
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+  },
+  datePickerText: {
+    fontSize: 15,
+    flex: 1,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 20,
+    gap: 10,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  // Picker modal styles
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pickerContent: {
+    width: '80%',
+    maxHeight: '60%',
+    borderRadius: 16,
+    padding: 16,
+  },
+  pickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  pickerScroll: {
+    maxHeight: 300,
+  },
+  pickerItem: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  pickerItemText: {
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  pickerCloseButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  pickerCloseText: {
+    fontSize: 16,
+    fontWeight: '500',
   },
 });
 

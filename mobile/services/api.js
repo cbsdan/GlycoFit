@@ -779,17 +779,19 @@ export const requestPrescriptionRefill = async (prescriptionId) => {
  * Create a new consultation request
  * @param {string} physicianId - Physician ID
  * @param {string} scheduledDate - ISO date string
+ * @param {string} scheduledTime - Time string e.g. "14:00"
  * @param {string} consultationType - video, chat, or in-person
  * @param {number} durationMinutes - Duration in minutes
  * @param {string} reason - Reason for consultation
  * @param {string} notes - Additional notes
  * @returns {Promise<Object>} Created consultation
  */
-export const createConsultation = async (physicianId, scheduledDate, consultationType = 'video', durationMinutes = 30, reason = '', notes = '') => {
+export const createConsultation = async (physicianId, scheduledDate, scheduledTime = null, consultationType = 'video', durationMinutes = 30, reason = '', notes = '') => {
   try {
     const response = await api.post('/users/consultations', {
       physician_id: physicianId,
       scheduled_date: scheduledDate,
+      scheduled_time: scheduledTime,
       consultation_type: consultationType,
       duration_minutes: durationMinutes,
       reason,

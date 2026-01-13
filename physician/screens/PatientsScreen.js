@@ -317,6 +317,14 @@ export default function PatientsScreen() {
                   ...theme.shadow,
                 },
               ]}
+              onPress={() => navigation.navigate('PatientDetail', {
+                patient: patient,
+                relationship: {
+                  id: patient.relationship?.id || patient.relationship_id || patient._id,
+                  patient: patient,
+                  acceptance_date: patient.relationship?.acceptance_date,
+                }
+              })}
             >
               <View style={styles.cardHeader}>
                 <View
@@ -341,13 +349,16 @@ export default function PatientsScreen() {
                 </View>
                 <TouchableOpacity
                   style={[styles.chatButton, { backgroundColor: theme.primary }]}
-                  onPress={() => navigation.navigate('PatientChat', {
-                    patient: patient,
-                    relationship: {
-                      id: patient.relationship?.id || patient.relationship_id || patient._id,
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    navigation.navigate('PatientChat', {
                       patient: patient,
-                    }
-                  })}
+                      relationship: {
+                        id: patient.relationship?.id || patient.relationship_id || patient._id,
+                        patient: patient,
+                      }
+                    });
+                  }}
                 >
                   <Ionicons name="chatbubble-ellipses" size={18} color="#FFFFFF" />
                 </TouchableOpacity>
@@ -388,6 +399,12 @@ export default function PatientsScreen() {
                     {patient.health_info?.last_visit ? new Date(patient.health_info.last_visit).toLocaleDateString() : 'Never'}
                   </Text>
                 </View>
+              </View>
+              
+              {/* View Details indicator */}
+              <View style={styles.viewDetailsContainer}>
+                <Text style={[styles.viewDetailsText, { color: theme.primary }]}>Tap to view details</Text>
+                <Ionicons name="chevron-forward" size={16} color={theme.primary} />
               </View>
             </TouchableOpacity>
           )
@@ -565,5 +582,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  viewDetailsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 12,
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  viewDetailsText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
 });

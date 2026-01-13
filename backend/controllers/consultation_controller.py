@@ -351,3 +351,221 @@ def reschedule_consultation(consultation_id):
             'success': False,
             'message': 'Failed to reschedule consultation'
         }), 500
+
+
+def get_pending_consultation_requests():
+    """Get pending consultation requests for physician"""
+    try:
+        current_user = g.current_user
+        
+        physician = Physician.find_by_user_id(current_user._id)
+        if not physician:
+            return jsonify({
+                'success': False,
+                'message': 'Physician profile not found'
+            }), 404
+        
+        consultations = Consultation.get_pending_for_physician(physician._id)
+        
+        # Populate patient data
+        result = []
+        for consultation in consultations:
+            consultation_data = consultation.to_safe_dict()
+            patient = User.find_by_id(str(consultation.patient_id))
+            if patient:
+                consultation_data['patient'] = patient.to_safe_dict()
+            result.append(consultation_data)
+        
+        return jsonify({
+            'success': True,
+            'data': result,
+            'count': len(result)
+        }), 200
+        
+    except Exception as e:
+        logging.error(f"Error getting pending consultation requests: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to get pending requests'
+        }), 500
+
+
+def approve_consultation(consultation_id):
+    """Physician approves a consultation request with meeting details"""
+    try:
+        current_user = g.current_user
+        data = request.get_json()
+        
+        # Validate required fields
+        if 'meeting_link' not in data:
+            return jsonify({
+                'success': False,
+                'message': 'meeting_link is required'
+            }), 400
+        
+        physician = Physician.find_by_user_id(current_user._id)
+        if not physician:
+            return jsonify({
+                'success': False,
+                'message': 'Physician profile not found'
+            }), 404
+        
+        consultation = Consultation.find_by_id(consultation_id)
+        
+        if not consultation:
+            return jsonify({
+                'success': False,
+                'message': 'Consultation not found'
+            }), 404
+        
+        if str(consultation.physician_id) != str(physician._id):
+            return jsonify({
+                'success': False,
+                'message': 'Unauthorized'
+            }), 403
+        
+        # Check if consultation is in pending status
+        if consultation.status != Consultation.STATUS_PENDING:
+            return jsonify({
+                'success': False,
+                'message': f'Cannot approve consultation with status: {consultation.status}'
+            }), 400
+        
+        # Parse new date if provided
+        scheduled_date = None
+        if 'scheduled_date' in data:
+            scheduled_date = datetime.fromisoformat(data['scheduled_date'].replace('Z', '+00:00'))
+        
+        # Approve the consultation
+        consultation.approve(
+            meeting_link=data['meeting_link'],
+            meeting_password=data.get('meeting_password', ''),
+            platform=data.get('platform', 'google_meet'),
+            scheduled_date=scheduled_date,
+            scheduled_time=data.get('scheduled_time')
+        )
+        consultation.save()
+        
+        logging.info(f"Consultation {consultation_id} approved by physician {physician._id}")
+        
+        # TODO: Send notification to patient about approved consultation
+        
+        return jsonify({
+            'success': True,
+            'message': 'Consultation approved successfully',
+            'data': consultation.to_safe_dict()
+        }), 200
+        
+    except Exception as e:
+        logging.error(f"Error approving consultation: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to approve consultation'
+        }), 500
+
+
+def reject_consultation(consultation_id):
+    """Physician rejects a consultation request"""
+    try:
+        current_user = g.current_user
+        data = request.get_json() or {}
+        
+        physician = Physician.find_by_user_id(current_user._id)
+        if not physician:
+            return jsonify({
+                'success': False,
+                'message': 'Physician profile not found'
+            }), 404
+        
+        consultation = Consultation.find_by_id(consultation_id)
+        
+        if not consultation:
+            return jsonify({
+                'success': False,
+                'message': 'Consultation not found'
+            }), 404
+        
+        if str(consultation.physician_id) != str(physician._id):
+            return jsonify({
+                'success': False,
+                'message': 'Unauthorized'
+            }), 403
+        
+        # Check if consultation is in pending status
+        if consultation.status != Consultation.STATUS_PENDING:
+            return jsonify({
+                'success': False,
+                'message': f'Cannot reject consultation with status: {consultation.status}'
+            }), 400
+        
+        # Reject the consultation
+        consultation.reject(reason=data.get('reason', ''))
+        consultation.save()
+        
+        logging.info(f"Consultation {consultation_id} rejected by physician {physician._id}")
+        
+        # TODO: Send notification to patient about rejected consultation
+        
+        return jsonify({
+            'success': True,
+            'message': 'Consultation rejected',
+            'data': consultation.to_safe_dict()
+        }), 200
+        
+    except Exception as e:
+        logging.error(f"Error rejecting consultation: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to reject consultation'
+        }), 500
+
+
+def get_physician_schedule():
+    """Get approved consultations for physician calendar"""
+    try:
+        current_user = g.current_user
+        start_date_str = request.args.get('start_date')
+        end_date_str = request.args.get('end_date')
+        
+        physician = Physician.find_by_user_id(current_user._id)
+        if not physician:
+            return jsonify({
+                'success': False,
+                'message': 'Physician profile not found'
+            }), 404
+        
+        start_date = None
+        end_date = None
+        
+        if start_date_str:
+            start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
+        if end_date_str:
+            end_date = datetime.fromisoformat(end_date_str.replace('Z', '+00:00'))
+        
+        consultations = Consultation.get_approved_for_physician(
+            physician._id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        # Populate patient data
+        result = []
+        for consultation in consultations:
+            consultation_data = consultation.to_safe_dict()
+            patient = User.find_by_id(str(consultation.patient_id))
+            if patient:
+                consultation_data['patient'] = patient.to_safe_dict()
+            result.append(consultation_data)
+        
+        return jsonify({
+            'success': True,
+            'data': result,
+            'count': len(result)
+        }), 200
+        
+    except Exception as e:
+        logging.error(f"Error getting physician schedule: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to get schedule'
+        }), 500

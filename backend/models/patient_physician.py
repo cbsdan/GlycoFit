@@ -93,8 +93,14 @@ class PatientPhysician:
             raise e
 
     @staticmethod
-    def find_by_patient_and_physician(patient_id, physician_id):
-        """Find relationship between specific patient and physician"""
+    def find_by_patient_and_physician(patient_id, physician_id, status=None):
+        """Find relationship between specific patient and physician
+        
+        Args:
+            patient_id: The patient's user ID
+            physician_id: The physician's ID
+            status: Optional status filter ('active', 'pending', 'inactive', 'declined')
+        """
         try:
             db = get_db()
             if isinstance(patient_id, str):
@@ -102,12 +108,15 @@ class PatientPhysician:
             if isinstance(physician_id, str):
                 physician_id = ObjectId(physician_id)
             
-            data = db.patient_physicians.find_one({
+            query = {
                 'patient_id': patient_id,
                 'physician_id': physician_id
-            })
-            log_database_operation('find_one', 'patient_physicians', 
-                                 {'patient_id': patient_id, 'physician_id': physician_id}, data)
+            }
+            if status:
+                query['status'] = status
+            
+            data = db.patient_physicians.find_one(query)
+            log_database_operation('find_one', 'patient_physicians', query, data)
 
             if data:
                 relationship = PatientPhysician.from_dict(data)

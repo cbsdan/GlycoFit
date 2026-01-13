@@ -27,14 +27,20 @@ def create_patient_consultation():
         
         physician_id = data['physician_id']
         
+        logging.info(f"Creating consultation - physician_id from request: {physician_id}, type: {type(physician_id)}")
+        
         # Verify physician exists
         physician = Physician.find_by_id(physician_id)
         if not physician:
             return jsonify({'success': False, 'message': 'Physician not found'}), 404
         
-        # Verify active relationship exists
-        relationship = PatientPhysician.find_by_patient_and_physician(current_user._id, physician._id)
-        if not relationship or relationship.status != 'active':
+        logging.info(f"Found physician with _id: {physician._id}, type: {type(physician._id)}")
+        logging.info(f"Current user _id: {current_user._id}, type: {type(current_user._id)}")
+        
+        # Verify active relationship exists - explicitly filter by status='active'
+        relationship = PatientPhysician.find_by_patient_and_physician(current_user._id, physician._id, status='active')
+        
+        if not relationship:
             return jsonify({
                 'success': False,
                 'message': 'You must have an active connection with this physician'
@@ -48,12 +54,13 @@ def create_patient_consultation():
             patient_id=current_user._id,
             consultation_type=data.get('consultation_type', 'video'),
             scheduled_date=scheduled_date,
+            scheduled_time=data.get('scheduled_time'),
             duration_minutes=data.get('duration_minutes', 30)
         )
         
         consultation.reason = data.get('reason', '')
         consultation.notes = data.get('notes', '')
-        consultation.status = 'scheduled'
+        consultation.status = Consultation.STATUS_PENDING  # Patient request starts as pending
         
         consultation.save()
         
@@ -192,8 +199,9 @@ def cancel_patient_consultation(consultation_id):
         if str(consultation.patient_id) != str(current_user._id):
             return jsonify({'success': False, 'message': 'Unauthorized'}), 403
         
-        # Can only cancel scheduled consultations
-        if consultation.status != 'scheduled':
+        # Can cancel pending, approved, or scheduled consultations
+        allowed_statuses = [Consultation.STATUS_PENDING, Consultation.STATUS_APPROVED, Consultation.STATUS_SCHEDULED]
+        if consultation.status not in allowed_statuses:
             return jsonify({
                 'success': False,
                 'message': f'Cannot cancel consultation with status: {consultation.status}'

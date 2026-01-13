@@ -8,7 +8,11 @@ import {
   SafeAreaView,
   RefreshControl,
   ActivityIndicator,
-  Image
+  Image,
+  Modal,
+  TextInput,
+  Linking,
+  Platform,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
@@ -27,6 +31,15 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
   const [appointments, setAppointments] = useState([]);
   const [prescriptions, setPrescriptions] = useState([]);
   const [consultations, setConsultations] = useState([]);
+  
+  // Modal states for consultation request
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [requestDate, setRequestDate] = useState(new Date());
+  const [requestTime, setRequestTime] = useState('');
+  const [requestReason, setRequestReason] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [requestLoading, setRequestLoading] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -56,7 +69,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
 
   const fetchAppointments = async () => {
     try {
-      const response = await api.getAppointments(null, relationship.physician._id);
+      const response = await api.getAppointments(null, relationship.physician.id || relationship.physician._id);
       if (response.success) {
         setAppointments(response.data);
       }
@@ -67,7 +80,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
 
   const fetchPrescriptions = async () => {
     try {
-      const response = await api.getPrescriptions('active', relationship.physician._id);
+      const response = await api.getPrescriptions('active', relationship.physician.id || relationship.physician._id);
       if (response.success) {
         setPrescriptions(response.data);
       }
@@ -78,7 +91,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
 
   const fetchConsultations = async () => {
     try {
-      const response = await api.getConsultations(null, relationship.physician._id);
+      const response = await api.getConsultations(null, relationship.physician.id || relationship.physician._id);
       if (response.success) {
         setConsultations(response.data);
       }
@@ -468,30 +481,238 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
   );
 
   const renderConsultations = () => {
-    const scheduled = consultations.filter(c => c.status === 'scheduled');
+    const pending = consultations.filter(c => c.status === 'pending');
+    const approved = consultations.filter(c => c.status === 'approved' || c.status === 'scheduled');
+    const rejected = consultations.filter(c => c.status === 'rejected');
     const completed = consultations.filter(c => c.status === 'completed');
+
+    const handleSubmitRequest = async () => {
+      if (!requestReason.trim()) {
+        toast.show('Please enter a reason for consultation', 'error');
+        return;
+      }
+
+      try {
+        setRequestLoading(true);
+        const formattedTime = requestTime || requestDate.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        });
+        
+        await api.createConsultation(
+          relationship.physician.id || relationship.physician._id,
+          requestDate.toISOString(),
+          formattedTime,
+          'video',
+          30,
+          requestReason.trim(),
+          ''
+        );
+        
+        toast.show('Consultation request sent!', 'success');
+        setShowRequestModal(false);
+        setRequestReason('');
+        setRequestTime('');
+        fetchConsultations();
+      } catch (error) {
+        console.error('Error creating consultation:', error);
+        toast.show(error.response?.data?.message || 'Failed to request consultation', 'error');
+      } finally {
+        setRequestLoading(false);
+      }
+    };
+
+    const openMeetingLink = (link) => {
+      if (link) {
+        Linking.openURL(link);
+      }
+    };
+
+    const formatDate = (dateString) => {
+      if (!dateString) return 'N/A';
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    };
+
+    const formatTime = (dateString, timeString) => {
+      if (timeString) return timeString;
+      if (!dateString) return 'N/A';
+      const date = new Date(dateString);
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    };
 
     return (
       <View style={styles.tabContent}>
         <TouchableOpacity
           style={[styles.createButton, { backgroundColor: colors.primary }]}
-          onPress={() => {/* TODO: Navigate to create consultation */}}
+          onPress={() => setShowRequestModal(true)}
         >
           <Icon name="video-plus" size={24} color="#FFFFFF" />
           <Text style={styles.createButtonText}>Request New Consultation</Text>
         </TouchableOpacity>
 
-        {scheduled.length > 0 && (
+        {pending.length > 0 && (
           <>
-            <Text style={[styles.subsectionTitle, { color: colors.text }]}>Scheduled</Text>
-            {scheduled.map((c) => renderConsultationCard(c))}
+            <Text style={[styles.subsectionTitle, { color: colors.text }]}>
+              <Icon name="clock-outline" size={18} color={colors.warning} /> Pending Requests
+            </Text>
+            {pending.map((c) => (
+              <View key={c.id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.warning, borderWidth: 1 }]}>
+                <View style={[styles.pendingBanner, { backgroundColor: colors.warning }]}>
+                  <Text style={styles.pendingBannerText}>AWAITING PHYSICIAN APPROVAL</Text>
+                </View>
+                <View style={styles.cardHeader}>
+                  <Icon name="clock-outline" size={24} color={colors.warning} />
+                  <View style={styles.cardHeaderText}>
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>
+                      Video Consultation
+                    </Text>
+                    <Text style={[styles.cardSubtitle, { color: colors.secondary }]}>
+                      {formatDate(c.scheduled_date)} at {formatTime(c.scheduled_date, c.scheduled_time)}
+                    </Text>
+                  </View>
+                </View>
+                {c.reason && (
+                  <Text style={[styles.cardReason, { color: colors.text }]}>
+                    Reason: {c.reason}
+                  </Text>
+                )}
+                <TouchableOpacity
+                  style={[styles.cardButton, { borderColor: colors.error, marginTop: 12 }]}
+                  onPress={async () => {
+                    try {
+                      await api.cancelConsultation(c.id, 'Cancelled by patient');
+                      toast.show('Request cancelled', 'success');
+                      fetchConsultations();
+                    } catch (error) {
+                      toast.show('Failed to cancel request', 'error');
+                    }
+                  }}
+                >
+                  <Text style={[styles.cardButtonText, { color: colors.error }]}>
+                    Cancel Request
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </>
+        )}
+
+        {approved.length > 0 && (
+          <>
+            <Text style={[styles.subsectionTitle, { color: colors.text, marginTop: 20 }]}>
+              <Icon name="check-circle" size={18} color={colors.success} /> Approved
+            </Text>
+            {approved.map((c) => (
+              <View key={c.id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.success, borderWidth: 1 }]}>
+                <View style={styles.cardHeader}>
+                  <Icon name="video" size={24} color={colors.success} />
+                  <View style={styles.cardHeaderText}>
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>
+                      Video Consultation
+                    </Text>
+                    <Text style={[styles.cardSubtitle, { color: colors.secondary }]}>
+                      {formatDate(c.scheduled_date)} at {formatTime(c.scheduled_date, c.scheduled_time)}
+                    </Text>
+                  </View>
+                  <View style={[styles.statusBadge, { backgroundColor: colors.success + '20' }]}>
+                    <Text style={[styles.statusText, { color: colors.success }]}>APPROVED</Text>
+                  </View>
+                </View>
+
+                {c.reason && (
+                  <Text style={[styles.cardReason, { color: colors.text }]}>
+                    Reason: {c.reason}
+                  </Text>
+                )}
+
+                {/* Meeting Details */}
+                {c.meeting_link && (
+                  <View style={[styles.meetingCard, { backgroundColor: colors.primary + '10', borderColor: colors.primary }]}>
+                    <View style={styles.meetingHeader}>
+                      <Icon name="google" size={20} color={colors.primary} />
+                      <Text style={[styles.meetingPlatform, { color: colors.primary }]}>Google Meet</Text>
+                    </View>
+                    {c.meeting_password && (
+                      <Text style={[styles.meetingPassword, { color: colors.secondary }]}>
+                        Password: {c.meeting_password}
+                      </Text>
+                    )}
+                    <TouchableOpacity
+                      style={[styles.joinMeetingButton, { backgroundColor: colors.success }]}
+                      onPress={() => openMeetingLink(c.meeting_link)}
+                    >
+                      <Icon name="video" size={20} color="#FFFFFF" />
+                      <Text style={styles.joinMeetingText}>Join Meeting</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <View style={styles.cardActions}>
+                  <TouchableOpacity
+                    style={[styles.cardButton, { borderColor: colors.error }]}
+                    onPress={async () => {
+                      try {
+                        await api.cancelConsultation(c.id, 'Cancelled by patient');
+                        toast.show('Consultation cancelled', 'success');
+                        fetchConsultations();
+                      } catch (error) {
+                        toast.show('Failed to cancel', 'error');
+                      }
+                    }}
+                  >
+                    <Text style={[styles.cardButtonText, { color: colors.error }]}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </>
+        )}
+
+        {rejected.length > 0 && (
+          <>
+            <Text style={[styles.subsectionTitle, { color: colors.text, marginTop: 20 }]}>
+              <Icon name="close-circle" size={18} color={colors.error} /> Rejected
+            </Text>
+            {rejected.map((c) => (
+              <View key={c.id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.error, borderWidth: 1, opacity: 0.8 }]}>
+                <View style={styles.cardHeader}>
+                  <Icon name="close-circle" size={24} color={colors.error} />
+                  <View style={styles.cardHeaderText}>
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>
+                      Video Consultation
+                    </Text>
+                    <Text style={[styles.cardSubtitle, { color: colors.secondary }]}>
+                      {formatDate(c.scheduled_date)}
+                    </Text>
+                  </View>
+                  <View style={[styles.statusBadge, { backgroundColor: colors.error + '20' }]}>
+                    <Text style={[styles.statusText, { color: colors.error }]}>REJECTED</Text>
+                  </View>
+                </View>
+                {c.rejection_reason && (
+                  <Text style={[styles.cardReason, { color: colors.error }]}>
+                    Reason: {c.rejection_reason}
+                  </Text>
+                )}
+              </View>
+            ))}
           </>
         )}
 
         {completed.length > 0 && (
           <>
             <Text style={[styles.subsectionTitle, { color: colors.text, marginTop: 20 }]}>
-              Completed
+              <Icon name="check-all" size={18} color={colors.info} /> Completed
             </Text>
             {completed.map((c) => renderConsultationCard(c))}
           </>
@@ -503,8 +724,194 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
             <Text style={[styles.emptyText, { color: colors.secondary }]}>
               No consultations yet
             </Text>
+            <Text style={[styles.emptySubtext, { color: colors.secondary }]}>
+              Request a consultation with your physician
+            </Text>
           </View>
         )}
+
+        {/* Request Consultation Modal */}
+        <Modal
+          visible={showRequestModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowRequestModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>
+                  Request Consultation
+                </Text>
+                <TouchableOpacity onPress={() => setShowRequestModal(false)}>
+                  <Icon name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.modalBody}>
+                <Text style={[styles.modalLabel, { color: colors.text }]}>
+                  Preferred Date *
+                </Text>
+                <TouchableOpacity
+                  style={[styles.dateButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Icon name="calendar" size={20} color={colors.primary} />
+                  <Text style={[styles.dateButtonText, { color: colors.text }]}>
+                    {requestDate.toLocaleDateString('en-US', {
+                      weekday: 'long',
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric'
+                    })}
+                  </Text>
+                </TouchableOpacity>
+
+                <Text style={[styles.modalLabel, { color: colors.text, marginTop: 16 }]}>
+                  Preferred Time *
+                </Text>
+                <TouchableOpacity
+                  style={[styles.dateButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  onPress={() => setShowTimePicker(true)}
+                >
+                  <Icon name="clock-outline" size={20} color={colors.primary} />
+                  <Text style={[styles.dateButtonText, { color: colors.text }]}>
+                    {requestTime || '09:00'}
+                  </Text>
+                </TouchableOpacity>
+
+                <Text style={[styles.modalLabel, { color: colors.text, marginTop: 16 }]}>
+                  Reason for Consultation *
+                </Text>
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    styles.textArea,
+                    { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }
+                  ]}
+                  placeholder="Describe the reason for your consultation..."
+                  placeholderTextColor={colors.secondary}
+                  value={requestReason}
+                  onChangeText={setRequestReason}
+                  multiline
+                  numberOfLines={4}
+                />
+
+                <View style={[styles.infoBox, { backgroundColor: colors.info + '10' }]}>
+                  <Icon name="information" size={20} color={colors.info} />
+                  <Text style={[styles.infoText, { color: colors.info }]}>
+                    Your physician will review your request and provide a Google Meet link if approved.
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.submitButton, { backgroundColor: colors.primary }]}
+                  onPress={handleSubmitRequest}
+                  disabled={requestLoading}
+                >
+                  {requestLoading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Icon name="send" size={20} color="#FFFFFF" />
+                      <Text style={styles.submitButtonText}>Submit Request</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Date Picker Modal */}
+        <Modal
+          visible={showDatePicker}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowDatePicker(false)}
+        >
+          <View style={styles.pickerOverlay}>
+            <View style={[styles.pickerContent, { backgroundColor: colors.card }]}>
+              <Text style={[styles.pickerTitle, { color: colors.text }]}>Select Date</Text>
+              <ScrollView style={styles.pickerScroll}>
+                {Array.from({ length: 30 }, (_, i) => {
+                  const date = new Date();
+                  date.setDate(date.getDate() + i);
+                  return (
+                    <TouchableOpacity
+                      key={i}
+                      style={[
+                        styles.pickerItem,
+                        requestDate.toDateString() === date.toDateString() && { backgroundColor: colors.primary + '20' }
+                      ]}
+                      onPress={() => {
+                        setRequestDate(date);
+                        setShowDatePicker(false);
+                      }}
+                    >
+                      <Text style={[
+                        styles.pickerItemText,
+                        { color: requestDate.toDateString() === date.toDateString() ? colors.primary : colors.text }
+                      ]}>
+                        {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              <TouchableOpacity
+                style={[styles.pickerCloseButton, { borderColor: colors.border }]}
+                onPress={() => setShowDatePicker(false)}
+              >
+                <Text style={[styles.pickerCloseText, { color: colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Time Picker Modal */}
+        <Modal
+          visible={showTimePicker}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowTimePicker(false)}
+        >
+          <View style={styles.pickerOverlay}>
+            <View style={[styles.pickerContent, { backgroundColor: colors.card }]}>
+              <Text style={[styles.pickerTitle, { color: colors.text }]}>Select Time</Text>
+              <ScrollView style={styles.pickerScroll}>
+                {['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
+                  '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
+                  '16:00', '16:30', '17:00', '17:30', '18:00'].map((time) => (
+                  <TouchableOpacity
+                    key={time}
+                    style={[
+                      styles.pickerItem,
+                      requestTime === time && { backgroundColor: colors.primary + '20' }
+                    ]}
+                    onPress={() => {
+                      setRequestTime(time);
+                      setShowTimePicker(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.pickerItemText,
+                      { color: requestTime === time ? colors.primary : colors.text }
+                    ]}>
+                      {time}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TouchableOpacity
+                style={[styles.pickerCloseButton, { borderColor: colors.border }]}
+                onPress={() => setShowTimePicker(false)}
+              >
+                <Text style={[styles.pickerCloseText, { color: colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </View>
     );
   };
@@ -978,6 +1385,186 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     marginTop: 16,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  modalBody: {
+    padding: 20,
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+  },
+  dateButtonText: {
+    fontSize: 15,
+    flex: 1,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+  },
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 14,
+    borderRadius: 12,
+    marginTop: 16,
+    gap: 10,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  submitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 20,
+    marginBottom: 20,
+    gap: 8,
+  },
+  submitButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // Meeting Card Styles
+  pendingBanner: {
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  pendingBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  meetingCard: {
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 12,
+  },
+  meetingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  meetingPlatform: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  meetingPassword: {
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  joinMeetingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  joinMeetingText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  // Picker Modal Styles
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pickerContent: {
+    width: '80%',
+    maxHeight: '60%',
+    borderRadius: 16,
+    padding: 16,
+  },
+  pickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  pickerScroll: {
+    maxHeight: 300,
+  },
+  pickerItem: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  pickerItemText: {
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  pickerCloseButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  pickerCloseText: {
+    fontSize: 16,
+    fontWeight: '500',
   },
 });
 

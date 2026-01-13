@@ -7,21 +7,35 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Modal,
+  TextInput,
+  Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
-import { consultationAPI, prescriptionAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
+import { consultationAPI, prescriptionAPI } from '../services/api';
 
 export default function ConsultationsScreen() {
   const { colors: theme } = useTheme();
   const { showToast } = useToast();
-  const [selectedTab, setSelectedTab] = useState('upcoming');
+  const [selectedTab, setSelectedTab] = useState('pending');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [consultations, setConsultations] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
   const [prescriptions, setPrescriptions] = useState([]);
+  
+  // Modal states
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [selectedConsultation, setSelectedConsultation] = useState(null);
+  const [meetingLink, setMeetingLink] = useState('');
+  const [meetingPassword, setMeetingPassword] = useState('');
+  const [rejectReason, setRejectReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -30,13 +44,18 @@ export default function ConsultationsScreen() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      if (selectedTab === 'prescriptions') {
+      if (selectedTab === 'pending') {
+        const response = await consultationAPI.getPending();
+        if (response.success) {
+          setPendingRequests(response.data);
+        }
+      } else if (selectedTab === 'prescriptions') {
         const response = await prescriptionAPI.getAll();
         if (response.success) {
           setPrescriptions(response.data);
         }
       } else {
-        const status = selectedTab === 'upcoming' ? 'scheduled' : 'completed';
+        const status = selectedTab === 'upcoming' ? 'approved' : 'completed';
         const response = await consultationAPI.getAll({ status });
         if (response.success) {
           setConsultations(response.data);
@@ -44,7 +63,7 @@ export default function ConsultationsScreen() {
       }
     } catch (error) {
       console.error('Error fetching data:', error);
-      showToast('Failed to load data', 'error');
+      // Silent fail for data loading
     } finally {
       setLoading(false);
     }
@@ -54,6 +73,95 @@ export default function ConsultationsScreen() {
     setRefreshing(true);
     await fetchData();
     setRefreshing(false);
+  };
+
+  const handleApprove = (consultation) => {
+    setSelectedConsultation(consultation);
+    setMeetingLink('');
+    setMeetingPassword('');
+    setShowApproveModal(true);
+  };
+
+  const handleReject = (consultation) => {
+    setSelectedConsultation(consultation);
+    setRejectReason('');
+    setShowRejectModal(true);
+  };
+
+  const submitApproval = async () => {
+    if (!meetingLink.trim()) {
+      showToast('Please enter a Google Meet link', 'error');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      const response = await consultationAPI.approve(selectedConsultation.id, {
+        meeting_link: meetingLink.trim(),
+        meeting_password: meetingPassword.trim(),
+        platform: 'google_meet',
+      });
+
+      if (response.success) {
+        showToast('Consultation approved successfully', 'success');
+        setShowApproveModal(false);
+        fetchData();
+      } else {
+        showToast(response.message || 'Failed to approve', 'error');
+      }
+    } catch (error) {
+      console.error('Error approving consultation:', error);
+      showToast('Failed to approve consultation', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const submitRejection = async () => {
+    try {
+      setActionLoading(true);
+      const response = await consultationAPI.reject(selectedConsultation.id, rejectReason);
+
+      if (response.success) {
+        showToast('Consultation rejected', 'success');
+        setShowRejectModal(false);
+        fetchData();
+      } else {
+        showToast(response.message || 'Failed to reject', 'error');
+      }
+    } catch (error) {
+      console.error('Error rejecting consultation:', error);
+      showToast('Failed to reject consultation', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const openMeetingLink = (link) => {
+    if (link) {
+      Linking.openURL(link);
+    }
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
+  const formatTime = (dateString, timeString) => {
+    if (timeString) return timeString;
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   if (loading) {
@@ -67,53 +175,8 @@ export default function ConsultationsScreen() {
     );
   }
 
-  // Placeholder kept for backward compatibility
-  const oldConsultations = [
-    {
-      id: 1,
-      patientName: 'Sarah Williams',
-      type: 'video',
-      date: 'Today',
-      time: '2:00 PM',
-      duration: '30 min',
-      status: 'upcoming',
-      reason: 'Follow-up consultation',
-    },
-    {
-      id: 2,
-      patientName: 'Robert Brown',
-      type: 'video',
-      date: 'Today',
-      time: '4:30 PM',
-      duration: '45 min',
-      status: 'upcoming',
-      reason: 'Initial consultation',
-    },
-    {
-      id: 3,
-      patientName: 'Emily Davis',
-      type: 'chat',
-      date: 'Tomorrow',
-      time: '10:00 AM',
-      duration: '20 min',
-      status: 'upcoming',
-      reason: 'Prescription renewal',
-    },
-    {
-      id: 4,
-      patientName: 'Michael Johnson',
-      type: 'video',
-      date: 'Yesterday',
-      time: '3:00 PM',
-      duration: '40 min',
-      status: 'completed',
-      reason: 'Blood sugar management',
-      notes: 'Adjusted insulin dosage',
-    },
-  ];
-
   const upcomingConsultations = consultations.filter(
-    (c) => c.status === 'scheduled' || c.status === 'upcoming'
+    (c) => c.status === 'approved' || c.status === 'scheduled'
   );
   const completedConsultations = consultations.filter(
     (c) => c.status === 'completed'
@@ -126,9 +189,12 @@ export default function ConsultationsScreen() {
   const getStatusColor = (status) => {
     switch (status) {
       case 'active':
+      case 'approved':
         return theme.success;
       case 'pending':
         return theme.warning;
+      case 'rejected':
+        return theme.error;
       default:
         return theme.secondary;
     }
@@ -138,7 +204,33 @@ export default function ConsultationsScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         {/* Tab Selector */}
-        <View style={styles.tabContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabContainer}
+        >
+          <TouchableOpacity
+            style={[
+              styles.tab,
+              selectedTab === 'pending' && {
+                borderBottomColor: theme.primary,
+                borderBottomWidth: 2,
+              },
+            ]}
+            onPress={() => setSelectedTab('pending')}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                {
+                  color: selectedTab === 'pending' ? theme.primary : theme.secondary,
+                },
+              ]}
+            >
+              Pending ({pendingRequests.length})
+            </Text>
+          </TouchableOpacity>
+
         <TouchableOpacity
           style={[
             styles.tab,
@@ -209,7 +301,7 @@ export default function ConsultationsScreen() {
             Prescriptions
           </Text>
         </TouchableOpacity>
-      </View>
+        </ScrollView>
 
       <ScrollView 
         style={styles.content}
@@ -217,6 +309,105 @@ export default function ConsultationsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
+        {/* Pending Requests Tab */}
+        {selectedTab === 'pending' && (
+          <View style={styles.section}>
+            {pendingRequests.length === 0 ? (
+              <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, ...theme.shadow }]}>
+                <Ionicons name="hourglass-outline" size={64} color={theme.secondary} />
+                <Text style={[styles.emptyStateText, { color: theme.text }]}>
+                  No pending requests
+                </Text>
+                <Text style={[styles.emptyStateSubtext, { color: theme.secondary }]}>
+                  Patient consultation requests will appear here
+                </Text>
+              </View>
+            ) : (
+              pendingRequests.map((consultation) => (
+                <View
+                  key={consultation.id}
+                  style={[
+                    styles.consultationCard,
+                    {
+                      backgroundColor: theme.card,
+                      borderColor: theme.warning,
+                      borderWidth: 2,
+                      ...theme.shadow,
+                    },
+                  ]}
+                >
+                  <View style={[styles.pendingBadge, { backgroundColor: theme.warning }]}>
+                    <Text style={styles.pendingBadgeText}>PENDING REQUEST</Text>
+                  </View>
+                  
+                  <View style={styles.cardHeader}>
+                    <View
+                      style={[
+                        styles.typeIconContainer,
+                        { backgroundColor: theme.warning + '20' },
+                      ]}
+                    >
+                      <Ionicons
+                        name={getTypeIcon(consultation.consultation_type)}
+                        size={24}
+                        color={theme.warning}
+                      />
+                    </View>
+                    <View style={styles.consultationInfo}>
+                      <Text style={[styles.patientName, { color: theme.text }]}>
+                        {consultation.patient?.first_name} {consultation.patient?.last_name}
+                      </Text>
+                      <Text
+                        style={[styles.consultationReason, { color: theme.secondary }]}
+                      >
+                        {consultation.reason || 'No reason provided'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.consultationDetails}>
+                    <View style={styles.detailItem}>
+                      <Ionicons name="calendar" size={16} color={theme.secondary} />
+                      <Text style={[styles.detailText, { color: theme.text }]}>
+                        {formatDate(consultation.scheduled_date)}
+                      </Text>
+                    </View>
+                    <View style={styles.detailItem}>
+                      <Ionicons name="time" size={16} color={theme.secondary} />
+                      <Text style={[styles.detailText, { color: theme.text }]}>
+                        {formatTime(consultation.scheduled_date, consultation.scheduled_time)}
+                      </Text>
+                    </View>
+                    <View style={styles.detailItem}>
+                      <Ionicons name="hourglass" size={16} color={theme.secondary} />
+                      <Text style={[styles.detailText, { color: theme.text }]}>
+                        {consultation.duration_minutes} min
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.actionButtons}>
+                    <TouchableOpacity
+                      style={[styles.approveButton, { backgroundColor: theme.success }]}
+                      onPress={() => handleApprove(consultation)}
+                    >
+                      <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+                      <Text style={styles.buttonText}>Approve</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.rejectButton, { backgroundColor: theme.error }]}
+                      onPress={() => handleReject(consultation)}
+                    >
+                      <Ionicons name="close-circle" size={18} color="#FFFFFF" />
+                      <Text style={styles.buttonText}>Reject</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        )}
+
         {selectedTab === 'upcoming' && (
           <View style={styles.section}>
             {upcomingConsultations.length === 0 ? (
@@ -226,7 +417,7 @@ export default function ConsultationsScreen() {
                   No consultations
                 </Text>
                 <Text style={[styles.emptyStateSubtext, { color: theme.secondary }]}>
-                  Scheduled consultations will appear here
+                  Approved consultations will appear here
                 </Text>
               </View>
             ) : (
@@ -250,19 +441,19 @@ export default function ConsultationsScreen() {
                     ]}
                   >
                     <Ionicons
-                      name={getTypeIcon(consultation.type)}
+                      name={getTypeIcon(consultation.consultation_type)}
                       size={24}
                       color={theme.primary}
                     />
                   </View>
                   <View style={styles.consultationInfo}>
                     <Text style={[styles.patientName, { color: theme.text }]}>
-                      {consultation.patientName}
+                      {consultation.patient?.first_name} {consultation.patient?.last_name}
                     </Text>
                     <Text
                       style={[styles.consultationReason, { color: theme.secondary }]}
                     >
-                      {consultation.reason}
+                      {consultation.reason || 'Consultation'}
                     </Text>
                   </View>
                 </View>
@@ -271,13 +462,13 @@ export default function ConsultationsScreen() {
                   <View style={styles.detailItem}>
                     <Ionicons name="calendar" size={16} color={theme.secondary} />
                     <Text style={[styles.detailText, { color: theme.text }]}>
-                      {consultation.date}
+                      {formatDate(consultation.scheduled_date)}
                     </Text>
                   </View>
                   <View style={styles.detailItem}>
                     <Ionicons name="time" size={16} color={theme.secondary} />
                     <Text style={[styles.detailText, { color: theme.text }]}>
-                      {consultation.time}
+                      {formatTime(consultation.scheduled_date, consultation.scheduled_time)}
                     </Text>
                   </View>
                   <View style={styles.detailItem}>
@@ -287,10 +478,25 @@ export default function ConsultationsScreen() {
                       color={theme.secondary}
                     />
                     <Text style={[styles.detailText, { color: theme.text }]}>
-                      {consultation.duration}
+                      {consultation.duration_minutes} min
                     </Text>
                   </View>
                 </View>
+
+                {/* Meeting Link Info */}
+                {consultation.meeting_link && (
+                  <View style={[styles.meetingInfo, { backgroundColor: theme.primary + '10', borderColor: theme.primary }]}>
+                    <Ionicons name="videocam" size={18} color={theme.primary} />
+                    <View style={styles.meetingDetails}>
+                      <Text style={[styles.meetingLabel, { color: theme.primary }]}>Google Meet</Text>
+                      {consultation.meeting_password && (
+                        <Text style={[styles.meetingPassword, { color: theme.secondary }]}>
+                          Password: {consultation.meeting_password}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                )}
 
                 <View style={styles.actionButtons}>
                   <TouchableOpacity
@@ -298,18 +504,10 @@ export default function ConsultationsScreen() {
                       styles.startButton,
                       { backgroundColor: theme.primary },
                     ]}
+                    onPress={() => openMeetingLink(consultation.meeting_link)}
                   >
                     <Ionicons name="videocam" size={18} color="#FFFFFF" />
-                    <Text style={styles.buttonText}>Start Call</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.rescheduleButton, { borderColor: theme.border }]}
-                  >
-                    <Ionicons
-                      name="calendar-outline"
-                      size={18}
-                      color={theme.text}
-                    />
+                    <Text style={styles.buttonText}>Join Meeting</Text>
                   </TouchableOpacity>
                 </View>
               </TouchableOpacity>
@@ -357,12 +555,12 @@ export default function ConsultationsScreen() {
                   </View>
                   <View style={styles.consultationInfo}>
                     <Text style={[styles.patientName, { color: theme.text }]}>
-                      {consultation.patientName}
+                      {consultation.patient?.first_name} {consultation.patient?.last_name}
                     </Text>
                     <Text
                       style={[styles.consultationReason, { color: theme.secondary }]}
                     >
-                      {consultation.reason}
+                      {consultation.reason || 'Consultation'}
                     </Text>
                   </View>
                 </View>
@@ -371,13 +569,13 @@ export default function ConsultationsScreen() {
                   <View style={styles.detailItem}>
                     <Ionicons name="calendar" size={16} color={theme.secondary} />
                     <Text style={[styles.detailText, { color: theme.text }]}>
-                      {consultation.date}
+                      {formatDate(consultation.scheduled_date)}
                     </Text>
                   </View>
                   <View style={styles.detailItem}>
                     <Ionicons name="time" size={16} color={theme.secondary} />
                     <Text style={[styles.detailText, { color: theme.text }]}>
-                      {consultation.time}
+                      {formatTime(consultation.scheduled_date, consultation.scheduled_time)}
                     </Text>
                   </View>
                   <View style={styles.detailItem}>
@@ -387,7 +585,7 @@ export default function ConsultationsScreen() {
                       color={theme.secondary}
                     />
                     <Text style={[styles.detailText, { color: theme.text }]}>
-                      {consultation.duration}
+                      {consultation.duration_minutes} min
                     </Text>
                   </View>
                 </View>
@@ -526,6 +724,162 @@ export default function ConsultationsScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Approve Modal */}
+      <Modal
+        visible={showApproveModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowApproveModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>
+                Approve Consultation
+              </Text>
+              <TouchableOpacity onPress={() => setShowApproveModal(false)}>
+                <Ionicons name="close" size={24} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+
+            {selectedConsultation && (
+              <View style={styles.modalBody}>
+                <Text style={[styles.modalSubtitle, { color: theme.secondary }]}>
+                  Patient: {selectedConsultation.patient?.first_name} {selectedConsultation.patient?.last_name}
+                </Text>
+                <Text style={[styles.modalSubtitle, { color: theme.secondary }]}>
+                  Date: {formatDate(selectedConsultation.scheduled_date)} at {formatTime(selectedConsultation.scheduled_date, selectedConsultation.scheduled_time)}
+                </Text>
+
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>
+                    Google Meet Link *
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.textInput,
+                      { 
+                        backgroundColor: theme.surface, 
+                        color: theme.text,
+                        borderColor: theme.border 
+                      },
+                    ]}
+                    placeholder="https://meet.google.com/xxx-xxxx-xxx"
+                    placeholderTextColor={theme.secondary}
+                    value={meetingLink}
+                    onChangeText={setMeetingLink}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>
+                    Meeting Password (optional)
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.textInput,
+                      { 
+                        backgroundColor: theme.surface, 
+                        color: theme.text,
+                        borderColor: theme.border 
+                      },
+                    ]}
+                    placeholder="Enter password if any"
+                    placeholderTextColor={theme.secondary}
+                    value={meetingPassword}
+                    onChangeText={setMeetingPassword}
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.submitButton, { backgroundColor: theme.success }]}
+                  onPress={submitApproval}
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                      <Text style={styles.submitButtonText}>Approve Consultation</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Reject Modal */}
+      <Modal
+        visible={showRejectModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowRejectModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>
+                Reject Consultation
+              </Text>
+              <TouchableOpacity onPress={() => setShowRejectModal(false)}>
+                <Ionicons name="close" size={24} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+
+            {selectedConsultation && (
+              <View style={styles.modalBody}>
+                <Text style={[styles.modalSubtitle, { color: theme.secondary }]}>
+                  Patient: {selectedConsultation.patient?.first_name} {selectedConsultation.patient?.last_name}
+                </Text>
+
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>
+                    Reason for Rejection (optional)
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.textInput,
+                      styles.textArea,
+                      { 
+                        backgroundColor: theme.surface, 
+                        color: theme.text,
+                        borderColor: theme.border 
+                      },
+                    ]}
+                    placeholder="Enter reason..."
+                    placeholderTextColor={theme.secondary}
+                    value={rejectReason}
+                    onChangeText={setRejectReason}
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.submitButton, { backgroundColor: theme.error }]}
+                  onPress={submitRejection}
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="close-circle" size={20} color="#FFFFFF" />
+                      <Text style={styles.submitButtonText}>Reject Consultation</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
       </View>
     </SafeAreaView>
   );
@@ -539,10 +893,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
+    maxHeight: 50,
   },
   tab: {
-    flex: 1,
     paddingVertical: 12,
+    paddingHorizontal: 16,
     alignItems: 'center',
   },
   tabText: {
@@ -561,9 +916,24 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
   },
+  pendingBadge: {
+    position: 'absolute',
+    top: -1,
+    right: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
+  },
+  pendingBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
   cardHeader: {
     flexDirection: 'row',
     marginBottom: 12,
+    marginTop: 8,
   },
   typeIconContainer: {
     width: 48,
@@ -601,6 +971,26 @@ const styles = StyleSheet.create({
   detailText: {
     fontSize: 13,
   },
+  meetingInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    gap: 10,
+  },
+  meetingDetails: {
+    flex: 1,
+  },
+  meetingLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  meetingPassword: {
+    fontSize: 12,
+    marginTop: 2,
+  },
   actionButtons: {
     flexDirection: 'row',
     gap: 8,
@@ -610,7 +1000,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 6,
+  },
+  approveButton: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 6,
+  },
+  rejectButton: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
     borderRadius: 8,
     gap: 6,
   },
@@ -725,5 +1133,68 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 32,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  modalBody: {
+    padding: 16,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  inputGroup: {
+    marginTop: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  submitButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderRadius: 8,
+    marginTop: 24,
+    gap: 8,
+  },
+  submitButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

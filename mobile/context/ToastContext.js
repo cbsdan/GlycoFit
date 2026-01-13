@@ -35,20 +35,25 @@ export const ToastProvider = ({ children, position = 'top' }) => {
   const showToast = (options) => {
     const { type, message, duration = 3000 } = options;
     
-    dispatch({
-      type: ADD_TOAST,
-      payload: {
-        type,
-        message,
-        duration,
-        onHide: (id) => {
-          dispatch({
-            type: REMOVE_TOAST,
-            payload: id,
-          });
+    // Use setTimeout to avoid useInsertionEffect warning
+    setTimeout(() => {
+      dispatch({
+        type: ADD_TOAST,
+        payload: {
+          type,
+          message,
+          duration,
+          onHide: (id) => {
+            setTimeout(() => {
+              dispatch({
+                type: REMOVE_TOAST,
+                payload: id,
+              });
+            }, 0);
+          },
         },
-      },
-    });
+      });
+    }, 0);
   };
   
   const toast = {

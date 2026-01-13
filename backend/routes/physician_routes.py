@@ -21,7 +21,11 @@ from controllers.consultation_controller import (
     start_consultation,
     complete_consultation,
     cancel_consultation,
-    reschedule_consultation
+    reschedule_consultation,
+    get_pending_consultation_requests,
+    approve_consultation,
+    reject_consultation,
+    get_physician_schedule
 )
 from controllers.prescription_controller import (
     create_prescription,
@@ -128,10 +132,30 @@ def consultations_get():
     """Get consultations"""
     return get_consultations()
 
+@physician_bp.route('/consultations/pending', methods=['GET'])
+def consultations_pending_get():
+    """Get pending consultation requests"""
+    return get_pending_consultation_requests()
+
+@physician_bp.route('/consultations/schedule', methods=['GET'])
+def consultations_schedule_get():
+    """Get approved consultations for calendar/schedule view"""
+    return get_physician_schedule()
+
 @physician_bp.route('/consultations/<consultation_id>', methods=['GET'])
 def consultation_get(consultation_id):
     """Get specific consultation"""
     return get_consultation(consultation_id)
+
+@physician_bp.route('/consultations/<consultation_id>/approve', methods=['POST'])
+def consultation_approve(consultation_id):
+    """Approve consultation request with meeting details"""
+    return approve_consultation(consultation_id)
+
+@physician_bp.route('/consultations/<consultation_id>/reject', methods=['POST'])
+def consultation_reject(consultation_id):
+    """Reject consultation request"""
+    return reject_consultation(consultation_id)
 
 @physician_bp.route('/consultations/<consultation_id>/start', methods=['POST'])
 def consultation_start(consultation_id):
