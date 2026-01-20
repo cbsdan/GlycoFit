@@ -268,27 +268,30 @@ const DisclaimerScreen = ({ navigation, onComplete, readOnly = false }) => {
         <View style={styles.disclaimerSection}>
           <Text style={styles.sectionTitle}>1. Not Medical Advice</Text>
           <Text style={styles.disclaimerText}>
-            The information, predictions, and recommendations provided by GlycoFit are for educational and informational purposes only. They are not intended as professional medical advice, and should not be relied upon as a substitute for professional medical advice, diagnosis, or treatment from a qualified healthcare provider.
+            GlycoFit does not diagnose illness, predict your medical outcome, or prescribe treatment. The information, predictions, and recommendations provided by GlycoFit are for educational and informational purposes only.
           </Text>
           <Text style={styles.disclaimerText}>
-            Always consult with your physician, nurse, or other qualified healthcare professional before starting any new health treatment or making any changes to your existing medical care.
+            This app is not a replacement for regular check-ups, lab tests, or advice from your doctor. Always consult with your physician, nurse, or other qualified healthcare professional before starting any new health treatment or making any changes to your existing medical care.
           </Text>
         </View>
 
-        {/* AI Predictions Disclaimer */}
+        {/* Risk Score & ML Limitations */}
         <View style={styles.disclaimerSection}>
-          <Text style={styles.sectionTitle}>2. Health Data and Analysis</Text>
+          <Text style={styles.sectionTitle}>2. Risk Score and Machine Learning Limitations</Text>
           <Text style={styles.disclaimerText}>
-            Information, analysis, and recommendations provided by this application are for educational and informational purposes only. They are based on artificial intelligence and machine learning applied to your personal health data.
+            Any risk score you see here is only an estimate based on patterns in data. It is not a medical diagnosis and cannot confirm whether you have diabetes.
           </Text>
           <Text style={styles.disclaimerText}>
-            These analyses are not guaranteed to be accurate and should not be used as a substitute for professional medical diagnosis or treatment. Your actual health status can be affected by numerous factors not captured in this app, including stress, illness, medications, weather, and other physiological factors.
+            Like any tool based on data, the model may have limitations or bias and may not work equally well for everyone. Your actual health status can be affected by numerous factors not captured in this app.
           </Text>
         </View>
 
-        {/* Data Limitations */}
+        {/* Secondary Data */}
         <View style={styles.disclaimerSection}>
-          <Text style={styles.sectionTitle}>3. Data and Monitoring</Text>
+          <Text style={styles.sectionTitle}>3. Data Sources and Limitations</Text>
+          <Text style={styles.disclaimerText}>
+            Some of our insights come from anonymized, pooled data from other sources. Because people are different, those patterns may not perfectly reflect your personal health.
+          </Text>
           <Text style={styles.disclaimerText}>
             The data collected through this app (including steps, calories, meals, and other health metrics) are based on:
           </Text>
@@ -300,48 +303,46 @@ const DisclaimerScreen = ({ navigation, onComplete, readOnly = false }) => {
           </Text>
         </View>
 
-        {/* Personal Responsibility */}
-        <View style={styles.disclaimerSection}>
-          <Text style={styles.sectionTitle}>4. Your Responsibility</Text>
-          <Text style={styles.disclaimerText}>
-            You are responsible for:
-          </Text>
-          <Text style={styles.bulletPoint}>• Providing accurate personal health information</Text>
-          <Text style={styles.bulletPoint}>• Maintaining regular contact with your healthcare provider</Text>
-          <Text style={styles.bulletPoint}>• Seeking immediate medical attention for health emergencies</Text>
-          <Text style={styles.bulletPoint}>• Verifying all health information entered in the app</Text>
-          <Text style={styles.bulletPoint}>• Using the app as a supplementary tool, not a replacement for professional care</Text>
-        </View>
-
         {/* Medical Emergencies */}
         <View style={styles.disclaimerSection}>
-          <Text style={styles.sectionTitle}>5. Medical Emergencies</Text>
+          <Text style={styles.sectionTitle}>4. Medical Emergencies</Text>
           <Text style={styles.disclaimerText}>
             If you experience any medical emergency, severe symptoms, chest pain, difficulty breathing, or any other life-threatening condition, immediately contact emergency services or go to the nearest hospital. Do not rely on this app for emergency medical advice.
           </Text>
         </View>
 
-        {/* No Liability */}
+        {/* Limitation of Liability */}
         <View style={styles.disclaimerSection}>
-          <Text style={styles.sectionTitle}>6. Limitation of Liability</Text>
+          <Text style={styles.sectionTitle}>5. Limitation of Liability</Text>
           <Text style={styles.disclaimerText}>
-            GlycoFit and its developers are not responsible for any health consequences, adverse effects, or damages resulting from the use or misuse of this application. Use this app at your own risk.
+            To the fullest extent allowed by law, GlycoFit and its developers are not responsible for any loss or harm resulting from using—or not being able to use—this app.
           </Text>
         </View>
 
-        {/* Privacy Note */}
+        {/* Privacy and Data Protection */}
         <View style={styles.disclaimerSection}>
-          <Text style={styles.sectionTitle}>7. Privacy and Data Security</Text>
+          <Text style={styles.sectionTitle}>6. Privacy and Data Protection</Text>
+          <Text style={styles.disclaimerText}>
+            We handle your data in line with applicable privacy laws, including the Philippine Data Privacy Act of 2012 (RA 10173), where applicable.
+          </Text>
           <Text style={styles.disclaimerText}>
             Your health data is sensitive. Please review our privacy policy to understand how your data is collected, used, and protected. While we take security seriously, no system is completely secure.
           </Text>
         </View>
 
-        {/* Physician Consultation */}
+        {/* No Doctor-Patient Relationship */}
         <View style={styles.disclaimerSection}>
-          <Text style={styles.sectionTitle}>8. Professional Consultation</Text>
+          <Text style={styles.sectionTitle}>7. No Doctor–Patient Relationship</Text>
           <Text style={styles.disclaimerText}>
-            This app includes a communication feature with healthcare professionals. However, messages through this app should not be treated as a substitute for in-person medical consultations or emergency medical care.
+            Even if you message a healthcare professional through the app, this does not replace a clinic visit and does not establish a formal doctor–patient relationship.
+          </Text>
+        </View>
+
+        {/* Regulatory & Research-Use Disclaimer */}
+        <View style={styles.disclaimerSection}>
+          <Text style={styles.sectionTitle}>8. Regulatory and Research-Use Disclaimer</Text>
+          <Text style={styles.disclaimerText}>
+            GlycoFit is an academic project created for learning and research. It is not a certified medical device and has not been evaluated or approved by the Philippine FDA. Please do not use it for clinical decisions or patient management.
           </Text>
         </View>
 
@@ -349,8 +350,8 @@ const DisclaimerScreen = ({ navigation, onComplete, readOnly = false }) => {
         <View style={styles.disclaimerSection}>
           <Text style={styles.sectionTitle}>In Summary</Text>
           <Text style={styles.disclaimerText}>
-            <Text style={styles.emphasisText}>GlycoFit is a health tracking and educational tool, not a medical device.</Text>
-            {' '}It should be used as a supplement to, not a replacement for, professional medical care. Always consult with your healthcare provider about your health concerns, medications, and treatment plans.
+            <Text style={styles.emphasisText}>GlycoFit is a health tracking and educational tool designed for academic research purposes.</Text>
+            {' '}It is not a certified medical device and should be used as a supplement to, not a replacement for, professional medical care. Always consult with your healthcare provider about your health concerns, medications, and treatment plans.
           </Text>
         </View>
       </ScrollView>
