@@ -11,7 +11,9 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
@@ -21,6 +23,9 @@ import api from '../services/api';
 const FoodScannerScreen = ({ navigation }) => {
   const { colors } = useTheme();
   const toast = useToast();
+
+  // Input mode: 'image' or 'text'
+  const [inputMode, setInputMode] = useState('image');
 
   // Food scanner state
   const [isProcessing, setIsProcessing] = useState(false);
@@ -35,6 +40,12 @@ const FoodScannerScreen = ({ navigation }) => {
   const [imageLayout, setImageLayout] = useState({ width: 0, height: 0 });
   const [foodDescription, setFoodDescription] = useState('');
   const [showAnalyzeButton, setShowAnalyzeButton] = useState(false);
+  
+  // Text input specific state
+  const [textFoodDescription, setTextFoodDescription] = useState('');
+  const [selectedMealDatetime, setSelectedMealDatetime] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   
   // Meal details state
   const [mealDetails, setMealDetails] = useState({
@@ -192,11 +203,13 @@ const FoodScannerScreen = ({ navigation }) => {
     setFocusedNutrient(null);
     setRecipes([]);
     setFoodDescription('');
+    setTextFoodDescription('');
     setShowAnalyzeButton(false);
     setIngredientNutrients([]);
     setIngredientProportions({});
     setBaseIngredientNutrients([]);
     setShowIngredientModal(false);
+    setSelectedMealDatetime(new Date());
     setMealDetails({
       mealName: '',
       foodType: 'unlabeled',
@@ -396,31 +409,124 @@ const FoodScannerScreen = ({ navigation }) => {
     }
   };
 
+  // Process text description and get nutrient prediction
+  const processTextDescription = async () => {
+    if (!textFoodDescription.trim()) {
+      toast.error('Please enter a food description');
+      return;
+    }
+
+    setIsProcessing(true);
+    setProcessingMessage('Analyzing food description...');
+    
+    try {
+      console.log('Processing text description:', textFoodDescription);
+      const mealDatetimeISO = selectedMealDatetime.toISOString();
+      const response = await api.predictNutrientsFromText(textFoodDescription, mealDatetimeISO);
+      console.log('Text API response:', response);
+      
+      if (response && response.success && response.data) {
+        console.log('Setting prediction data from text:', response.data);
+        
+        setPredictionData(response.data);
+        setEditableNutrients(response.data.nutrients || {});
+        setBaseNutrients(response.data.nutrients || {});
+        setPortionMultiplier(1);
+        
+        // Handle ingredient nutrients
+        const ingredientsData = response.data.ingredient_nutrients || [];
+        setIngredientNutrients(ingredientsData);
+        setBaseIngredientNutrients(ingredientsData);
+        
+        // Initialize ingredient proportions
+        const initialProportions = {};
+        ingredientsData.forEach((ingredient, index) => {
+          initialProportions[ingredient.ingredient || `Ingredient ${index + 1}`] = 1.0;
+        });
+        setIngredientProportions(initialProportions);
+        
+        setMealDetails(prev => ({
+          ...prev,
+          mealName: response.data.meal_name || textFoodDescription,
+          nutrients: response.data.nutrients,
+          servingSize: response.data.serving_size || '',
+          confidenceRate: response.data.confidence_rate || 0
+        }));
+        
+        toast.success('Food analysis complete! Review and edit the details below.');
+      } else {
+        const errorMessage = response?.message || response?.error || 'Failed to analyze food description';
+        toast.error(errorMessage);
+        
+        Alert.alert(
+          'Unable to Identify Food',
+          response?.message || 'Could not identify food from your description. Please provide more details or try a different description.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Error processing text:', error);
+      
+      const errorResponse = error.response?.data;
+      if (errorResponse && !errorResponse.success) {
+        toast.error(errorResponse.message || errorResponse.error);
+      } else {
+        toast.error('Failed to analyze food description. Please check your connection and try again.');
+      }
+    } finally {
+      setIsProcessing(false);
+      setProcessingMessage('');
+    }
+  };
+
   // Save meal to database
   const saveMeal = async () => {
     setIsProcessing(true);
     setProcessingMessage('Saving your meal...');
     
     try {
-      console.log('Saving meal with temp_image_public_id:', predictionData.temp_image_public_id);
+      let response;
       
-      const response = await api.saveMeal(
-        editableNutrients,
-        mealDetails.mealName.trim(),
-        mealDetails.foodType,
-        mealDetails.notes.trim(),
-        predictionData.temp_image_public_id,
-        mealDetails.servingSize,
-        mealDetails.confidenceRate,
-        recipes,
-        ingredientNutrients,
-        ingredientProportions
-      );
+      // Check if this is text-based or image-based entry
+      if (inputMode === 'text') {
+        // Text-based meal - use saveMealFromText API
+        console.log('Saving text-based meal...');
+        
+        const mealDatetimeISO = selectedMealDatetime.toISOString();
+        
+        response = await api.saveMealFromText(
+          editableNutrients,
+          mealDetails.mealName.trim(),
+          mealDetails.foodType,
+          mealDetails.notes.trim(),
+          mealDetails.servingSize,
+          mealDetails.confidenceRate,
+          ingredientNutrients,
+          ingredientProportions,
+          mealDatetimeISO
+        );
+      } else {
+        // Image-based meal - use saveMeal API
+        console.log('Saving image-based meal with temp_image_public_id:', predictionData.temp_image_public_id);
+        
+        response = await api.saveMeal(
+          editableNutrients,
+          mealDetails.mealName.trim(),
+          mealDetails.foodType,
+          mealDetails.notes.trim(),
+          predictionData.temp_image_public_id,
+          mealDetails.servingSize,
+          mealDetails.confidenceRate,
+          recipes,
+          ingredientNutrients,
+          ingredientProportions
+        );
+      }
 
       console.log('Save meal response:', response);
 
       if (response.success) {
-        console.log('Meal saved with image_url:', response.data?.image_url);
+        console.log('Meal saved successfully');
         toast.success('Meal saved successfully!');
         navigation.goBack();
       } else {
@@ -570,6 +676,88 @@ const FoodScannerScreen = ({ navigation }) => {
       padding: 16,
     },
     
+    // Mode toggle section
+    modeToggleSection: {
+      marginBottom: 24,
+    },
+    modeToggleContainer: {
+      flexDirection: 'row',
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      padding: 4,
+      gap: 8,
+    },
+    modeToggleButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      gap: 8,
+    },
+    modeToggleText: {
+      fontSize: 15,
+      fontWeight: '600',
+    },
+    
+    // Text input section
+    textInputSection: {
+      marginBottom: 24,
+    },
+    sectionLabel: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 8,
+    },
+    textInput: {
+      borderWidth: 1,
+      borderRadius: 8,
+      padding: 12,
+      fontSize: 15,
+      minHeight: 80,
+      textAlignVertical: 'top',
+      backgroundColor: colors.card,
+    },
+    datetimeContainer: {
+      flexDirection: 'row',
+      gap: 12,
+      marginBottom: 16,
+    },
+    datetimeButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      borderWidth: 1,
+      backgroundColor: colors.card,
+    },
+    datetimeButtonText: {
+      fontSize: 14,
+      fontWeight: '500',
+    },
+    analyzeButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 16,
+      paddingHorizontal: 20,
+      borderRadius: 12,
+      gap: 12,
+      marginTop: 8,
+    },
+    analyzeButtonText: {
+      color: 'white',
+      fontSize: 18,
+      fontWeight: '600',
+    },
+    
     // Image capture section
     captureSection: {
       marginBottom: 24,
@@ -713,10 +901,6 @@ const FoodScannerScreen = ({ navigation }) => {
       flexDirection: 'row',
       justifyContent: 'center',
       elevation: 3,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.2,
-      shadowRadius: 4,
       flex: 2,
     },
     analyzeButtonText: {
@@ -921,6 +1105,7 @@ const FoodScannerScreen = ({ navigation }) => {
     actionButtons: {
       flexDirection: 'row',
       justifyContent: 'space-between',
+      marginBottom: 32,
     },
     cancelButton: {
       backgroundColor: colors.secondary,
@@ -1301,7 +1486,7 @@ const FoodScannerScreen = ({ navigation }) => {
 
   // Show image picker modal when screen first loads
   React.useEffect(() => {
-    setShowImagePickerModal(true);
+    setShowImagePickerModal(false);
   }, []);
 
   return (
@@ -1316,8 +1501,120 @@ const FoodScannerScreen = ({ navigation }) => {
       </View>
 
       <ScrollView style={styles.scannerContent}>
+        {/* Input Mode Toggle */}
+        {!predictionData && (
+          <View style={styles.modeToggleSection}>
+            <View style={styles.modeToggleContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.modeToggleButton,
+                  inputMode === 'image' && { backgroundColor: colors.primary }
+                ]}
+                onPress={() => {
+                  setInputMode('image');
+                  setTextFoodDescription('');
+                }}
+                disabled={isProcessing}
+              >
+                <Icon 
+                  name="camera" 
+                  size={20} 
+                  color={inputMode === 'image' ? 'white' : colors.text} 
+                />
+                <Text style={[
+                  styles.modeToggleText,
+                  { color: inputMode === 'image' ? 'white' : colors.text }
+                ]}>
+                  Scan Image
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.modeToggleButton,
+                  inputMode === 'text' && { backgroundColor: colors.primary }
+                ]}
+                onPress={() => {
+                  setInputMode('text');
+                  setCapturedImage(null);
+                  setShowAnalyzeButton(false);
+                }}
+                disabled={isProcessing}
+              >
+                <Icon 
+                  name="text" 
+                  size={20} 
+                  color={inputMode === 'text' ? 'white' : colors.text} 
+                />
+                <Text style={[
+                  styles.modeToggleText,
+                  { color: inputMode === 'text' ? 'white' : colors.text }
+                ]}>
+                  Type Food
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Text Input Mode */}
+        {inputMode === 'text' && !predictionData && (
+          <View style={styles.textInputSection}>
+            <Text style={styles.sectionLabel}>What did you eat?</Text>
+            <TextInput
+              style={[styles.textInput, { color: colors.text, borderColor: colors.border }]}
+              placeholder="e.g., Grilled chicken breast with brown rice and broccoli"
+              placeholderTextColor={colors.textSecondary}
+              value={textFoodDescription}
+              onChangeText={setTextFoodDescription}
+              multiline
+              numberOfLines={3}
+              editable={!isProcessing}
+            />
+            
+            <Text style={[styles.sectionLabel, { marginTop: 16 }]}>When did you eat it?</Text>
+            <View style={styles.datetimeContainer}>
+              <TouchableOpacity
+                style={[styles.datetimeButton, { borderColor: colors.border }]}
+                onPress={() => setShowDatePicker(true)}
+                disabled={isProcessing}
+              >
+                <Icon name="calendar" size={20} color={colors.primary} />
+                <Text style={[styles.datetimeButtonText, { color: colors.text }]}>
+                  {selectedMealDatetime.toLocaleDateString()}
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.datetimeButton, { borderColor: colors.border }]}
+                onPress={() => setShowTimePicker(true)}
+                disabled={isProcessing}
+              >
+                <Icon name="clock-outline" size={20} color={colors.primary} />
+                <Text style={[styles.datetimeButtonText, { color: colors.text }]}>
+                  {selectedMealDatetime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            
+            <TouchableOpacity
+              style={[
+                styles.analyzeButton,
+                { backgroundColor: colors.primary }
+              ]}
+              onPress={processTextDescription}
+              disabled={!textFoodDescription.trim() || isProcessing}
+            >
+              <Icon name="food-fork-drink" size={24} color="white" />
+              <Text style={styles.analyzeButtonText}>
+                {isProcessing ? 'Analyzing...' : 'Analyze Food'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Step 1: Image Capture */}
-        {!capturedImage && (
+        {inputMode === 'image' && !capturedImage && (
           <View style={styles.captureSection}>
             <TouchableOpacity 
               style={styles.captureButton} 
@@ -1447,20 +1744,61 @@ const FoodScannerScreen = ({ navigation }) => {
         {predictionData && predictionData.nutrients && !isProcessing && (
           <>
             {/* Analysis Information */}
+                    {predictionData && predictionData.nutrients && !isProcessing && (
+              <View style={styles.formSection}>
+                <Text style={styles.sectionTitle}>Meal Details</Text>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Meal Name</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g., Chicken Caesar Salad"
+                    value={mealDetails.mealName}
+                    onChangeText={(text) => setMealDetails(prev => ({ ...prev, mealName: text }))}
+                    placeholderTextColor={colors.secondary}
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Serving Size</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g., 1 cup, 100g"
+                    value={mealDetails.servingSize}
+                    onChangeText={(text) => setMealDetails(prev => ({ ...prev, servingSize: text }))}
+                    placeholderTextColor={colors.secondary}
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Food Type</Text>
+                  <TouchableOpacity 
+                    style={styles.dropdownButton}
+                    onPress={() => setShowFoodTypeModal(true)}
+                  >
+                    <Text style={styles.dropdownText}>
+                      {foodTypes.find(type => type.value === mealDetails.foodType)?.label || 'Select Food Type'}
+                    </Text>
+                    <Icon name="chevron-down" size={20} color={colors.secondary} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Notes (Optional)</Text>
+                  <TextInput
+                    style={[styles.input, styles.notesInput]}
+                    placeholder="Add any additional notes about this meal..."
+                    value={mealDetails.notes}
+                    onChangeText={(text) => setMealDetails(prev => ({ ...prev, notes: text }))}
+                    multiline
+                    numberOfLines={3}
+                    placeholderTextColor={colors.secondary}
+                  />
+                </View>
+              </View>
+            )}
             <View style={styles.analysisInfoSection}>
               <Text style={styles.sectionTitle}>Analysis Results</Text>
-              
-              {/* Serving Size */}
-              {mealDetails.servingSize && (
-                <View style={styles.infoCard}>
-                  <View style={styles.infoHeader}>
-                    <Icon name="food-variant" size={20} color="#3498DB" />
-                    <Text style={styles.infoLabel}>Serving Size</Text>
-                  </View>
-                  <Text style={styles.infoValue}>{mealDetails.servingSize}</Text>
-                </View>
-              )}
-              
               {/* Confidence Rate */}
               <View style={styles.infoCard}>
                 <View style={styles.infoHeader}>
@@ -1636,76 +1974,23 @@ const FoodScannerScreen = ({ navigation }) => {
           </>
         )}
 
-        {/* Step 4: Meal details form */}
         {predictionData && predictionData.nutrients && !isProcessing && (
-          <View style={styles.formSection}>
-            <Text style={styles.sectionTitle}>Meal Details</Text>
+          <View style={styles.actionButtons}>
+            <TouchableOpacity 
+              style={styles.cancelButton} 
+              onPress={closeFoodScanner}
+              disabled={isProcessing}
+            >
+              <Text style={styles.buttonText}>Cancel</Text>
+            </TouchableOpacity>
             
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Meal Name</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., Chicken Caesar Salad"
-                value={mealDetails.mealName}
-                onChangeText={(text) => setMealDetails(prev => ({ ...prev, mealName: text }))}
-                placeholderTextColor={colors.secondary}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Serving Size</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., 1 cup, 100g"
-                value={mealDetails.servingSize}
-                onChangeText={(text) => setMealDetails(prev => ({ ...prev, servingSize: text }))}
-                placeholderTextColor={colors.secondary}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Food Type</Text>
-              <TouchableOpacity 
-                style={styles.dropdownButton}
-                onPress={() => setShowFoodTypeModal(true)}
-              >
-                <Text style={styles.dropdownText}>
-                  {foodTypes.find(type => type.value === mealDetails.foodType)?.label || 'Select Food Type'}
-                </Text>
-                <Icon name="chevron-down" size={20} color={colors.secondary} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Notes (Optional)</Text>
-              <TextInput
-                style={[styles.input, styles.notesInput]}
-                placeholder="Add any additional notes about this meal..."
-                value={mealDetails.notes}
-                onChangeText={(text) => setMealDetails(prev => ({ ...prev, notes: text }))}
-                multiline
-                numberOfLines={3}
-                placeholderTextColor={colors.secondary}
-              />
-            </View>
-
-            <View style={styles.actionButtons}>
-              <TouchableOpacity 
-                style={styles.cancelButton} 
-                onPress={closeFoodScanner}
-                disabled={isProcessing}
-              >
-                <Text style={styles.buttonText}>Cancel</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.saveButton} 
-                onPress={saveMeal}
-                disabled={isProcessing}
-              >
-                <Text style={styles.buttonText}>Save Meal</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity 
+              style={styles.saveButton} 
+              onPress={saveMeal}
+              disabled={isProcessing}
+            >
+              <Text style={styles.buttonText}>Save Meal</Text>
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
@@ -1735,9 +2020,9 @@ const FoodScannerScreen = ({ navigation }) => {
               style={styles.modalCancelButton} 
               onPress={() => {
                 setShowImagePickerModal(false);
-                if (!capturedImage) {
-                  navigation.goBack();
-                }
+                // if (!capturedImage) {
+                //   navigation.goBack();
+                // }
               }}
             >
               <Text style={styles.modalCancelText}>Cancel</Text>
@@ -1884,6 +2169,41 @@ const FoodScannerScreen = ({ navigation }) => {
           </View>
         </View>
       </Modal>
+
+      {/* Date/Time Pickers */}
+      {showDatePicker && (
+        <DateTimePicker
+          value={selectedMealDatetime}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={(event, selectedDate) => {
+            setShowDatePicker(Platform.OS === 'ios');
+            if (selectedDate) {
+              setSelectedMealDatetime(selectedDate);
+            }
+            if (Platform.OS === 'android') {
+              setShowDatePicker(false);
+            }
+          }}
+        />
+      )}
+
+      {showTimePicker && (
+        <DateTimePicker
+          value={selectedMealDatetime}
+          mode="time"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={(event, selectedTime) => {
+            setShowTimePicker(Platform.OS === 'ios');
+            if (selectedTime) {
+              setSelectedMealDatetime(selectedTime);
+            }
+            if (Platform.OS === 'android') {
+              setShowTimePicker(false);
+            }
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 };

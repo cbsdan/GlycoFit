@@ -345,3 +345,204 @@ class GeminiController:
                 'gemini_ready': False,
                 'error': str(e)
             }), 500
+
+    @staticmethod
+    @firebase_auth_required
+    def predict_nutrients_from_text():
+        """
+        Predict nutrients from text description of food
+        
+        Expected request:
+        - JSON body with:
+          - food_description: Text description of the food/meal
+          - meal_datetime: Optional datetime when meal was eaten (ISO format)
+        
+        Returns:
+        - JSON response with predicted nutrient values (same as image prediction but without recipes/bounding boxes)
+        """
+        try:
+            user_id = get_current_user_id()
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'error': 'No data provided'
+                }), 400
+            
+            food_description = data.get('food_description', '').strip()
+            meal_datetime = data.get('meal_datetime')
+            
+            if not food_description:
+                return jsonify({
+                    'success': False,
+                    'error': 'Food description is required'
+                }), 400
+            
+            # Analyze with Gemini AI
+            try:
+                gemini_service = get_gemini_service()
+                
+                if not gemini_service or not gemini_service.is_ready():
+                    logging.error("Gemini service not available")
+                    return jsonify({
+                        'success': False,
+                        'error': 'Gemini AI service is not available'
+                    }), 503
+                
+                logging.info(f"Analyzing food from text: {food_description}")
+                analysis_result = gemini_service.analyze_food_from_text(food_description)
+                
+                if not analysis_result.get('success'):
+                    # Food not detected
+                    logging.warning("Gemini could not identify food from description")
+                    return jsonify(analysis_result), 200
+                
+                # Extract data from Gemini response
+                meal_name = analysis_result.get('meal_name', food_description)
+                nutrients = analysis_result.get('nutrients', {})
+                serving_size = analysis_result.get('serving_size', 'Standard serving')
+                confidence_rate = analysis_result.get('confidence_percentage', 50)
+                ingredient_nutrients = analysis_result.get('ingredient_nutrients', [])
+                
+                # Return prediction results (same format as image prediction but without recipes/boxes)
+                return jsonify({
+                    'success': True,
+                    'message': 'Nutrient prediction from text completed successfully',
+                    'data': {
+                        'meal_name': meal_name,
+                        'nutrients': nutrients,
+                        'serving_size': serving_size,
+                        'confidence_rate': confidence_rate,
+                        'ingredient_nutrients': ingredient_nutrients,
+                        'meal_datetime': meal_datetime,
+                        'valid_food_types': UserMeal.VALID_MEAL_TYPES,
+                        'input_method': 'text'
+                    }
+                }), 200
+                
+            except Exception as gemini_error:
+                logging.error(f"Gemini service error: {str(gemini_error)}")
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to analyze food description'
+                }), 500
+            
+        except Exception as e:
+            logging.error(f"Error in text prediction endpoint: {str(e)}")
+            return jsonify({
+                'success': False,
+                'error': 'Internal server error'
+            }), 500
+
+    @staticmethod
+    @firebase_auth_required
+    def save_meal_from_text():
+        """
+        Save meal from text-based prediction
+        
+        Expected request:
+        - JSON body with:
+          - nutrients: Dict with predicted nutrients
+          - meal_name: Predicted or user-edited meal name
+          - food_type: User-selected food type
+          - notes: Optional notes
+          - serving_size: Predicted serving size
+          - confidence_rate: Prediction confidence
+          - ingredient_nutrients: List of ingredient-level nutrients
+          - ingredient_proportions: Optional user-adjusted proportions
+          - meal_datetime: When the meal was eaten
+        
+        Returns:
+        - JSON response with saved meal details
+        """
+        try:
+            user_id = get_current_user_id()
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'error': 'No data provided'
+                }), 400
+            
+            # Required fields
+            nutrients = data.get('nutrients')
+            meal_name = data.get('meal_name')
+            food_type = data.get('food_type')
+            
+            if not nutrients:
+                return jsonify({
+                    'success': False,
+                    'error': 'Nutrients data is required'
+                }), 400
+            
+            if not food_type:
+                return jsonify({
+                    'success': False,
+                    'error': 'Food type is required'
+                }), 400
+            
+            # Optional fields
+            notes = data.get('notes', '')
+            serving_size = data.get('serving_size')
+            confidence_rate = data.get('confidence_rate')
+            meal_datetime = data.get('meal_datetime')
+            ingredient_nutrients = data.get('ingredient_nutrients', [])
+            ingredient_proportions = data.get('ingredient_proportions', {})
+            
+            logging.info(f"Saving text-based meal for user {user_id}")
+            
+            # Save meal record to database (no image for text-based entries)
+            try:
+                meal_result = UserMeal.create_meal(
+                    user_id=user_id,
+                    nutrients=nutrients,
+                    image_url=None,  # No image for text-based entry
+                    image_public_id=None,
+                    meal_name=meal_name,
+                    notes=notes,
+                    food_type=food_type,
+                    serving_size=serving_size,
+                    confidence_rate=confidence_rate,
+                    recipes=None,  # No bounding boxes for text-based entry
+                    ingredient_nutrients=ingredient_nutrients,
+                    ingredient_proportions=ingredient_proportions,
+                    meal_datetime=meal_datetime
+                )
+                
+                if meal_result['success']:
+                    logging.info(f"Text-based meal saved successfully for user {user_id}: {meal_result['meal_id']}")
+                    
+                    return jsonify({
+                        'success': True,
+                        'message': 'Meal saved successfully',
+                        'data': {
+                            'meal_id': meal_result['meal_id'],
+                            'nutrients': nutrients,
+                            'meal_name': meal_name,
+                            'notes': notes,
+                            'food_type': food_type,
+                            'input_method': 'text'
+                        }
+                    }), 201
+                else:
+                    logging.error(f"Failed to save meal record: {meal_result.get('error')}")
+                    return jsonify({
+                        'success': False,
+                        'error': f"Failed to save meal: {meal_result.get('error')}"
+                    }), 500
+                    
+            except Exception as db_error:
+                logging.error(f"Database error when saving meal: {str(db_error)}")
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to save meal to database'
+                }), 500
+            
+        except Exception as e:
+            logging.error(f"Error in save text meal endpoint: {str(e)}")
+            return jsonify({
+                'success': False,
+                'error': 'Internal server error'
+            }), 500

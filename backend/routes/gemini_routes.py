@@ -159,3 +159,84 @@ def get_gemini_info():
             'model': 'Google Gemini 1.5 Flash'
         }
     }), 200
+
+@gemini_bp.route('/predict-from-text', methods=['POST'])
+def predict_nutrients_from_text():
+    """
+    POST /api/v1/gemini/predict-from-text
+    
+    Predict nutrient values from text description of food
+    
+    Request:
+    - Content-Type: application/json
+    - Body: {
+        "food_description": "Grilled chicken breast with brown rice and broccoli",
+        "meal_datetime": "2025-01-25T12:30:00.000Z" (optional)
+      }
+    - Requires Firebase authentication (Bearer token in Authorization header)
+    
+    Response:
+    {
+        "success": true,
+        "message": "Nutrient prediction from text completed successfully",
+        "data": {
+            "meal_name": "Grilled Chicken Breast with Brown Rice and Broccoli",
+            "nutrients": {
+                "Calories": 450.0,
+                "Protein (g)": 45.0,
+                "Carbs (g)": 40.0,
+                "Fat (g)": 10.0,
+                "Added Sugars (g)": 0.0,
+                "Fiber (g)": 6.0,
+                "Saturated Fat (g)": 2.0,
+                "Unsaturated Fat (g)": 8.0,
+                "Sodium (mg)": 300.0,
+                "Glycemic Load": 15.0
+            },
+            "serving_size": "1 plate (350g)",
+            "confidence_rate": 85,
+            "ingredient_nutrients": [...],
+            "meal_datetime": "2025-01-25T12:30:00.000Z",
+            "valid_food_types": ["breakfast", "lunch", "dinner", ...],
+            "input_method": "text"
+        }
+    }
+    """
+    return GeminiController.predict_nutrients_from_text()
+
+@gemini_bp.route('/save-meal-from-text', methods=['POST'])
+def save_meal_from_text():
+    """
+    POST /api/v1/gemini/save-meal-from-text
+    
+    Save meal from text-based prediction
+    
+    Request:
+    - Content-Type: application/json
+    - Body: {
+        "meal_name": "Grilled Chicken with Rice",
+        "nutrients": {...},
+        "food_type": "lunch",
+        "notes": "Healthy meal",
+        "serving_size": "1 plate",
+        "confidence_rate": 85,
+        "ingredient_nutrients": [...],
+        "ingredient_proportions": {...},
+        "meal_datetime": "2025-01-25T12:30:00.000Z"
+    }
+    - Requires Firebase authentication (Bearer token in Authorization header)
+    
+    Response:
+    {
+        "success": true,
+        "message": "Meal saved successfully",
+        "data": {
+            "meal_id": "507f1f77bcf86cd799439011",
+            "nutrients": {...},
+            "meal_name": "Grilled Chicken with Rice",
+            "food_type": "lunch",
+            "input_method": "text"
+        }
+    }
+    """
+    return GeminiController.save_meal_from_text()

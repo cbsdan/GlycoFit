@@ -437,6 +437,25 @@ const predictNutrientsOnly = async (imageUri, note = '') => {
   }
 };
 
+// Predict nutrients from text description
+const predictNutrientsFromText = async (foodDescription, mealDatetime = null) => {
+  try {
+    const data = {
+      food_description: foodDescription,
+      meal_datetime: mealDatetime
+    };
+
+    const response = await api.post('/gemini/predict-from-text', data, {
+      timeout: 30000, // 30 seconds timeout for Gemini AI processing
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error predicting nutrients from text:', error);
+    throw error;
+  }
+};
+
 const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePublicId, servingSize = null, confidenceRate = null, recipes = [], ingredientNutrients = [], ingredientProportions = {}, mealDatetime = null) => {
   try{
     const data = {
@@ -463,6 +482,33 @@ const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePubl
     throw error;
   }
 };
+
+// Save meal from text-based prediction
+const saveMealFromText = async (nutrients, mealName, foodType, notes = '', servingSize = null, confidenceRate = null, ingredientNutrients = [], ingredientProportions = {}, mealDatetime = null) => {
+  try {
+    const data = {
+      nutrients,
+      meal_name: mealName,
+      food_type: foodType,
+      notes,
+      serving_size: servingSize,
+      confidence_rate: confidenceRate,
+      ingredient_nutrients: ingredientNutrients,
+      ingredient_proportions: ingredientProportions,
+      meal_datetime: mealDatetime
+    };
+
+    const response = await api.post('/gemini/save-meal-from-text', data, {
+      timeout: 30000,
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error saving text-based meal:', error);
+    throw error;
+  }
+};
+
 
 // Meal Management APIs
 const getUserMeals = async (limit = 50, offset = 0, startDate = null, endDate = null) => {
@@ -2321,7 +2367,9 @@ export const getStepSummary = async (days = 7) => { // ← ADD export here
 
 // Add the functions to the api object
 api.predictNutrientsOnly = predictNutrientsOnly;
+api.predictNutrientsFromText = predictNutrientsFromText;
 api.saveMeal = saveMeal;
+api.saveMealFromText = saveMealFromText;
 api.getUserMeals = getUserMeals;
 api.getMealById = getMealById;
 api.updateMeal = updateMeal;
