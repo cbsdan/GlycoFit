@@ -102,6 +102,8 @@ For valid food images, use exactly this JSON format (INGREDIENT_NUTRIENTS IS REQ
         "Glycemic Load": <number>
     }},
     "confidence_percentage": <number between 0-100>,
+    "confidence_explanation": "Brief 1-2 sentence explanation of why this confidence rate (e.g., 'Clear image with easily identifiable food items' or 'Image clarity is moderate, making nutrient estimation approximate')",
+    "health_assessment": "Brief 2-3 sentence assessment of whether this food is healthy or unhealthy for avoiding prediabetes/diabetes type 2. Mention key concerns like high glycemic load, added sugars, saturated fats, or positive aspects like fiber content, low glycemic index, whole grains. Be specific and actionable.",
     "recipes": [
         {{
             "box_2d": [x_min, y_min, x_max, y_max],
@@ -343,6 +345,8 @@ For valid food descriptions, use exactly this JSON format (INGREDIENT_NUTRIENTS 
         "Glycemic Load": <number>
     }},
     "confidence_percentage": <number between 0-100>,
+    "confidence_explanation": "Brief 1-2 sentence explanation of why this confidence rate (e.g., 'Detailed description provided allows for accurate nutrient estimation' or 'Description is somewhat vague, making estimates approximate')",
+    "health_assessment": "Brief 2-3 sentence assessment of whether this food is healthy or unhealthy for avoiding prediabetes/diabetes type 2. Mention key concerns like high glycemic load, added sugars, saturated fats, or positive aspects like fiber content, low glycemic index, whole grains. Be specific and actionable.",
     "ingredient_nutrients": [
         {{
             "ingredient": "First ingredient name (e.g., 'Grilled Chicken')",

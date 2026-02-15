@@ -14,6 +14,7 @@ import { useTheme } from '../context/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../services/api';
+import { LifestyleRecommendationsSection } from '../components/recommendations';
 
 /**
  * SmokingTrackingScreen - Main dashboard for smoking tracking
@@ -703,6 +704,9 @@ const SmokingTrackingScreen = ({ navigation }) => {
             </TouchableOpacity>
           ))
         )}
+
+        {/* AI-Powered Timeline Predictions */}
+        <LifestyleRecommendationsSection trackerType="smoking" />
       </ScrollView>
     </SafeAreaView>
   );

@@ -456,7 +456,7 @@ const predictNutrientsFromText = async (foodDescription, mealDatetime = null) =>
   }
 };
 
-const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePublicId, servingSize = null, confidenceRate = null, recipes = [], ingredientNutrients = [], ingredientProportions = {}, mealDatetime = null) => {
+const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePublicId, servingSize = null, confidenceRate = null, recipes = [], ingredientNutrients = [], ingredientProportions = {}, mealDatetime = null, confidenceExplanation = '', healthAssessment = '') => {
   try{
     const data = {
       nutrients,
@@ -466,6 +466,8 @@ const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePubl
       temp_image_public_id: tempImagePublicId,
       serving_size: servingSize,
       confidence_rate: confidenceRate,
+      confidence_explanation: confidenceExplanation,
+      health_assessment: healthAssessment,
       recipes: recipes,
       ingredient_nutrients: ingredientNutrients,
       ingredient_proportions: ingredientProportions,
@@ -484,7 +486,7 @@ const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePubl
 };
 
 // Save meal from text-based prediction
-const saveMealFromText = async (nutrients, mealName, foodType, notes = '', servingSize = null, confidenceRate = null, ingredientNutrients = [], ingredientProportions = {}, mealDatetime = null) => {
+const saveMealFromText = async (nutrients, mealName, foodType, notes = '', servingSize = null, confidenceRate = null, ingredientNutrients = [], ingredientProportions = {}, mealDatetime = null, confidenceExplanation = '', healthAssessment = '') => {
   try {
     const data = {
       nutrients,
@@ -493,6 +495,8 @@ const saveMealFromText = async (nutrients, mealName, foodType, notes = '', servi
       notes,
       serving_size: servingSize,
       confidence_rate: confidenceRate,
+      confidence_explanation: confidenceExplanation,
+      health_assessment: healthAssessment,
       ingredient_nutrients: ingredientNutrients,
       ingredient_proportions: ingredientProportions,
       meal_datetime: mealDatetime
@@ -2249,6 +2253,22 @@ export const getFoodRecommendations = async () => {
 };
 
 /**
+ * Get detailed risk assessment with explanations for frontend display
+ * @param {number} days - Number of days to analyze (default: 7)
+ * @returns {Promise<Object>} Comprehensive assessment with detailed explanations
+ */
+export const getDetailedFoodAssessment = async (days = 7) => {
+  try {
+    const response = await api.get(`/food-risk/detailed-assessment?days=${days}`);
+    console.log('Detailed Food Assessment Response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching detailed assessment:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
  * Get daily log analysis
  * @param {number} days - Number of days to analyze (default: 7)
  * @returns {Promise<Object>} Daily log analysis
@@ -2259,6 +2279,110 @@ export const getFoodDailyLogAnalysis = async (days = 7) => {
     return response.data;
   } catch (error) {
     console.error('Error fetching daily log analysis:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+// ==================== LIFESTYLE RECOMMENDATIONS API ====================
+
+/**
+ * Get unified lifestyle recommendations for all trackers
+ * Returns recommendations from food, sleep, activity, alcohol, and smoking trackers
+ * @param {number} days - Number of days to analyze (default: 30)
+ * @returns {Promise<Object>} Unified recommendations with timeline predictions
+ */
+export const getLifestyleRecommendations = async (days = 30) => {
+  try {
+    const response = await api.get(`/lifestyle/recommendations?days=${days}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching lifestyle recommendations:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get healthy default recommendations
+ * Returns evidence-based guidelines when insufficient tracking data
+ * @returns {Promise<Object>} Healthy default guidelines
+ */
+export const getHealthyDefaults = async () => {
+  try {
+    const response = await api.get('/lifestyle/defaults');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching healthy defaults:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get food-specific timeline predictions
+ * @param {number} days - Number of days to analyze (default: 7)
+ * @returns {Promise<Object>} Food timeline predictions
+ */
+export const getFoodPredictions = async (days = 7) => {
+  try {
+    const response = await api.get(`/lifestyle/food/predictions?days=${days}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching food predictions:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get sleep-specific timeline predictions
+ * @returns {Promise<Object>} Sleep timeline predictions
+ */
+export const getSleepPredictions = async () => {
+  try {
+    const response = await api.get('/lifestyle/sleep/predictions');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching sleep predictions:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get activity/step-specific timeline predictions
+ * @returns {Promise<Object>} Activity timeline predictions
+ */
+export const getActivityPredictions = async () => {
+  try {
+    const response = await api.get('/lifestyle/activity/predictions');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching activity predictions:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get alcohol-specific timeline predictions
+ * @returns {Promise<Object>} Alcohol timeline predictions
+ */
+export const getAlcoholPredictions = async () => {
+  try {
+    const response = await api.get('/lifestyle/alcohol/predictions');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching alcohol predictions:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get smoking-specific timeline predictions
+ * @returns {Promise<Object>} Smoking timeline predictions
+ */
+export const getSmokingPredictions = async () => {
+  try {
+    const response = await api.get('/lifestyle/smoking/predictions');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching smoking predictions:', error.response?.data || error.message);
     throw error;
   }
 };
@@ -2462,8 +2586,18 @@ api.getFoodBaselineQuestions = getFoodBaselineQuestions;
 api.submitFoodBaseline = submitFoodBaseline;
 api.getFoodBaseline = getFoodBaseline;
 api.getFoodRiskAssessment = getFoodRiskAssessment;
+api.getDetailedFoodAssessment = getDetailedFoodAssessment;
 api.getFoodRecommendations = getFoodRecommendations;
 api.getFoodDailyLogAnalysis = getFoodDailyLogAnalysis;
+
+// Lifestyle Recommendations endpoints
+api.getLifestyleRecommendations = getLifestyleRecommendations;
+api.getHealthyDefaults = getHealthyDefaults;
+api.getFoodPredictions = getFoodPredictions;
+api.getSleepPredictions = getSleepPredictions;
+api.getActivityPredictions = getActivityPredictions;
+api.getAlcoholPredictions = getAlcoholPredictions;
+api.getSmokingPredictions = getSmokingPredictions;
 
 // Make sure these lines exist at the bottom, BEFORE export default api;
 api.createStepBaseline = createStepBaseline;

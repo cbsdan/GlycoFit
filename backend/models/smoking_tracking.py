@@ -322,7 +322,7 @@ class SmokingMetrics:
         self.computed_at = computed_at or datetime.utcnow()
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for MongoDB storage"""
+        """Convert to dictionary for MongoDB storage and API responses"""
         return {
             "user_id": self.user_id,
             "avg_cigarettes_7d": self.avg_cigarettes_7d,
@@ -331,6 +331,7 @@ class SmokingMetrics:
             "days_with_data_7d": self.days_with_data_7d,
             "days_with_data_30d": self.days_with_data_30d,
             "cumulative_pack_years": self.cumulative_pack_years,
+            "pack_years": self.cumulative_pack_years,  # Alias for frontend compatibility
             "years_since_quit": self.years_since_quit,
             "current_status": self.current_status,
             "risk_category": self.risk_category,

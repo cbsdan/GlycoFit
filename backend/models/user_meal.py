@@ -17,7 +17,7 @@ class UserMeal:
         'other'
     ]
     
-    def __init__(self, user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None, recipes=None, ingredient_nutrients=None, ingredient_proportions=None, meal_datetime=None):
+    def __init__(self, user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None, recipes=None, ingredient_nutrients=None, ingredient_proportions=None, meal_datetime=None, confidence_explanation=None, health_assessment=None):
         self.user_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
         self.nutrients = nutrients  # Dict with Calories, Protein (g), Carbs (g), Fat (g), Added Sugars (g), Fiber (g), Saturated Fat (g), Unsaturated Fat (g), Sodium (mg), Glycemic Load
         self.image_url = image_url
@@ -27,6 +27,8 @@ class UserMeal:
         self.food_type = self._validate_food_type(food_type)  # breakfast, lunch, dinner, snacks, drinks, etc.
         self.serving_size = serving_size  # Serving size information from Gemini
         self.confidence_rate = confidence_rate  # Confidence percentage from Gemini (0-100)
+        self.confidence_explanation = confidence_explanation  # Explanation of confidence rate from Gemini
+        self.health_assessment = health_assessment  # Health assessment for diabetes from Gemini
         self.recipes = recipes if recipes else []  # Detected ingredients with bounding boxes
         self.ingredient_nutrients = ingredient_nutrients if ingredient_nutrients else []  # Nutrient breakdown per ingredient
         self.ingredient_proportions = ingredient_proportions if ingredient_proportions else {}  # User-adjusted proportions per ingredient
@@ -58,6 +60,8 @@ class UserMeal:
             'food_type': self.food_type,
             'serving_size': self.serving_size,
             'confidence_rate': self.confidence_rate,
+            'confidence_explanation': self.confidence_explanation,
+            'health_assessment': self.health_assessment,
             'recipes': self.recipes,
             'ingredient_nutrients': self.ingredient_nutrients,
             'ingredient_proportions': self.ingredient_proportions,
@@ -67,7 +71,7 @@ class UserMeal:
         }
 
     @staticmethod
-    def create_meal(user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None, recipes=None, ingredient_nutrients=None, ingredient_proportions=None, meal_datetime=None):
+    def create_meal(user_id, nutrients, image_url=None, image_public_id=None, meal_name=None, notes=None, food_type=None, serving_size=None, confidence_rate=None, recipes=None, ingredient_nutrients=None, ingredient_proportions=None, meal_datetime=None, confidence_explanation=None, health_assessment=None):
         """Create a new meal record"""
         try:
             db = get_db()
@@ -89,7 +93,9 @@ class UserMeal:
                 recipes=recipes,
                 ingredient_nutrients=ingredient_nutrients,
                 ingredient_proportions=ingredient_proportions,
-                meal_datetime=meal_datetime
+                meal_datetime=meal_datetime,
+                confidence_explanation=confidence_explanation,
+                health_assessment=health_assessment
             )
             
             result = db.user_meals.insert_one(meal.to_dict())

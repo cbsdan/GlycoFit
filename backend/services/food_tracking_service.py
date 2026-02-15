@@ -90,14 +90,27 @@ class FoodTrackingService:
             )
             
             if not result['success'] or not result['meals']:
+                # When no meals logged, return None to indicate no data
+                # The comprehensive risk calculation will use baseline risk instead
                 return {
                     'success': True,
-                    'daily_risk_score': 0,
+                    'daily_risk_score': None,
                     'message': 'No meal data available for analysis',
-                    'analysis': {}
+                    'analysis': {},
+                    'has_data': False
                 }
             
             meals = result['meals']
+            
+            # Check data sufficiency
+            # Expected: minimum 2 meals per day for reliable assessment
+            expected_min_meals = days * 2
+            actual_meals = len(meals)
+            meals_per_day = actual_meals / days if days > 0 else 0
+            
+            # If insufficient data (less than 2 meals/day average), flag as unreliable
+            data_sufficient = actual_meals >= expected_min_meals
+            data_quality = 'good' if meals_per_day >= 2.5 else 'partial' if meals_per_day >= 1.5 else 'insufficient'
             
             # Calculate average daily nutrients
             daily_nutrients = FoodTrackingService._calculate_daily_averages(meals, days)
@@ -111,6 +124,11 @@ class FoodTrackingService:
             # Combine scores (70% nutrient-based, 30% pattern-based)
             daily_risk_score = (nutrient_risk * 0.7) + (pattern_risk * 0.3)
             
+            # Warning message for insufficient data
+            warning_message = None
+            if not data_sufficient:
+                warning_message = f"Only {actual_meals} meals logged over {days} days (avg {meals_per_day:.1f}/day). Assessment may be inaccurate. Log at least 2 meals daily for reliable results."
+            
             return {
                 'success': True,
                 'daily_risk_score': round(daily_risk_score, 2),
@@ -119,8 +137,14 @@ class FoodTrackingService:
                     'pattern_risk': round(pattern_risk, 2),
                     'daily_averages': daily_nutrients,
                     'days_analyzed': days,
-                    'total_meals': len(meals)
-                }
+                    'total_meals': actual_meals,
+                    'meals_per_day': round(meals_per_day, 2),
+                    'expected_min_meals': expected_min_meals,
+                    'data_sufficient': data_sufficient,
+                    'data_quality': data_quality
+                },
+                'has_data': True,
+                'warning': warning_message
             }
             
         except Exception as e:
@@ -237,7 +261,7 @@ class FoodTrackingService:
     def _calculate_pattern_risk(meals, days):
         """Calculate risk based on meal patterns"""
         if not meals:
-            return 50  # Moderate risk if no data
+            return 0  # No pattern risk if no data (will be handled by comprehensive calculation)
         
         total_risk = 0
         max_possible_risk = 0
@@ -344,12 +368,25 @@ class FoodTrackingService:
             
             daily_log_risk = 0
             daily_analysis = {}
+            has_meal_data = False
+            data_warning = None
+            
             if daily_log_result['success']:
-                daily_log_risk = daily_log_result.get('daily_risk_score', 0)
+                has_meal_data = daily_log_result.get('has_data', False)
                 daily_analysis = daily_log_result.get('analysis', {})
+                data_warning = daily_log_result.get('warning')
+                
+                # If no meal data, use baseline risk for daily log component
+                # This ensures users aren't rewarded for not logging meals
+                if not has_meal_data or daily_log_result.get('daily_risk_score') is None:
+                    daily_log_risk = baseline_risk
+                else:
+                    daily_log_risk = daily_log_result.get('daily_risk_score', baseline_risk)
             
             # Calculate comprehensive risk (40% baseline, 60% daily logs)
             # Daily logs weighted more heavily as they reflect current behavior
+            # When no meals logged, daily_log_risk defaults to baseline_risk,
+            # making comprehensive_risk equal to baseline_risk
             comprehensive_risk = (baseline_risk * 0.4) + (daily_log_risk * 0.6)
             
             # Determine risk category
@@ -366,7 +403,7 @@ class FoodTrackingService:
                 risk_category = 'Very High'
                 risk_message = 'Your eating habits show very high risk. Please consult a healthcare provider and make significant dietary changes.'
             
-            return {
+            result = {
                 'success': True,
                 'comprehensive_risk_score': round(comprehensive_risk, 2),
                 'risk_category': risk_category,
@@ -378,6 +415,13 @@ class FoodTrackingService:
                 }
             }
             
+            # Add warning if data quality is insufficient
+            if data_warning:
+                result['warning'] = data_warning
+                result['data_quality'] = daily_analysis.get('data_quality', 'unknown')
+            
+            return result
+            
         except Exception as e:
             logging.error(f"Error calculating comprehensive risk for user {user_id}: {str(e)}")
             return {
@@ -388,7 +432,7 @@ class FoodTrackingService:
     @staticmethod
     def get_personalized_recommendations(user_id):
         """
-        Generate personalized recommendations based on risk assessment
+        Generate comprehensive personalized recommendations based on risk assessment
         """
         try:
             # Get comprehensive risk assessment
@@ -401,53 +445,263 @@ class FoodTrackingService:
             daily_analysis = risk_result.get('breakdown', {}).get('daily_analysis', {})
             daily_averages = daily_analysis.get('daily_averages', {})
             
-            # Analyze each nutrient and provide specific recommendations
+            # Check for insufficient data first - highest priority
+            data_quality = risk_result.get('data_quality', 'good')
+            if data_quality in ['insufficient', 'partial']:
+                meals_per_day = daily_analysis.get('meals_per_day', 0)
+                total_meals = daily_analysis.get('total_meals', 0)
+                
+                if data_quality == 'insufficient':
+                    recommendations.insert(0, {
+                        'category': 'Data Quality',
+                        'priority': 'Critical',
+                        'message': f'Only {total_meals} meals logged (avg {meals_per_day:.1f}/day). Your risk assessment may be INACCURATE. Log at least 2-3 meals daily for reliable results.',
+                        'actionable_tips': [
+                            'Use the food scanner to quickly log meals',
+                            'Set reminders to log breakfast, lunch, and dinner',
+                            'Log meals immediately after eating for accuracy'
+                        ]
+                    })
+                else:  # partial
+                    recommendations.insert(0, {
+                        'category': 'Data Quality',
+                        'priority': 'High',
+                        'message': f'Logging {meals_per_day:.1f} meals/day. For more accurate assessment, log all meals (aim for 3+ daily).',
+                        'actionable_tips': [
+                            'Try to log snacks and beverages too',
+                            'Consistency helps us provide better insights'
+                        ]
+                    })
+            
+            # 1. ADDED SUGARS - Critical for diabetes risk
             if daily_averages.get('added_sugars', 0) > FoodTrackingService.DAILY_THRESHOLDS['added_sugars']['optimal_max']:
+                sugar_amt = daily_averages.get('added_sugars', 0)
+                excess = sugar_amt - 25
                 recommendations.append({
                     'category': 'Added Sugars',
                     'priority': 'High',
-                    'message': f"Your daily added sugar intake ({daily_averages.get('added_sugars', 0):.1f}g) exceeds the recommended 25g. Reduce sugary drinks and processed foods."
+                    'message': f"Your daily added sugar intake ({sugar_amt:.1f}g) exceeds the recommended 25g by {excess:.1f}g. This significantly increases prediabetes risk.",
+                    'actionable_tips': [
+                        'Replace sugary drinks with water, unsweetened tea, or sparkling water',
+                        'Choose fresh fruit instead of fruit juice or dried fruit',
+                        'Read food labels - avoid items with >5g added sugar per serving',
+                        'Use cinnamon or vanilla extract for sweetness instead of sugar'
+                    ]
                 })
             
+            # 2. FIBER - Protective factor
             if daily_averages.get('fiber', 0) < FoodTrackingService.DAILY_THRESHOLDS['fiber']['optimal_min']:
+                fiber_amt = daily_averages.get('fiber', 0)
+                deficit = 25 - fiber_amt
                 recommendations.append({
                     'category': 'Fiber',
                     'priority': 'High',
-                    'message': f"Your daily fiber intake ({daily_averages.get('fiber', 0):.1f}g) is below the recommended 25g. Increase whole grains, vegetables, and legumes."
+                    'message': f"Your daily fiber intake ({fiber_amt:.1f}g) is {deficit:.1f}g below the recommended 25g. Fiber helps control blood sugar and reduces diabetes risk.",
+                    'actionable_tips': [
+                        'Add beans or lentils to meals (15g fiber per cup)',
+                        'Choose whole grain bread, pasta, and rice over refined versions',
+                        'Eat vegetables at every meal - aim for 5 servings daily',
+                        'Snack on nuts, seeds, or fresh fruit with skin',
+                        'Start meals with a salad to boost fiber intake'
+                    ]
                 })
             
+            # 3. GLYCEMIC LOAD - Blood sugar impact
             if daily_averages.get('glycemic_load', 0) > FoodTrackingService.DAILY_THRESHOLDS['glycemic_load']['optimal_max']:
+                gl_amt = daily_averages.get('glycemic_load', 0)
                 recommendations.append({
-                    'category': 'Glycemic Load',
+                    'category': 'Glycemic Control',
                     'priority': 'High',
-                    'message': 'Your meals have high glycemic load. Choose low-GI foods like whole grains, legumes, and non-starchy vegetables.'
+                    'message': f'Your average glycemic load ({gl_amt:.0f}) is high, causing blood sugar spikes. Aim for under 100 daily.',
+                    'actionable_tips': [
+                        'Pair carbs with protein or healthy fats (e.g., apple with peanut butter)',
+                        'Choose whole grains: quinoa, brown rice, steel-cut oats',
+                        'Add vinegar to meals - helps reduce glycemic response',
+                        'Eat non-starchy vegetables first, then protein, then carbs',
+                        'Limit white bread, white rice, and potatoes'
+                    ]
                 })
             
+            # 4. SATURATED FAT
             if daily_averages.get('saturated_fat', 0) > FoodTrackingService.DAILY_THRESHOLDS['saturated_fat']['optimal_max']:
+                sat_fat = daily_averages.get('saturated_fat', 0)
                 recommendations.append({
                     'category': 'Saturated Fat',
                     'priority': 'Medium',
-                    'message': 'Reduce saturated fat intake by choosing lean proteins and limiting fried foods.'
+                    'message': f'Your saturated fat intake ({sat_fat:.1f}g) exceeds 20g. High saturated fat impairs insulin sensitivity.',
+                    'actionable_tips': [
+                        'Choose lean proteins: chicken breast, fish, turkey, tofu',
+                        'Limit red meat to 1-2 times per week',
+                        'Use olive oil or avocado oil instead of butter',
+                        'Remove skin from poultry before cooking',
+                        'Choose low-fat dairy or plant-based alternatives'
+                    ]
                 })
             
-            # Get baseline assessment for additional recommendations
+            # 5. SODIUM - Often overlooked
+            if daily_averages.get('sodium', 0) > FoodTrackingService.DAILY_THRESHOLDS['sodium']['optimal_max']:
+                sodium_amt = daily_averages.get('sodium', 0)
+                recommendations.append({
+                    'category': 'Sodium',
+                    'priority': 'Medium',
+                    'message': f'Your sodium intake ({sodium_amt:.0f}mg) exceeds 2300mg. High sodium increases diabetes and heart disease risk.',
+                    'actionable_tips': [
+                        'Cook at home more - restaurant food is high in sodium',
+                        'Rinse canned beans and vegetables before eating',
+                        'Use herbs and spices instead of salt for flavor',
+                        'Avoid processed meats, canned soups, and salty snacks',
+                        'Choose "no salt added" or "low sodium" versions'
+                    ]
+                })
+            
+            # 6. CALORIES - Energy balance
+            calories = daily_averages.get('calories', 0)
+            if calories > FoodTrackingService.DAILY_THRESHOLDS['calories']['optimal_max']:
+                excess_cal = calories - 2200
+                recommendations.append({
+                    'category': 'Calorie Balance',
+                    'priority': 'Medium',
+                    'message': f'Your calorie intake ({calories:.0f}) is {excess_cal:.0f} above recommendation. Excess calories increase diabetes risk.',
+                    'actionable_tips': [
+                        'Use smaller plates to control portion sizes',
+                        'Eat slowly and stop when 80% full',
+                        'Avoid eating straight from packages - portion out servings',
+                        'Fill half your plate with vegetables to reduce calorie density'
+                    ]
+                })
+            elif calories < FoodTrackingService.DAILY_THRESHOLDS['calories']['optimal_min']:
+                deficit_cal = 1800 - calories
+                recommendations.append({
+                    'category': 'Calorie Balance',
+                    'priority': 'Medium',
+                    'message': f'Your calorie intake ({calories:.0f}) is {deficit_cal:.0f} below recommendation. Undereating can slow metabolism.',
+                    'actionable_tips': [
+                        'Add healthy snacks: nuts, Greek yogurt, or hummus with veggies',
+                        'Include healthy fats: avocado, olive oil, or nut butter',
+                        'Ensure 3 balanced meals daily',
+                        'Consider consulting a nutritionist if consistently under-eating'
+                    ]
+                })
+            
+            # 7. PROTEIN - Important for satiety
+            protein = daily_averages.get('protein', 0)
+            if protein < FoodTrackingService.DAILY_THRESHOLDS['protein']['optimal_min']:
+                protein_deficit = 50 - protein
+                recommendations.append({
+                    'category': 'Protein',
+                    'priority': 'Medium',
+                    'message': f'Your protein intake ({protein:.1f}g) is {protein_deficit:.1f}g below optimal. Adequate protein helps control blood sugar.',
+                    'actionable_tips': [
+                        'Include protein at every meal: eggs, chicken, fish, beans, tofu',
+                        'Greek yogurt has 15-20g protein per serving',
+                        'Add hemp seeds or chia seeds to smoothies (5g protein/tbsp)',
+                        'Snack on hard-boiled eggs, cottage cheese, or edamame'
+                    ]
+                })
+            
+            # 8. CARBOHYDRATES - Balance is key
+            carbs = daily_averages.get('carbs', 0)
+            if carbs > FoodTrackingService.DAILY_THRESHOLDS['carbs']['high_risk']:
+                recommendations.append({
+                    'category': 'Carbohydrates',
+                    'priority': 'High',
+                    'message': f'Your carbohydrate intake ({carbs:.1f}g) is very high. Reduce refined carbs to improve blood sugar control.',
+                    'actionable_tips': [
+                        'Reduce portion sizes of rice, pasta, and bread',
+                        'Replace half your grain portion with extra vegetables',
+                        'Choose low-carb alternatives: cauliflower rice, zucchini noodles',
+                        'Focus on protein and healthy fats for satiety'
+                    ]
+                })
+            
+            # Get baseline assessment for behavioral recommendations
             baseline_result = FoodBaselineAssessment.get_user_baseline(user_id)
             if baseline_result['success'] and baseline_result.get('baseline'):
                 responses = baseline_result['baseline'].get('responses', {})
                 
+                # MEAL PATTERN RECOMMENDATIONS
                 if responses.get('skip_breakfast') in ['Often (5-6 times/week)', 'Always (daily)']:
                     recommendations.append({
                         'category': 'Meal Timing',
                         'priority': 'High',
-                        'message': 'Skipping breakfast regularly increases diabetes risk. Try to eat a balanced breakfast daily.'
+                        'message': 'Skipping breakfast regularly increases diabetes risk by 20-30% and leads to overeating later.',
+                        'actionable_tips': [
+                            'Prep overnight oats the night before for quick breakfast',
+                            'Keep hard-boiled eggs ready for grab-and-go protein',
+                            'Try a protein smoothie if you\'re not hungry in morning',
+                            'Even a small balanced breakfast is better than none'
+                        ]
+                    })
+                
+                if responses.get('late_night_eating') in ['Often (5-6 times/week)', 'Always (daily)']:
+                    recommendations.append({
+                        'category': 'Meal Timing',
+                        'priority': 'Medium',
+                        'message': 'Late-night eating disrupts metabolism and impairs glucose tolerance. Try to finish eating 2-3 hours before bed.',
+                        'actionable_tips': [
+                            'Set a kitchen "closing time" - e.g., no eating after 8 PM',
+                            'Brush teeth after dinner to reduce urge to snack',
+                            'If hungry, choose protein: Greek yogurt, cottage cheese, nuts',
+                            'Adequate daytime meals reduce nighttime hunger'
+                        ]
                     })
                 
                 if responses.get('sugary_drinks_frequency') in ['Often (5-6 times/week)', 'Daily']:
                     recommendations.append({
                         'category': 'Beverages',
                         'priority': 'High',
-                        'message': 'Frequent sugary drink consumption significantly increases diabetes risk. Switch to water or unsweetened beverages.'
+                        'message': 'Daily sugary drinks increase diabetes risk by 26%. This is one of the easiest changes with biggest impact.',
+                        'actionable_tips': [
+                            'Gradually dilute juice with water, then switch to plain water',
+                            'Try sparkling water with fresh lemon, lime, or berries',
+                            'Unsweetened iced tea with mint is refreshing',
+                            'If you need caffeine, choose black coffee or tea'
+                        ]
                     })
+                
+                if responses.get('processed_food_frequency') in ['Often (5-6 times/week)', 'Daily']:
+                    recommendations.append({
+                        'category': 'Food Quality',
+                        'priority': 'High',
+                        'message': 'Frequent processed food consumption increases diabetes risk. Aim for whole, minimally processed foods.',
+                        'actionable_tips': [
+                            'Batch cook healthy meals on weekends for easy weekday dinners',
+                            'Keep frozen vegetables for quick, healthy sides',
+                            'Read labels - avoid items with >5 ingredients you can\'t pronounce',
+                            'Shop the perimeter of grocery stores (fresh foods)'
+                        ]
+                    })
+            
+                
+                if responses.get('eating_out_frequency') in ['Often (5-6 times/week)', 'Daily']:
+                    recommendations.append({
+                        'category': 'Meal Planning',
+                        'priority': 'Medium',
+                        'message': 'Frequent restaurant meals are high in calories, sodium, and unhealthy fats. Home cooking gives you control.',
+                        'actionable_tips': [
+                            'Start with cooking 1-2 more meals at home per week',
+                            'Use meal kit services to learn new recipes easily',
+                            'When eating out, request dressing/sauce on side',
+                            'Share entrees or save half for tomorrow\'s lunch'
+                        ]
+                    })
+                
+                if responses.get('water_intake') and int(responses.get('water_intake', 0)) < 6:
+                    recommendations.append({
+                        'category': 'Hydration',
+                        'priority': 'Low',
+                        'message': f'You\'re drinking {responses.get("water_intake", 0)} glasses of water daily. Aim for 8+ glasses for optimal health.',
+                        'actionable_tips': [
+                            'Keep a reusable water bottle with you at all times',
+                            'Drink a glass of water when you wake up',
+                            'Set hourly phone reminders to drink water',
+                            'Herbal tea counts toward hydration'
+                        ]
+                    })
+            
+            # Sort recommendations by priority
+            priority_order = {'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3}
+            recommendations.sort(key=lambda x: priority_order.get(x.get('priority', 'Low'), 3))
             
             return {
                 'success': True,

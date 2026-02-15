@@ -27,6 +27,7 @@ import {
   checkAlcoholBaseline,
   deleteDailyAlcoholRecord 
 } from '../services/api';
+import { LifestyleRecommendationsSection } from '../components/recommendations';
 
 const AlcoholTrackingScreen = ({ navigation }) => {
   const { colors } = useTheme();
@@ -422,6 +423,9 @@ const AlcoholTrackingScreen = ({ navigation }) => {
             💡 Tip: Drinking with meals and maintaining consistency helps minimize diabetes risk.
           </Text>
         </View>
+
+        {/* AI-Powered Timeline Predictions */}
+        <LifestyleRecommendationsSection trackerType="alcohol" />
       </ScrollView>
     </View>
   );

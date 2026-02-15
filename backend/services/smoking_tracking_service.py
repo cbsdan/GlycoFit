@@ -579,8 +579,8 @@ class SmokingTrackingService:
     
     def _is_within_days(self, date_str: str, days: int) -> bool:
         """Check if date is within last N days"""
-        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-        days_ago = datetime.now() - timedelta(days=days)
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+        days_ago = (datetime.now() - timedelta(days=days)).date()
         return date_obj >= days_ago
     
     # ==================== SUMMARY AND DASHBOARD ====================

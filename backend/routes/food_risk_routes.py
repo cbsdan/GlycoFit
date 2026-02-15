@@ -197,3 +197,73 @@ def get_daily_log_analysis():
     }
     """
     return FoodRiskAssessmentController.get_daily_log_analysis()
+
+@food_risk_bp.route('/detailed-assessment', methods=['GET'])
+def get_detailed_assessment():
+    """
+    GET /api/v1/food-risk/detailed-assessment
+    
+    Get comprehensive risk assessment with detailed explanations for frontend display
+    
+    Query Parameters:
+    - days: Number of days to analyze (default: 7)
+    
+    Requires Firebase authentication (Bearer token in Authorization header)
+    
+    Response:
+    {
+        "success": true,
+        "message": "Detailed assessment with explanations generated successfully",
+        "data": {
+            "overall_risk": {
+                "score": 54.32,
+                "category": "Moderate",
+                "message": "Your eating habits show moderate risk...",
+                "explanation": {
+                    "category": "Moderate Risk",
+                    "color": "yellow",
+                    "detailed_explanation": "...",
+                    "focus_areas": "...",
+                    "prognosis": "..."
+                }
+            },
+            "baseline_assessment": {
+                "score": 48.5,
+                "weight_in_overall": 40,
+                "top_contributors": [
+                    {
+                        "question_key": "sugary_drinks_frequency",
+                        "user_response": "Daily",
+                        "risk_contribution": 12.0,
+                        "impact_level": "high",
+                        "why_it_matters": "...",
+                        "optimal": "...",
+                        "risk_explanation": "...",
+                        "research": "...",
+                        "actionable_tip": "..."
+                    }
+                ]
+            },
+            "daily_log_assessment": {
+                "score": 58.1,
+                "weight_in_overall": 60,
+                "data_quality": "good",
+                "nutrient_analysis": [
+                    {
+                        "nutrient": "Added Sugars",
+                        "current_intake": 45.2,
+                        "optimal_range": "<25g per day",
+                        "status": "high",
+                        "why_it_matters": "...",
+                        "interpretation": "...",
+                        "quick_wins": "..."
+                    }
+                ],
+                "total_meals_logged": 21,
+                "meals_per_day": 3.0
+            },
+            "recommendations": [...]
+        }
+    }
+    """
+    return FoodRiskAssessmentController.get_detailed_assessment_with_explanations()

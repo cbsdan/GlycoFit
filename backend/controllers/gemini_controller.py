@@ -130,6 +130,8 @@ class GeminiController:
                         'nutrients': analysis_result.get('nutrients'),
                         'serving_size': analysis_result.get('serving_size', ''),
                         'confidence_percentage': analysis_result.get('confidence_percentage', 50),
+                        'confidence_explanation': analysis_result.get('confidence_explanation', ''),
+                        'health_assessment': analysis_result.get('health_assessment', ''),
                         'recipes': analysis_result.get('recipes', []),
                         'ingredient_nutrients': analysis_result.get('ingredient_nutrients', []),
                         'temp_image_url': image_url,
@@ -210,6 +212,8 @@ class GeminiController:
             temp_image_public_id = data.get('temp_image_public_id')
             serving_size = data.get('serving_size')
             confidence_rate = data.get('confidence_rate')
+            confidence_explanation = data.get('confidence_explanation', '')
+            health_assessment = data.get('health_assessment', '')
             recipes = data.get('recipes', [])
             ingredient_nutrients = data.get('ingredient_nutrients', [])
             ingredient_proportions = data.get('ingredient_proportions', {})
@@ -273,6 +277,8 @@ class GeminiController:
                     food_type=food_type,
                     serving_size=serving_size,
                     confidence_rate=confidence_rate,
+                    confidence_explanation=confidence_explanation,
+                    health_assessment=health_assessment,
                     recipes=recipes,
                     ingredient_nutrients=ingredient_nutrients,
                     ingredient_proportions=ingredient_proportions
@@ -403,6 +409,8 @@ class GeminiController:
                 nutrients = analysis_result.get('nutrients', {})
                 serving_size = analysis_result.get('serving_size', 'Standard serving')
                 confidence_rate = analysis_result.get('confidence_percentage', 50)
+                confidence_explanation = analysis_result.get('confidence_explanation', '')
+                health_assessment = analysis_result.get('health_assessment', '')
                 ingredient_nutrients = analysis_result.get('ingredient_nutrients', [])
                 
                 # Return prediction results (same format as image prediction but without recipes/boxes)
@@ -414,6 +422,8 @@ class GeminiController:
                         'nutrients': nutrients,
                         'serving_size': serving_size,
                         'confidence_rate': confidence_rate,
+                        'confidence_explanation': confidence_explanation,
+                        'health_assessment': health_assessment,
                         'ingredient_nutrients': ingredient_nutrients,
                         'meal_datetime': meal_datetime,
                         'valid_food_types': UserMeal.VALID_MEAL_TYPES,
@@ -487,6 +497,8 @@ class GeminiController:
             notes = data.get('notes', '')
             serving_size = data.get('serving_size')
             confidence_rate = data.get('confidence_rate')
+            confidence_explanation = data.get('confidence_explanation', '')
+            health_assessment = data.get('health_assessment', '')
             meal_datetime = data.get('meal_datetime')
             ingredient_nutrients = data.get('ingredient_nutrients', [])
             ingredient_proportions = data.get('ingredient_proportions', {})
@@ -505,6 +517,8 @@ class GeminiController:
                     food_type=food_type,
                     serving_size=serving_size,
                     confidence_rate=confidence_rate,
+                    confidence_explanation=confidence_explanation,
+                    health_assessment=health_assessment,
                     recipes=None,  # No bounding boxes for text-based entry
                     ingredient_nutrients=ingredient_nutrients,
                     ingredient_proportions=ingredient_proportions,

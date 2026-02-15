@@ -40,13 +40,13 @@ const FoodScannerScreen = ({ navigation }) => {
   const [imageLayout, setImageLayout] = useState({ width: 0, height: 0 });
   const [foodDescription, setFoodDescription] = useState('');
   const [showAnalyzeButton, setShowAnalyzeButton] = useState(false);
-  
+
   // Text input specific state
   const [textFoodDescription, setTextFoodDescription] = useState('');
   const [selectedMealDatetime, setSelectedMealDatetime] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  
+
   // Meal details state
   const [mealDetails, setMealDetails] = useState({
     mealName: '',
@@ -54,12 +54,14 @@ const FoodScannerScreen = ({ navigation }) => {
     notes: '',
     nutrients: null,
     servingSize: '',
-    confidenceRate: 0
+    confidenceRate: 0,
+    confidenceExplanation: '',
+    healthAssessment: ''
   });
 
   // Base nutrients from initial prediction (before any portion adjustments)
   const [baseNutrients, setBaseNutrients] = useState(null);
-  
+
   // Portion multiplier for recalculating nutrients
   const [portionMultiplier, setPortionMultiplier] = useState(1);
 
@@ -68,6 +70,10 @@ const FoodScannerScreen = ({ navigation }) => {
   const [ingredientProportions, setIngredientProportions] = useState({});
   const [baseIngredientNutrients, setBaseIngredientNutrients] = useState([]);
   const [showIngredientModal, setShowIngredientModal] = useState(false);
+
+  // Dropdown/collapse states
+  const [showConfidenceExplanation, setShowConfidenceExplanation] = useState(false);
+  const [showHealthAssessment, setShowHealthAssessment] = useState(false);
 
   // Valid food types from backend model
   const foodTypes = [
@@ -88,7 +94,7 @@ const FoodScannerScreen = ({ navigation }) => {
       'calories': { icon: 'fire', color: '#E74C3C' },
       'energy': { icon: 'fire', color: '#E74C3C' },
       'kcal': { icon: 'fire', color: '#E74C3C' },
-      
+
       // Macronutrients
       'protein': { icon: 'dumbbell', color: '#E67E22' },
       'protein_g': { icon: 'dumbbell', color: '#E67E22' },
@@ -107,11 +113,11 @@ const FoodScannerScreen = ({ navigation }) => {
       'sugar': { icon: 'cube-outline', color: '#E91E63' },
       'added_sugars': { icon: 'cube-outline', color: '#E91E63' },
       'added_sugars_g': { icon: 'cube-outline', color: '#E91E63' },
-      
+
       // Glycemic Load
       'glycemic_load': { icon: 'chart-line', color: '#FF6347' },
       'glycemic_index': { icon: 'chart-bell-curve', color: '#FF7F50' },
-      
+
       // Minerals
       'sodium': { icon: 'shaker-outline', color: '#95A5A6' },
       'sodium_mg': { icon: 'shaker-outline', color: '#95A5A6' },
@@ -120,7 +126,7 @@ const FoodScannerScreen = ({ navigation }) => {
       'potassium': { icon: 'lightning-bolt', color: '#F1C40F' },
       'magnesium': { icon: 'magnet', color: '#7F8C8D' },
       'zinc': { icon: 'chemical-weapon', color: '#BDC3C7' },
-      
+
       // Vitamins
       'vitamin_a': { icon: 'eye', color: '#FF6B35' },
       'vitamin_c': { icon: 'citrus-slice', color: '#FFA500' },
@@ -132,7 +138,7 @@ const FoodScannerScreen = ({ navigation }) => {
       'niacin': { icon: 'alpha-b', color: '#4169E1' },
       'folate': { icon: 'alpha-b', color: '#4169E1' },
       'vitamin_b12': { icon: 'alpha-b', color: '#4169E1' },
-      
+
       // Default for unknown nutrients
       'default': { icon: 'nutrition', color: '#3498DB' }
     };
@@ -216,7 +222,9 @@ const FoodScannerScreen = ({ navigation }) => {
       notes: '',
       nutrients: null,
       servingSize: '',
-      confidenceRate: 0
+      confidenceRate: 0,
+      confidenceExplanation: '',
+      healthAssessment: ''
     });
     setIsProcessing(false);
     setProcessingMessage('');
@@ -254,7 +262,7 @@ const FoodScannerScreen = ({ navigation }) => {
   const handleCameraCapture = async () => {
     setShowImagePickerModal(false);
     resetFoodScannerState();
-    
+
     const hasPermission = await requestCameraPermission();
     if (!hasPermission) {
       return;
@@ -281,7 +289,7 @@ const FoodScannerScreen = ({ navigation }) => {
   const handleLibrarySelection = async () => {
     setShowImagePickerModal(false);
     resetFoodScannerState();
-    
+
     const hasPermission = await requestMediaPermission();
     if (!hasPermission) {
       return;
@@ -309,57 +317,59 @@ const FoodScannerScreen = ({ navigation }) => {
     setIsProcessing(true);
     setProcessingMessage('Analyzing food image...');
     setShowAnalyzeButton(false);
-    
+
     try {
       console.log('Starting image processing...');
       console.log('Food description:', foodDescription);
       const response = await api.predictNutrientsOnly(imageUri, foodDescription);
       console.log('API response:', response);
-      
+
       // Check if food was successfully detected
       if (response && response.success && response.data) {
         console.log('Setting prediction data:', response.data);
         console.log('temp_image_public_id:', response.data.temp_image_public_id);
         console.log('temp_image_url:', response.data.temp_image_url);
-        
+
         setPredictionData(response.data);
         setEditableNutrients(response.data.nutrients || {});
         setBaseNutrients(response.data.nutrients || {}); // Store base nutrients for portion calculations
         setPortionMultiplier(1); // Reset portion multiplier
         setRecipes(response.data.recipes || []);
-        
+
         // Handle ingredient nutrients
         const ingredientsData = response.data.ingredient_nutrients || [];
         setIngredientNutrients(ingredientsData);
         setBaseIngredientNutrients(ingredientsData);
-        
+
         // Initialize ingredient proportions to 1.0 for each ingredient
         const initialProportions = {};
         ingredientsData.forEach((ingredient, index) => {
           initialProportions[ingredient.ingredient || `Ingredient ${index + 1}`] = 1.0;
         });
         setIngredientProportions(initialProportions);
-        
+
         setMealDetails(prev => ({
           ...prev,
           mealName: response.data.meal_name || '',
           nutrients: response.data.nutrients,
           servingSize: response.data.serving_size || '',
-          confidenceRate: response.data.confidence_percentage || 0
+          confidenceRate: response.data.confidence_percentage || 0,
+          confidenceExplanation: response.data.confidence_explanation || '',
+          healthAssessment: response.data.health_assessment || ''
         }));
-        
+
         toast.success('Food analysis complete! Review and edit the details below.');
       } else {
         // Handle case when no food is detected
         console.log('API response failed - no food detected:', response);
-        
+
         // Display appropriate error message
         const errorMessage = response?.message || response?.error || 'Failed to analyze food image';
         toast.error(errorMessage);
-        
+
         // Clear the captured image so user can try again
         setCapturedImage(null);
-        
+
         // Show helpful alert with more context
         Alert.alert(
           'No Food Detected',
@@ -378,12 +388,12 @@ const FoodScannerScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Error processing image:', error);
-      
+
       // Check if error response contains food detection failure
       const errorResponse = error.response?.data;
       if (errorResponse && !errorResponse.success && errorResponse.error) {
         toast.error(errorResponse.message || errorResponse.error);
-        
+
         Alert.alert(
           'No Food Detected',
           errorResponse.message || 'Unable to identify food in this image. Please try again with a clearer image of food.',
@@ -401,7 +411,7 @@ const FoodScannerScreen = ({ navigation }) => {
       } else {
         toast.error('Failed to analyze food. Please check your connection and try again.');
       }
-      
+
       setCapturedImage(null);
     } finally {
       setIsProcessing(false);
@@ -418,46 +428,48 @@ const FoodScannerScreen = ({ navigation }) => {
 
     setIsProcessing(true);
     setProcessingMessage('Analyzing food description...');
-    
+
     try {
       console.log('Processing text description:', textFoodDescription);
       const mealDatetimeISO = selectedMealDatetime.toISOString();
       const response = await api.predictNutrientsFromText(textFoodDescription, mealDatetimeISO);
       console.log('Text API response:', response);
-      
+
       if (response && response.success && response.data) {
         console.log('Setting prediction data from text:', response.data);
-        
+
         setPredictionData(response.data);
         setEditableNutrients(response.data.nutrients || {});
         setBaseNutrients(response.data.nutrients || {});
         setPortionMultiplier(1);
-        
+
         // Handle ingredient nutrients
         const ingredientsData = response.data.ingredient_nutrients || [];
         setIngredientNutrients(ingredientsData);
         setBaseIngredientNutrients(ingredientsData);
-        
+
         // Initialize ingredient proportions
         const initialProportions = {};
         ingredientsData.forEach((ingredient, index) => {
           initialProportions[ingredient.ingredient || `Ingredient ${index + 1}`] = 1.0;
         });
         setIngredientProportions(initialProportions);
-        
+
         setMealDetails(prev => ({
           ...prev,
           mealName: response.data.meal_name || textFoodDescription,
           nutrients: response.data.nutrients,
           servingSize: response.data.serving_size || '',
-          confidenceRate: response.data.confidence_rate || 0
+          confidenceRate: response.data.confidence_rate || 0,
+          confidenceExplanation: response.data.confidence_explanation || '',
+          healthAssessment: response.data.health_assessment || ''
         }));
-        
+
         toast.success('Food analysis complete! Review and edit the details below.');
       } else {
         const errorMessage = response?.message || response?.error || 'Failed to analyze food description';
         toast.error(errorMessage);
-        
+
         Alert.alert(
           'Unable to Identify Food',
           response?.message || 'Could not identify food from your description. Please provide more details or try a different description.',
@@ -466,7 +478,7 @@ const FoodScannerScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Error processing text:', error);
-      
+
       const errorResponse = error.response?.data;
       if (errorResponse && !errorResponse.success) {
         toast.error(errorResponse.message || errorResponse.error);
@@ -483,17 +495,17 @@ const FoodScannerScreen = ({ navigation }) => {
   const saveMeal = async () => {
     setIsProcessing(true);
     setProcessingMessage('Saving your meal...');
-    
+
     try {
       let response;
-      
+
       // Check if this is text-based or image-based entry
       if (inputMode === 'text') {
         // Text-based meal - use saveMealFromText API
         console.log('Saving text-based meal...');
-        
+
         const mealDatetimeISO = selectedMealDatetime.toISOString();
-        
+
         response = await api.saveMealFromText(
           editableNutrients,
           mealDetails.mealName.trim(),
@@ -503,12 +515,14 @@ const FoodScannerScreen = ({ navigation }) => {
           mealDetails.confidenceRate,
           ingredientNutrients,
           ingredientProportions,
-          mealDatetimeISO
+          mealDatetimeISO,
+          mealDetails.confidenceExplanation,
+          mealDetails.healthAssessment
         );
       } else {
         // Image-based meal - use saveMeal API
         console.log('Saving image-based meal with temp_image_public_id:', predictionData.temp_image_public_id);
-        
+
         response = await api.saveMeal(
           editableNutrients,
           mealDetails.mealName.trim(),
@@ -519,7 +533,10 @@ const FoodScannerScreen = ({ navigation }) => {
           mealDetails.confidenceRate,
           recipes,
           ingredientNutrients,
-          ingredientProportions
+          ingredientProportions,
+          null,
+          mealDetails.confidenceExplanation,
+          mealDetails.healthAssessment
         );
       }
 
@@ -554,9 +571,9 @@ const FoodScannerScreen = ({ navigation }) => {
   // Recalculate nutrients based on portion multiplier
   const recalculateNutrients = (multiplier) => {
     if (!baseNutrients) return;
-    
+
     setPortionMultiplier(multiplier);
-    
+
     // Recalculate overall nutrients based on ingredient proportions
     recalculateFromIngredients(multiplier);
   };
@@ -568,7 +585,7 @@ const FoodScannerScreen = ({ navigation }) => {
       [ingredientName]: parseFloat(proportion) || 0
     };
     setIngredientProportions(newProportions);
-    
+
     // If shouldRecalculate is true, recalculate immediately with new proportions
     if (shouldRecalculate) {
       recalculateFromIngredients(portionMultiplier, newProportions);
@@ -579,7 +596,7 @@ const FoodScannerScreen = ({ navigation }) => {
   const recalculateFromIngredients = (overallMultiplier = portionMultiplier, updatedProportions = null) => {
     // Use provided proportions or fall back to state
     const proportionsToUse = updatedProportions || ingredientProportions;
-    
+
     if (baseIngredientNutrients.length === 0) {
       // Fallback to simple overall multiplication if no ingredient data
       const recalculatedNutrients = {};
@@ -598,11 +615,11 @@ const FoodScannerScreen = ({ navigation }) => {
     const updatedIngredients = baseIngredientNutrients.map(ingredient => {
       const proportion = proportionsToUse[ingredient.ingredient] || 1.0;
       const adjustedNutrients = {};
-      
+
       Object.keys(ingredient.nutrients).forEach(key => {
         adjustedNutrients[key] = parseFloat((ingredient.nutrients[key] * proportion * overallMultiplier).toFixed(2));
       });
-      
+
       return {
         ...ingredient,
         nutrients: adjustedNutrients,
@@ -675,7 +692,7 @@ const FoodScannerScreen = ({ navigation }) => {
       flex: 1,
       padding: 16,
     },
-    
+
     // Mode toggle section
     modeToggleSection: {
       marginBottom: 24,
@@ -701,7 +718,7 @@ const FoodScannerScreen = ({ navigation }) => {
       fontSize: 15,
       fontWeight: '600',
     },
-    
+
     // Text input section
     textInputSection: {
       marginBottom: 24,
@@ -757,7 +774,7 @@ const FoodScannerScreen = ({ navigation }) => {
       fontSize: 18,
       fontWeight: '600',
     },
-    
+
     // Image capture section
     captureSection: {
       marginBottom: 24,
@@ -776,7 +793,7 @@ const FoodScannerScreen = ({ navigation }) => {
       fontWeight: '600',
       marginLeft: 12,
     },
-    
+
     // Captured image display
     imageSection: {
       marginBottom: 24,
@@ -836,7 +853,7 @@ const FoodScannerScreen = ({ navigation }) => {
       color: 'white',
       fontWeight: '600',
     },
-    
+
     // Food Description Section
     foodDescriptionSection: {
       backgroundColor: colors.card,
@@ -909,7 +926,7 @@ const FoodScannerScreen = ({ navigation }) => {
       fontWeight: '600',
       marginLeft: 8,
     },
-    
+
     // Loading section
     loadingSection: {
       alignItems: 'center',
@@ -922,7 +939,7 @@ const FoodScannerScreen = ({ navigation }) => {
       color: colors.text,
       textAlign: 'center',
     },
-    
+
     // Analysis information section
     analysisInfoSection: {
       backgroundColor: colors.card,
@@ -943,7 +960,12 @@ const FoodScannerScreen = ({ navigation }) => {
     infoHeader: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
       marginBottom: 8,
+    },
+    infoHeaderLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
     },
     infoLabel: {
       fontSize: 14,
@@ -974,7 +996,34 @@ const FoodScannerScreen = ({ navigation }) => {
       height: '100%',
       borderRadius: 4,
     },
-    
+    dropdownToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 12,
+      paddingVertical: 8,
+    },
+    dropdownToggleText: {
+      fontSize: 13,
+      color: colors.primary,
+      fontWeight: '500',
+    },
+    confidenceExplanation: {
+      fontSize: 12,
+      color: colors.secondary,
+      marginTop: 8,
+      fontStyle: 'italic',
+      lineHeight: 16,
+      paddingLeft: 4,
+    },
+    healthAssessmentText: {
+      fontSize: 14,
+      color: colors.text,
+      lineHeight: 20,
+      marginTop: 8,
+      paddingLeft: 4,
+    },
+
     // Prediction results section
     predictionSection: {
       backgroundColor: colors.card,
@@ -1044,7 +1093,7 @@ const FoodScannerScreen = ({ navigation }) => {
       borderColor: colors.primary,
       backgroundColor: colors.background,
     },
-    
+
     // Meal details form
     formSection: {
       backgroundColor: colors.card,
@@ -1100,7 +1149,7 @@ const FoodScannerScreen = ({ navigation }) => {
       fontSize: 16,
       color: colors.text,
     },
-    
+
     // Action buttons
     actionButtons: {
       flexDirection: 'row',
@@ -1128,7 +1177,7 @@ const FoodScannerScreen = ({ navigation }) => {
       fontSize: 16,
       fontWeight: '600',
     },
-    
+
     // Image picker modal styles
     imagePickerModalOverlay: {
       flex: 1,
@@ -1301,7 +1350,7 @@ const FoodScannerScreen = ({ navigation }) => {
       fontSize: 11,
       color: colors.secondary,
     },
-    
+
     /* Ingredient Nutrients Button */
     ingredientButtonSection: {
       marginBottom: 16,
@@ -1326,7 +1375,7 @@ const FoodScannerScreen = ({ navigation }) => {
       flex: 1,
       marginLeft: 12,
     },
-    
+
     /* Ingredient Nutrients Modal */
     ingredientModalOverlay: {
       flex: 1,
@@ -1516,10 +1565,10 @@ const FoodScannerScreen = ({ navigation }) => {
                 }}
                 disabled={isProcessing}
               >
-                <Icon 
-                  name="camera" 
-                  size={20} 
-                  color={inputMode === 'image' ? 'white' : colors.text} 
+                <Icon
+                  name="camera"
+                  size={20}
+                  color={inputMode === 'image' ? 'white' : colors.text}
                 />
                 <Text style={[
                   styles.modeToggleText,
@@ -1528,7 +1577,7 @@ const FoodScannerScreen = ({ navigation }) => {
                   Scan Image
                 </Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={[
                   styles.modeToggleButton,
@@ -1541,10 +1590,10 @@ const FoodScannerScreen = ({ navigation }) => {
                 }}
                 disabled={isProcessing}
               >
-                <Icon 
-                  name="text" 
-                  size={20} 
-                  color={inputMode === 'text' ? 'white' : colors.text} 
+                <Icon
+                  name="text"
+                  size={20}
+                  color={inputMode === 'text' ? 'white' : colors.text}
                 />
                 <Text style={[
                   styles.modeToggleText,
@@ -1571,7 +1620,7 @@ const FoodScannerScreen = ({ navigation }) => {
               numberOfLines={3}
               editable={!isProcessing}
             />
-            
+
             <Text style={[styles.sectionLabel, { marginTop: 16 }]}>When did you eat it?</Text>
             <View style={styles.datetimeContainer}>
               <TouchableOpacity
@@ -1584,7 +1633,7 @@ const FoodScannerScreen = ({ navigation }) => {
                   {selectedMealDatetime.toLocaleDateString()}
                 </Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={[styles.datetimeButton, { borderColor: colors.border }]}
                 onPress={() => setShowTimePicker(true)}
@@ -1596,7 +1645,7 @@ const FoodScannerScreen = ({ navigation }) => {
                 </Text>
               </TouchableOpacity>
             </View>
-            
+
             <TouchableOpacity
               style={[
                 styles.analyzeButton,
@@ -1616,8 +1665,8 @@ const FoodScannerScreen = ({ navigation }) => {
         {/* Step 1: Image Capture */}
         {inputMode === 'image' && !capturedImage && (
           <View style={styles.captureSection}>
-            <TouchableOpacity 
-              style={styles.captureButton} 
+            <TouchableOpacity
+              style={styles.captureButton}
               onPress={() => setShowImagePickerModal(true)}
               disabled={isProcessing}
             >
@@ -1631,9 +1680,9 @@ const FoodScannerScreen = ({ navigation }) => {
         {capturedImage && (
           <View style={styles.imageSection}>
             <View style={styles.imageContainer}>
-              <Image 
-                source={{ uri: capturedImage }} 
-                style={styles.foodImage} 
+              <Image
+                source={{ uri: capturedImage }}
+                style={styles.foodImage}
                 resizeMode="cover"
                 onLayout={(event) => {
                   const { width, height } = event.nativeEvent.layout;
@@ -1654,7 +1703,7 @@ const FoodScannerScreen = ({ navigation }) => {
                     const top = y_min * scaleY;
                     const width = (x_max - x_min) * scaleX;
                     const height = (y_max - y_min) * scaleY;
-                    
+
                     return (
                       <View
                         key={index}
@@ -1682,8 +1731,8 @@ const FoodScannerScreen = ({ navigation }) => {
               )}
             </View>
             <View style={styles.imageActions}>
-              <TouchableOpacity 
-                style={styles.retakeButton} 
+              <TouchableOpacity
+                style={styles.retakeButton}
                 onPress={() => setShowImagePickerModal(true)}
                 disabled={isProcessing}
               >
@@ -1711,7 +1760,7 @@ const FoodScannerScreen = ({ navigation }) => {
               textAlignVertical="top"
             />
             <View style={styles.descriptionActions}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.retakeSmallButton}
                 onPress={() => {
                   setShowImagePickerModal(true);
@@ -1721,7 +1770,7 @@ const FoodScannerScreen = ({ navigation }) => {
                 <Icon name="camera-retake" size={20} color={colors.text} />
                 <Text style={styles.retakeSmallButtonText}>Change Photo</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.analyzeButton}
                 onPress={() => processImage(capturedImage)}
               >
@@ -1744,10 +1793,10 @@ const FoodScannerScreen = ({ navigation }) => {
         {predictionData && predictionData.nutrients && !isProcessing && (
           <>
             {/* Analysis Information */}
-                    {predictionData && predictionData.nutrients && !isProcessing && (
+            {predictionData && predictionData.nutrients && !isProcessing && (
               <View style={styles.formSection}>
                 <Text style={styles.sectionTitle}>Meal Details</Text>
-                
+
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Meal Name</Text>
                   <TextInput
@@ -1772,7 +1821,7 @@ const FoodScannerScreen = ({ navigation }) => {
 
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Food Type</Text>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.dropdownButton}
                     onPress={() => setShowFoodTypeModal(true)}
                   >
@@ -1797,6 +1846,46 @@ const FoodScannerScreen = ({ navigation }) => {
                 </View>
               </View>
             )}
+
+            {/* Predicted Nutrients */}
+            <View style={styles.predictionSection}>
+              <Text style={styles.sectionTitle}>Predicted Nutrients</Text>
+              <Text style={styles.nutrientSubtitle}>Tap any value to edit</Text>
+              <View style={styles.nutrientsGrid}>
+                {Object.entries(editableNutrients).map(([key, value]) => {
+                  const nutrientInfo = getNutrientIcon(key);
+                  return (
+                    <View key={key} style={styles.nutrientCard}>
+                      <View style={styles.nutrientHeader}>
+                        <View style={[styles.nutrientIcon, { backgroundColor: `${nutrientInfo.color}15` }]}>
+                          <Icon name={nutrientInfo.icon} size={16} color={nutrientInfo.color} />
+                        </View>
+                        <Text style={styles.nutrientLabel}>{key}</Text>
+                      </View>
+                      <TextInput
+                        style={[
+                          styles.nutrientInput,
+                          focusedNutrient === key && styles.nutrientInputFocused
+                        ]}
+                        value={String(value)}
+                        onChangeText={(text) => {
+                          // Try to parse as number, fallback to string
+                          const numValue = parseFloat(text);
+                          const finalValue = isNaN(numValue) ? text : numValue;
+                          handleNutrientChange(key, finalValue);
+                        }}
+                        keyboardType="numeric"
+                        placeholder="0"
+                        placeholderTextColor={colors.secondary}
+                        onFocus={() => setFocusedNutrient(key)}
+                        onBlur={() => setFocusedNutrient(null)}
+                      />
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
             <View style={styles.analysisInfoSection}>
               <Text style={styles.sectionTitle}>Analysis Results</Text>
               {/* Confidence Rate */}
@@ -1804,7 +1893,7 @@ const FoodScannerScreen = ({ navigation }) => {
                 <View style={styles.infoHeader}>
                   <Icon name="shield-check" size={20} color={
                     mealDetails.confidenceRate >= 70 ? '#27AE60' :
-                    mealDetails.confidenceRate >= 50 ? '#F39C12' : '#E74C3C'
+                      mealDetails.confidenceRate >= 50 ? '#F39C12' : '#E74C3C'
                   } />
                   <Text style={styles.infoLabel}>Confidence</Text>
                 </View>
@@ -1813,7 +1902,7 @@ const FoodScannerScreen = ({ navigation }) => {
                     styles.confidenceValue,
                     {
                       color: mealDetails.confidenceRate >= 70 ? '#27AE60' :
-                             mealDetails.confidenceRate >= 50 ? '#F39C12' : '#E74C3C'
+                        mealDetails.confidenceRate >= 50 ? '#F39C12' : '#E74C3C'
                     }
                   ]}>
                     {mealDetails.confidenceRate.toFixed(0)}%
@@ -1824,168 +1913,179 @@ const FoodScannerScreen = ({ navigation }) => {
                       {
                         width: `${mealDetails.confidenceRate}%`,
                         backgroundColor: mealDetails.confidenceRate >= 70 ? '#27AE60' :
-                                       mealDetails.confidenceRate >= 50 ? '#F39C12' : '#E74C3C'
+                          mealDetails.confidenceRate >= 50 ? '#F39C12' : '#E74C3C'
                       }
                     ]} />
                   </View>
+                  {mealDetails.confidenceExplanation ? (
+                    <>
+                      <TouchableOpacity
+                        style={styles.dropdownToggle}
+                        onPress={() => setShowConfidenceExplanation(!showConfidenceExplanation)}
+                      >
+                        <Text style={styles.dropdownToggleText}>Why this confidence?</Text>
+                        <Icon
+                          name={showConfidenceExplanation ? "chevron-up" : "chevron-down"}
+                          size={18}
+                          color={colors.primary}
+                        />
+                      </TouchableOpacity>
+                      {showConfidenceExplanation && (
+                        <Text style={styles.confidenceExplanation}>
+                          {mealDetails.confidenceExplanation}
+                        </Text>
+                      )}
+                    </>
+                  ) : null}
+                </View>
+              </View>
+
+              {/* Health Assessment */}
+              {mealDetails.healthAssessment ? (
+                <View style={styles.infoCard}>
+                  <TouchableOpacity
+                    style={styles.infoHeader}
+                    onPress={() => setShowHealthAssessment(!showHealthAssessment)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.infoHeaderLeft}>
+                      <Icon name="heart-pulse" size={20} color="#E74C3C" />
+                      <Text style={styles.infoLabel}>Diabetes Health Assessment</Text>
+                    </View>
+                    <Icon
+                      name={showHealthAssessment ? "chevron-up" : "chevron-down"}
+                      size={20}
+                      color={colors.primary}
+                    />
+                  </TouchableOpacity>
+                  {showHealthAssessment && (
+                    <Text style={styles.healthAssessmentText}>
+                      {mealDetails.healthAssessment}
+                    </Text>
+                  )}
+                </View>
+              ) : null}
+            </View>
+
+            {/* Detected Ingredients/Recipes */}
+            {recipes && recipes.length > 0 && (
+              <View style={styles.recipesSection}>
+                <Text style={styles.sectionTitle}>Detected Ingredients</Text>
+                <Text style={styles.recipeSubtitle}>
+                  {getMergedRecipes().length} unique ingredient{getMergedRecipes().length !== 1 ? 's' : ''} detected
+                </Text>
+                <View style={styles.recipesList}>
+                  {getMergedRecipes().map((recipe, index) => (
+                    <View key={index} style={styles.recipeCard}>
+                      <View style={styles.recipeIconContainer}>
+                        <Icon name="food-variant" size={20} color="#27AE60" />
+                      </View>
+                      <View style={styles.recipeInfo}>
+                        <Text style={styles.recipeLabel}>{recipe.label}</Text>
+                        <Text style={styles.recipeCount}>
+                          {recipe.boxes.length} location{recipe.boxes.length !== 1 ? 's' : ''} detected
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Ingredient Nutrients Button */}
+            {ingredientNutrients && ingredientNutrients.length > 0 && (
+              <View style={styles.ingredientButtonSection}>
+                <TouchableOpacity
+                  style={styles.modifyIngredientButton}
+                  onPress={() => setShowIngredientModal(true)}
+                >
+                  <Icon name="food-apple" size={20} color="white" />
+                  <Text style={styles.modifyIngredientButtonText}>
+                    Modify Ingredient Portions ({ingredientNutrients.length} ingredients)
+                  </Text>
+                  <Icon name="chevron-right" size={20} color="white" />
+                </TouchableOpacity>
+              </View>
+            )}
+
+
+            {/* Portion Size Adjustment */}
+            <View style={styles.portionSection}>
+              <Text style={styles.sectionTitle}>Adjust Portion Size</Text>
+              <Text style={styles.nutrientSubtitle}>
+                Original serving: {mealDetails.servingSize}
+              </Text>
+
+              <View style={styles.portionAdjustmentContainer}>
+                <TouchableOpacity
+                  style={styles.portionButton}
+                  onPress={() => recalculateNutrients(Math.max(0.25, portionMultiplier - 0.25))}
+                >
+                  <Icon name="minus" size={20} color="white" />
+                </TouchableOpacity>
+
+                <View style={styles.portionInputContainer}>
+                  <TextInput
+                    style={styles.portionInput}
+                    value={portionMultiplier.toFixed(2)}
+                    onChangeText={(text) => {
+                      const value = parseFloat(text);
+                      if (!isNaN(value) && value > 0) {
+                        recalculateNutrients(value);
+                      }
+                    }}
+                    keyboardType="decimal-pad"
+                    placeholder="1"
+                    placeholderTextColor={colors.secondary}
+                  />
+                  <Text style={styles.portionLabel}>x portion</Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.portionButton}
+                  onPress={() => recalculateNutrients(portionMultiplier + 0.25)}
+                >
+                  <Icon name="plus" size={20} color="white" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.portionHints}>
+                <View style={styles.hintItem}>
+                  <Text style={styles.hintLabel}>0.5x</Text>
+                  <Text style={styles.hintText}>Half</Text>
+                </View>
+                <View style={styles.hintItem}>
+                  <Text style={styles.hintLabel}>1.0x</Text>
+                  <Text style={styles.hintText}>Normal</Text>
+                </View>
+                <View style={styles.hintItem}>
+                  <Text style={styles.hintLabel}>1.5x</Text>
+                  <Text style={styles.hintText}>1.5x</Text>
+                </View>
+                <View style={styles.hintItem}>
+                  <Text style={styles.hintLabel}>2.0x</Text>
+                  <Text style={styles.hintText}>Double</Text>
                 </View>
               </View>
             </View>
 
-            {/* Predicted Nutrients */}
-            <View style={styles.predictionSection}>
-              <Text style={styles.sectionTitle}>Predicted Nutrients</Text>
-              <Text style={styles.nutrientSubtitle}>Tap any value to edit</Text>
-              <View style={styles.nutrientsGrid}>
-              {Object.entries(editableNutrients).map(([key, value]) => {
-                const nutrientInfo = getNutrientIcon(key);
-                return (
-                  <View key={key} style={styles.nutrientCard}>
-                    <View style={styles.nutrientHeader}>
-                      <View style={[styles.nutrientIcon, { backgroundColor: `${nutrientInfo.color}15` }]}>
-                        <Icon name={nutrientInfo.icon} size={16} color={nutrientInfo.color} />
-                      </View>
-                      <Text style={styles.nutrientLabel}>{key}</Text>
-                    </View>
-                    <TextInput
-                      style={[
-                        styles.nutrientInput,
-                        focusedNutrient === key && styles.nutrientInputFocused
-                      ]}
-                      value={String(value)}
-                      onChangeText={(text) => {
-                        // Try to parse as number, fallback to string
-                        const numValue = parseFloat(text);
-                        const finalValue = isNaN(numValue) ? text : numValue;
-                        handleNutrientChange(key, finalValue);
-                      }}
-                      keyboardType="numeric"
-                      placeholder="0"
-                      placeholderTextColor={colors.secondary}
-                      onFocus={() => setFocusedNutrient(key)}
-                      onBlur={() => setFocusedNutrient(null)}
-                    />
-                  </View>
-                );
-              })}
-            </View>
-          </View>
 
-          {/* Detected Ingredients/Recipes */}
-          {recipes && recipes.length > 0 && (
-            <View style={styles.recipesSection}>
-              <Text style={styles.sectionTitle}>Detected Ingredients</Text>
-              <Text style={styles.recipeSubtitle}>
-                {getMergedRecipes().length} unique ingredient{getMergedRecipes().length !== 1 ? 's' : ''} detected
-              </Text>
-              <View style={styles.recipesList}>
-                {getMergedRecipes().map((recipe, index) => (
-                  <View key={index} style={styles.recipeCard}>
-                    <View style={styles.recipeIconContainer}>
-                      <Icon name="food-variant" size={20} color="#27AE60" />
-                    </View>
-                    <View style={styles.recipeInfo}>
-                      <Text style={styles.recipeLabel}>{recipe.label}</Text>
-                      <Text style={styles.recipeCount}>
-                        {recipe.boxes.length} location{recipe.boxes.length !== 1 ? 's' : ''} detected
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
 
-          {/* Ingredient Nutrients Button */}
-          {ingredientNutrients && ingredientNutrients.length > 0 && (
-            <View style={styles.ingredientButtonSection}>
-              <TouchableOpacity 
-                style={styles.modifyIngredientButton}
-                onPress={() => setShowIngredientModal(true)}
-              >
-                <Icon name="food-apple" size={20} color="white" />
-                <Text style={styles.modifyIngredientButtonText}>
-                  Modify Ingredient Portions ({ingredientNutrients.length} ingredients)
-                </Text>
-                <Icon name="chevron-right" size={20} color="white" />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Portion Size Adjustment */}
-          <View style={styles.portionSection}>
-            <Text style={styles.sectionTitle}>Adjust Portion Size</Text>
-            <Text style={styles.nutrientSubtitle}>
-              Original serving: {mealDetails.servingSize}
-            </Text>
-            
-            <View style={styles.portionAdjustmentContainer}>
-              <TouchableOpacity 
-                style={styles.portionButton}
-                onPress={() => recalculateNutrients(Math.max(0.25, portionMultiplier - 0.25))}
-              >
-                <Icon name="minus" size={20} color="white" />
-              </TouchableOpacity>
-              
-              <View style={styles.portionInputContainer}>
-                <TextInput
-                  style={styles.portionInput}
-                  value={portionMultiplier.toFixed(2)}
-                  onChangeText={(text) => {
-                    const value = parseFloat(text);
-                    if (!isNaN(value) && value > 0) {
-                      recalculateNutrients(value);
-                    }
-                  }}
-                  keyboardType="decimal-pad"
-                  placeholder="1"
-                  placeholderTextColor={colors.secondary}
-                />
-                <Text style={styles.portionLabel}>x portion</Text>
-              </View>
-              
-              <TouchableOpacity 
-                style={styles.portionButton}
-                onPress={() => recalculateNutrients(portionMultiplier + 0.25)}
-              >
-                <Icon name="plus" size={20} color="white" />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.portionHints}>
-              <View style={styles.hintItem}>
-                <Text style={styles.hintLabel}>0.5x</Text>
-                <Text style={styles.hintText}>Half</Text>
-              </View>
-              <View style={styles.hintItem}>
-                <Text style={styles.hintLabel}>1.0x</Text>
-                <Text style={styles.hintText}>Normal</Text>
-              </View>
-              <View style={styles.hintItem}>
-                <Text style={styles.hintLabel}>1.5x</Text>
-                <Text style={styles.hintText}>1.5x</Text>
-              </View>
-              <View style={styles.hintItem}>
-                <Text style={styles.hintLabel}>2.0x</Text>
-                <Text style={styles.hintText}>Double</Text>
-              </View>
-            </View>
-          </View>
           </>
         )}
 
         {predictionData && predictionData.nutrients && !isProcessing && (
           <View style={styles.actionButtons}>
-            <TouchableOpacity 
-              style={styles.cancelButton} 
+            <TouchableOpacity
+              style={styles.cancelButton}
               onPress={closeFoodScanner}
               disabled={isProcessing}
             >
               <Text style={styles.buttonText}>Cancel</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.saveButton} 
+
+            <TouchableOpacity
+              style={styles.saveButton}
               onPress={saveMeal}
               disabled={isProcessing}
             >
@@ -2005,19 +2105,19 @@ const FoodScannerScreen = ({ navigation }) => {
         <View style={styles.imagePickerModalOverlay}>
           <View style={styles.imagePickerModalContent}>
             <Text style={styles.imagePickerModalTitle}>Select Image</Text>
-            
+
             <TouchableOpacity style={styles.modalButton} onPress={handleCameraCapture}>
               <Icon name="camera" size={24} color="white" />
               <Text style={styles.modalButtonText}>Take Photo</Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity style={styles.modalButton} onPress={handleLibrarySelection}>
               <Icon name="image" size={24} color="white" />
               <Text style={styles.modalButtonText}>Choose from Gallery</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.modalCancelButton} 
+
+            <TouchableOpacity
+              style={styles.modalCancelButton}
               onPress={() => {
                 setShowImagePickerModal(false);
                 // if (!capturedImage) {
@@ -2041,11 +2141,11 @@ const FoodScannerScreen = ({ navigation }) => {
         <View style={styles.imagePickerModalOverlay}>
           <View style={styles.imagePickerModalContent}>
             <Text style={styles.imagePickerModalTitle}>Select Food Type</Text>
-            
+
             {foodTypes.map(type => (
-              <TouchableOpacity 
+              <TouchableOpacity
                 key={type.value}
-                style={styles.modalButton} 
+                style={styles.modalButton}
                 onPress={() => {
                   setMealDetails(prev => ({ ...prev, foodType: type.value }));
                   setShowFoodTypeModal(false);
@@ -2054,9 +2154,9 @@ const FoodScannerScreen = ({ navigation }) => {
                 <Text style={styles.modalButtonText}>{type.label}</Text>
               </TouchableOpacity>
             ))}
-            
-            <TouchableOpacity 
-              style={styles.modalCancelButton} 
+
+            <TouchableOpacity
+              style={styles.modalCancelButton}
               onPress={() => setShowFoodTypeModal(false)}
             >
               <Text style={styles.modalCancelText}>Cancel</Text>
@@ -2107,7 +2207,7 @@ const FoodScannerScreen = ({ navigation }) => {
                   <View style={styles.ingredientPortionControl}>
                     <Text style={styles.ingredientPortionLabel}>Portion:</Text>
                     <View style={styles.ingredientPortionAdjuster}>
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         style={styles.portionSmallButton}
                         onPress={() => {
                           const currentProportion = ingredientProportions[ingredient.ingredient] || 1.0;
@@ -2117,7 +2217,7 @@ const FoodScannerScreen = ({ navigation }) => {
                       >
                         <Icon name="minus" size={16} color="white" />
                       </TouchableOpacity>
-                      
+
                       <TextInput
                         style={styles.ingredientPortionInput}
                         value={(ingredientProportions[ingredient.ingredient] || 1.0).toFixed(2)}
@@ -2128,8 +2228,8 @@ const FoodScannerScreen = ({ navigation }) => {
                         keyboardType="decimal-pad"
                         placeholderTextColor={colors.secondary}
                       />
-                      
-                      <TouchableOpacity 
+
+                      <TouchableOpacity
                         style={styles.portionSmallButton}
                         onPress={() => {
                           const currentProportion = ingredientProportions[ingredient.ingredient] || 1.0;
@@ -2159,7 +2259,7 @@ const FoodScannerScreen = ({ navigation }) => {
             </ScrollView>
 
             <View style={styles.ingredientModalFooter}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.ingredientModalCloseButton}
                 onPress={() => setShowIngredientModal(false)}
               >

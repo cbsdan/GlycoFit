@@ -41,12 +41,12 @@ User Registration → Baseline Assessment → Daily Food Logging → Risk Analys
 
 ### Why Daily Logs are Weighted Higher (60% vs 40%)
 
-The comprehensive risk calculation gives more weight to daily food logs because:
+The comprehensive risk calculation gives more weight to daily food logs for several research-backed reasons:
 
-1. **Real-Time Accuracy**: Daily logs reflect current eating patterns, not just reported habits
-2. **Actual Nutrient Intake**: Measures precise amounts of nutrients consumed (calories, sugars, fiber, etc.)
-3. **Pattern Detection**: Identifies actual meal timing issues (late-night eating, breakfast skipping)
-4. **Behavioral Evidence**: Shows what users actually eat vs. what they think they eat
+1. **Real-Time Accuracy**: Daily logs reflect current eating patterns, not just reported habits or intentions
+2. **Actual Nutrient Intake**: Measures precise amounts of nutrients consumed (calories, sugars, fiber, glycemic load, etc.)
+3. **Pattern Detection**: Identifies actual meal timing issues (late-night eating, breakfast skipping, irregular patterns)
+4. **Behavioral Evidence**: Shows what users actually eat vs. what they think or report they eat
 5. **Dynamic Monitoring**: Captures changes in diet that baseline questions might miss
 6. **Research Support**: Studies show actual intake is more predictive of diabetes risk than self-reported habits
 
@@ -55,6 +55,11 @@ The comprehensive risk calculation gives more weight to daily food logs because:
 - But daily logs show high added sugar (50g/day) and low fiber (10g/day) → 70% risk from logs
 - Comprehensive score: (30% × 0.4) + (70% × 0.6) = 54% (High Risk)
 - This accurately reflects that despite good intentions, actual eating patterns increase risk
+
+**Important Note on No Meal Data:**
+- When no meals are logged, daily log risk = baseline risk (NOT zero)
+- This prevents "gaming" where users could lower their score by not logging unhealthy meals
+- Users must log meals to get accurate personalized risk assessment based on actual intake
 
 ### Handling Users Without Meal Logs
 
@@ -65,10 +70,41 @@ The comprehensive risk calculation gives more weight to daily food logs because:
   - Message: "Start logging your meals to see daily nutrient averages and get personalized recommendations based on your actual food intake"
   - Call-to-action button: "Log Your First Meal"
   
-#### Risk Calculation:
-- When no meals logged, daily log risk defaults to baseline risk score
+#### Risk Calculation (IMPORTANT):
+- **When no meals logged**: Daily log risk defaults to baseline risk score (NOT zero)
+- This prevents users from "gaming the system" by not logging unhealthy meals
 - Comprehensive risk = (Baseline × 0.4) + (Baseline × 0.6) = Baseline
 - User sees same score for both components, with explanation: "Start logging meals to get personalized analysis"
+- **Why this approach**: If daily log risk = 0 when no meals, users could artificially lower their risk by not logging. By defaulting to baseline risk, we maintain neutrality until real data is available.
+
+#### Partial Logging Protection (CRITICAL):
+- **Problem**: Users logging only SOME meals (e.g., breakfast only) creates under-reporting
+- **Example**: User logs 1 breakfast/day (400 cal) but skips logging lunch & dinner
+  - System calculates: 400 cal / 1 day = 400 cal/day average
+  - Reality: User actually ate 1700 cal/day (breakfast + lunch + dinner)
+  - **Result**: Assessment shows user as much healthier than reality!
+
+- **Solution Implemented**:
+  - **Data Sufficiency Check**: Minimum 2 meals/day required for reliable assessment
+  - **Data Quality Levels**:
+    - `good`: ≥2.5 meals/day average
+    - `partial`: 1.5-2.4 meals/day average (warning shown)
+    - `insufficient`: <1.5 meals/day average (critical warning shown)
+  
+  - **Warning System**:
+    ```
+    If insufficient data:
+    - Priority: CRITICAL
+    - Message: "Only X meals logged (avg Y/day). Your risk assessment is 
+               likely INACCURATE. Log at least 2-3 meals daily for reliable results."
+    
+    If partial data:
+    - Priority: HIGH  
+    - Message: "Logging X meals/day. For more accurate assessment, try to log 
+               all meals (aim for 3+ daily)."
+    ```
+
+- **Important**: System still calculates risk with partial data, but warns user that results may not reflect reality
 
 #### Recommendations:
 - Basic recommendations generated from baseline assessment alone
@@ -320,28 +356,74 @@ Each recommendation includes:
 
 ## Implementation Details
 
+### Critical Implementation Notes
+
+#### No Meal Data Handling (Anti-Gaming Protection)
+**Problem Prevented**: Users could artificially lower their risk scores by simply not logging unhealthy meals.
+
+**Solution Implemented**:
+```python
+# In food_tracking_service.py - calculate_daily_log_risk()
+if not result['success'] or not result['meals']:
+    return {
+        'daily_risk_score': None,  # NOT 0
+        'has_data': False
+    }
+
+# In calculate_comprehensive_risk()
+if not has_meal_data or daily_log_result.get('daily_risk_score') is None:
+    daily_log_risk = baseline_risk  # Default to baseline, NOT 0
+
+# Final calculation remains same
+comprehensive_risk = (baseline_risk * 0.4) + (daily_log_risk * 0.6)
+```
+
+**Result**:
+- No meals logged → daily_log_risk = baseline_risk
+- Comprehensive = (baseline × 0.4) + (baseline × 0.6) = baseline
+- User cannot lower score by avoiding logging
+- Encourages consistent meal tracking for accurate assessment
+
+#### Pattern Risk Calculation
+```python
+# When no meals exist
+def _calculate_pattern_risk(meals, days):
+    if not meals:
+        return 0  # Neutral, not penalty
+```
+
+**Why 0 and not 50?**
+- 50 would be an arbitrary penalty for not logging
+- 0 is neutral - no data means no pattern analysis
+- Comprehensive calculation handles this by using baseline risk
+
 ### Backend Components:
 
 1. **`food_baseline_assessment.py`**
    - Stores baseline questionnaire responses
-   - Calculates baseline risk scores
+   - Calculates baseline risk scores using research-based weights
    - Manages question definitions and weights
+   - **16 questions** covering eating habits, meal timing, food preferences
 
 2. **`food_tracking_service.py`**
-   - Analyzes daily food logs
-   - Calculates nutrient-based and pattern-based risks
-   - Generates comprehensive risk scores
-   - Creates personalized recommendations
+   - Analyzes daily food logs over configurable time period (default 7 days)
+   - Calculates nutrient-based risk (70% weight) - analyzes 8 key nutrients
+   - Calculates pattern-based risk (30% weight) - meal timing, frequency, irregularity
+   - Generates comprehensive risk scores (40% baseline + 60% daily logs)
+   - **Anti-gaming protection**: Defaults to baseline risk when no meals logged
+   - Creates personalized recommendations based on specific nutrient deficiencies
 
 3. **`food_risk_assessment_controller.py`**
    - API endpoints for baseline submission
-   - Risk assessment retrieval
+   - Risk assessment retrieval with configurable analysis period
    - Recommendation generation
+   - Daily log analysis endpoint
 
 4. **`user_meal.py` (Enhanced)**
    - Supports all required nutrients (including glycemic load)
    - Allows custom meal datetime for accurate pattern analysis
    - Tracks ingredient-level nutrition data
+   - Supports portion adjustments and ingredient proportions
 
 ### Mobile Components:
 

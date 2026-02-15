@@ -26,6 +26,7 @@ import stepDetectionService from '../services/stepDetectionService';
 import { getStepBaseline, getStepSummary,checkStepBaseline } from '../services/api';
 import api from '../services/api'; // ADD THIS LINE
 import { useFocusEffect } from '@react-navigation/native';
+import { LifestyleRecommendationsSection } from '../components/recommendations';
 
 const { width } = Dimensions.get('window');
 
@@ -1654,6 +1655,9 @@ educationBullet: {
             </Text>
           </View>
         )}
+
+        {/* AI-Powered Timeline Predictions */}
+        <LifestyleRecommendationsSection trackerType="activity" />
       </ScrollView>
     </SafeAreaView>
   );

@@ -32,6 +32,7 @@ import {
   SdkAvailabilityStatus,
   openHealthConnectSettingsPage,
 } from '../services/healthConnectService';
+import { LifestyleRecommendationsSection } from '../components/recommendations';
 
 /**
  * SleepTrackingScreen - Main dashboard for sleep tracking
@@ -1400,6 +1401,9 @@ const SleepTrackingScreen = ({ navigation }) => {
             manual entry.
           </Text>
         </View>
+
+        {/* AI-Powered Timeline Predictions */}
+        <LifestyleRecommendationsSection trackerType="sleep" />
       </ScrollView>
     </SafeAreaView>
   );
