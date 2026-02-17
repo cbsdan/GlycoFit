@@ -41,6 +41,10 @@ const MealDetailScreen = ({ route, navigation }) => {
   const [baseIngredientNutrients, setBaseIngredientNutrients] = useState(meal.ingredient_nutrients || []);
   const [showIngredientModal, setShowIngredientModal] = useState(false);
 
+  // Collapsible sections state
+  const [showConfidenceExplanation, setShowConfidenceExplanation] = useState(false);
+  const [showHealthAssessment, setShowHealthAssessment] = useState(false);
+
   // Fetch complete meal data on mount to ensure we have ingredient_nutrients
   useEffect(() => {
     const fetchMealData = async () => {
@@ -583,13 +587,15 @@ const MealDetailScreen = ({ route, navigation }) => {
       flexWrap: 'wrap',
     },
     confidenceContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
       marginBottom: 16,
       paddingHorizontal: 8,
       paddingVertical: 8,
       borderRadius: 8,
       borderLeftWidth: 3,
+    },
+    confidenceHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
       flexWrap: 'wrap',
     },
     confidenceLabel: {
@@ -604,6 +610,39 @@ const MealDetailScreen = ({ route, navigation }) => {
       fontWeight: '700',
       flex: 1,
       flexWrap: 'wrap',
+    },
+    healthAssessmentContainer: {
+      marginBottom: 16,
+      paddingHorizontal: 8,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderLeftWidth: 3,
+      borderLeftColor: '#E74C3C',
+      backgroundColor: '#E74C3C10',
+    },
+    healthAssessmentHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+    },
+    healthAssessmentLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: '#E74C3C',
+      marginLeft: 8,
+      marginRight: 4,
+      flex: 1,
+    },
+    explanationContent: {
+      marginTop: 10,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    explanationText: {
+      fontSize: 13,
+      lineHeight: 20,
+      color: colors.secondary,
     },
     notesSection: {
       marginTop: 16,
@@ -1227,32 +1266,81 @@ const MealDetailScreen = ({ route, navigation }) => {
             </View>
           )}
 
-          {/* Confidence Rate Section */}
+          {/* Confidence Rate Section - Collapsible */}
           {meal.confidence_rate !== undefined && meal.confidence_rate !== null && (
-            <View style={[
-              styles.confidenceContainer,
-              {
-                borderLeftColor: meal.confidence_rate >= 70 ? '#27AE60' :
-                  meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C',
-                backgroundColor: meal.confidence_rate >= 70 ? '#27AE6010' :
-                  meal.confidence_rate >= 50 ? '#F39C1210' : '#E74C3C10',
-              }
-            ]}>
-              <Icon name="shield-check" size={16} color={
-                meal.confidence_rate >= 70 ? '#27AE60' :
-                  meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C'
-              } />
-              <Text style={styles.confidenceLabel}>Detection Confidence:</Text>
-              <Text style={[
-                styles.confidenceValue,
+            <TouchableOpacity
+              style={[
+                styles.confidenceContainer,
                 {
-                  color: meal.confidence_rate >= 70 ? '#27AE60' :
-                    meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C'
+                  borderLeftColor: meal.confidence_rate >= 70 ? '#27AE60' :
+                    meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C',
+                  backgroundColor: meal.confidence_rate >= 70 ? '#27AE6010' :
+                    meal.confidence_rate >= 50 ? '#F39C1210' : '#E74C3C10',
                 }
-              ]}>
-                {meal.confidence_rate.toFixed(0)}%
-              </Text>
-            </View>
+              ]}
+              onPress={() => setShowConfidenceExplanation(!showConfidenceExplanation)}
+              activeOpacity={meal.confidence_explanation ? 0.7 : 1}
+              disabled={!meal.confidence_explanation}
+            >
+              <View style={styles.confidenceHeader}>
+                <Icon name="shield-check" size={16} color={
+                  meal.confidence_rate >= 70 ? '#27AE60' :
+                    meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C'
+                } />
+                <Text style={styles.confidenceLabel}>Detection Confidence:</Text>
+                <Text style={[
+                  styles.confidenceValue,
+                  {
+                    color: meal.confidence_rate >= 70 ? '#27AE60' :
+                      meal.confidence_rate >= 50 ? '#F39C12' : '#E74C3C'
+                  }
+                ]}>
+                  {meal.confidence_rate.toFixed(0)}%
+                </Text>
+                {meal.confidence_explanation && (
+                  <Icon 
+                    name={showConfidenceExplanation ? "chevron-up" : "chevron-down"} 
+                    size={18} 
+                    color={colors.secondary}
+                    style={{ marginLeft: 'auto' }}
+                  />
+                )}
+              </View>
+              {showConfidenceExplanation && meal.confidence_explanation && (
+                <View style={styles.explanationContent}>
+                  <Text style={[styles.explanationText, { color: colors.secondary }]}>
+                    {meal.confidence_explanation}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {/* Health Assessment Section - Collapsible */}
+          {meal.health_assessment && (
+            <TouchableOpacity
+              style={styles.healthAssessmentContainer}
+              onPress={() => setShowHealthAssessment(!showHealthAssessment)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.healthAssessmentHeader}>
+                <Icon name="heart-pulse" size={16} color="#E74C3C" />
+                <Text style={styles.healthAssessmentLabel}>Health Assessment</Text>
+                <Icon 
+                  name={showHealthAssessment ? "chevron-up" : "chevron-down"} 
+                  size={18} 
+                  color={colors.secondary}
+                  style={{ marginLeft: 'auto' }}
+                />
+              </View>
+              {showHealthAssessment && (
+                <View style={styles.explanationContent}>
+                  <Text style={[styles.explanationText, { color: colors.secondary }]}>
+                    {meal.health_assessment}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
           )}
 
           {/* Notes Section */}

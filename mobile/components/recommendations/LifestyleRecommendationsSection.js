@@ -22,11 +22,13 @@ import api from '../../services/api';
  * Props:
  * - trackerType: 'food' | 'sleep' | 'activity' | 'alcohol' | 'smoking'
  * - onError: Optional callback for error handling
+ * - hideRecommendations: Optional flag to hide the recommendations section (useful when shown elsewhere)
  */
 const LifestyleRecommendationsSection = ({
   trackerType,
   onError,
   containerStyle,
+  hideRecommendations = false,
 }) => {
   const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -398,7 +400,7 @@ const LifestyleRecommendationsSection = ({
       )}
 
       {/* Recommendations */}
-      {data?.recommendations && data.recommendations.length > 0 && (
+      {!hideRecommendations && data?.recommendations && data.recommendations.length > 0 && (
         <RecommendationCard
           recommendations={data.recommendations}
           title="Personalized Recommendations"

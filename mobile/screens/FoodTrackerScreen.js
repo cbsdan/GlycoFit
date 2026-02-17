@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Dimensions,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -16,7 +17,7 @@ import { useToast } from '../context/ToastContext';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../services/api';
 import { LinearGradient } from 'expo-linear-gradient';
-import { LifestyleRecommendationsSection } from '../components/recommendations';
+import { TimelinePredictionCard } from '../components/recommendations';
 
 const { width } = Dimensions.get('window');
 
@@ -29,19 +30,82 @@ const FoodTrackerScreen = ({ navigation }) => {
   const [hasBaseline, setHasBaseline] = useState(false);
   const [riskAssessment, setRiskAssessment] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
+  const [timelinePredictions, setTimelinePredictions] = useState(null);
+  const [predictionsLoading, setPredictionsLoading] = useState(false);
   const [expandedSections, setExpandedSections] = useState({
     explanation: false,
     contributors: false,
     nutrients: false,
     breakdown: false,
     nutrition: false, // Add nutrition section
+    recommendations: false, // Add recommendations section
+    predictions: false, // Add predictions section
   });
+  const [nutrientModalVisible, setNutrientModalVisible] = useState(false);
+  const [selectedNutrient, setSelectedNutrient] = useState(null);
+
+  // Nutrient descriptions with diabetes context
+  const nutrientDescriptions = {
+    'Glycemic Load': 'Measures how much a food raises blood sugar. Lower GL foods cause gradual sugar spikes, helping maintain stable glucose levels and reducing diabetes risk.',
+    'Calories': 'Total energy from food. Excess calories lead to weight gain, a major diabetes risk factor. Maintaining healthy calorie intake helps manage blood sugar and weight.',
+    'Carbohydrates': 'Primary nutrient affecting blood sugar. Complex carbs digest slowly, providing steady energy. Monitoring carb intake is crucial for diabetes prevention.',
+    'Fiber': 'Slows sugar absorption and improves insulin sensitivity. High-fiber diets reduce diabetes risk by stabilizing blood glucose and supporting healthy weight.',
+    'Sugar': 'Quickly raises blood glucose. Excessive sugar intake strains insulin production and promotes weight gain, increasing diabetes risk.',
+    'Protein': 'Helps stabilize blood sugar and maintains muscle mass. Adequate protein supports metabolism and satiety, aiding weight management.',
+    'Fat': 'Provides energy and supports hormone function. Choose healthy fats (unsaturated) over saturated fats to reduce inflammation and improve insulin sensitivity.',
+    'Saturated Fat': 'Linked to insulin resistance. High intake increases diabetes risk by promoting inflammation and affecting cell insulin receptors.',
+    'Sodium': 'Excess sodium raises blood pressure, often co-occurring with diabetes. Monitoring sodium helps reduce cardiovascular complications.',
+    'Potassium': 'Supports insulin function and blood pressure regulation. Adequate levels improve glucose metabolism and reduce diabetes complications.',
+    'Magnesium': 'Essential for insulin function. Low magnesium is linked to insulin resistance. Sufficient intake improves blood sugar control.',
+    'Calcium': 'Supports metabolic health and insulin secretion. Adequate calcium may reduce diabetes risk by improving insulin sensitivity.',
+    'Iron': 'Required for oxygen transport and energy. Both deficiency and excess can affect glucose metabolism and diabetes risk.',
+    'Vitamin D': 'Regulates insulin secretion. Low levels are associated with increased diabetes risk. Adequate vitamin D supports pancreatic function.',
+    'Vitamin C': 'Antioxidant that reduces oxidative stress from high blood sugar. Helps protect cells from glucose-related damage.',
+    'Vitamin A': 'Supports immune function and cell health. Adequate levels may help reduce inflammation associated with insulin resistance.',
+    'B Vitamins': 'Support energy metabolism and nerve function. Important for glucose utilization and preventing diabetes-related complications.',
+  };
+
+  const getNutrientDescription = (nutrientName) => {
+    // Try exact match first
+    if (nutrientDescriptions[nutrientName]) {
+      return nutrientDescriptions[nutrientName];
+    }
+    // Try partial match
+    const key = Object.keys(nutrientDescriptions).find(k => 
+      nutrientName.toLowerCase().includes(k.toLowerCase()) || 
+      k.toLowerCase().includes(nutrientName.toLowerCase())
+    );
+    return key ? nutrientDescriptions[key] : 'This nutrient plays a role in your overall metabolic health and can impact your diabetes risk profile.';
+  };
 
   useFocusEffect(
     React.useCallback(() => {
       checkBaselineAndFetchData();
+      fetchFoodPredictions();
     }, [])
   );
+
+  const fetchFoodPredictions = async () => {
+    try {
+      setPredictionsLoading(true);
+      const response = await api.getFoodPredictions();
+      
+      const isSuccess = response.status === 'success' || response.success === true;
+      
+      if (isSuccess) {
+        const predictions = response.predictions || response.data?.predictions || {};
+        const timelineData = predictions.timeline_predictions || {};
+        
+        if (Object.keys(timelineData).length > 0) {
+          setTimelinePredictions(timelineData);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching food predictions:', error);
+    } finally {
+      setPredictionsLoading(false);
+    }
+  };
 
   const checkBaselineAndFetchData = async (isRefreshing = false) => {
     try {
@@ -85,6 +149,7 @@ const FoodTrackerScreen = ({ navigation }) => {
   const onRefresh = () => {
     setRefreshing(true);
     checkBaselineAndFetchData(true);
+    fetchFoodPredictions();
   };
 
   const getRiskColor = (score) => {
@@ -181,9 +246,14 @@ const FoodTrackerScreen = ({ navigation }) => {
           <Icon name="arrow-left" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Food Tracker</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('FoodBaseline')} style={styles.editButton}>
-          <Icon name="pencil" size={20} color={colors.primary} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={() => navigation.navigate('MealHistory')} style={styles.historyButton}>
+            <Icon name="history" size={20} color={colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('FoodBaseline')} style={styles.editButton}>
+            <Icon name="pencil" size={20} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -239,7 +309,7 @@ const FoodTrackerScreen = ({ navigation }) => {
                         Nutrition Dashboard
                       </Text>
                       <Text style={[styles.expandableSubtitle, { color: colors.secondary }]}>
-                        {riskAssessment.daily_log_assessment.nutrient_analysis.length} nutrients • {riskAssessment.daily_log_assessment.days_analyzed} days
+                        Today's intake • {riskAssessment.daily_log_assessment.today_meal_count || 0} meals logged
                       </Text>
                     </View>
                   </View>
@@ -260,66 +330,72 @@ const FoodTrackerScreen = ({ navigation }) => {
                       };
                       
                       const getStatusBgColor = (status) => {
-                        if (status === 'optimal') return '#E8F5E9';
-                        if (status === 'low') return '#FFF3E0';
-                        return '#FFEBEE';
+                        if (status === 'optimal') return '#E8F5E920';
+                        if (status === 'low') return '#FFF3E020';
+                        return '#FFEBEE20';
                       };
                       
                       const statusColor = getStatusColor(nutrient.status);
                       const statusBgColor = getStatusBgColor(nutrient.status);
                       
                       return (
-                        <View key={index} style={[styles.nutrientFullCard, { backgroundColor: colors.background }]}>
-                          {/* Header Row */}
-                          <View style={styles.nutrientFullHeader}>
-                            <View style={styles.nutrientFullTitleRow}>
-                              <Icon 
-                                name={nutrient.status === 'optimal' ? 'check-circle' : nutrient.status === 'low' ? 'alert-circle' : 'close-circle'} 
-                                size={32} 
-                                color={statusColor} 
-                              />
-                              <View style={styles.nutrientFullNameContainer}>
-                                <Text style={[styles.nutrientFullName, { color: colors.text }]}>
-                                  {nutrient.nutrient || 'Nutrient'}
-                                </Text>
-                                <View style={[styles.nutrientFullStatusBadge, { backgroundColor: statusBgColor }]}>
-                                  <Text style={[styles.nutrientFullStatusText, { color: statusColor }]}>
-                                    {nutrient.status?.toUpperCase() || 'N/A'}
-                                  </Text>
-                                </View>
-                              </View>
-                            </View>
+                        <View key={index} style={[styles.nutrientFullCard, { backgroundColor: colors.card }]}>
+                          {/* Status Badge - Top Right */}
+                          <View style={[styles.statusBadgeTopRight, { backgroundColor: statusBgColor, borderColor: statusColor }]}>
+                            <Icon 
+                              name={nutrient.status === 'optimal' ? 'check-circle' : nutrient.status === 'low' ? 'alert-circle' : 'close-circle'} 
+                              size={16} 
+                              color={statusColor} 
+                            />
+                            <Text style={[styles.statusBadgeText, { color: statusColor }]}>
+                              {nutrient.status?.toUpperCase() || 'N/A'}
+                            </Text>
                           </View>
 
-                          {/* Values Section */}
-                          <View style={styles.nutrientFullValuesSection}>
-                            {nutrient.current_intake != null && (
-                              <View style={styles.nutrientFullValueBox}>
-                                <Text style={[styles.nutrientFullValueLabel, { color: colors.secondary }]}>
-                                  Your Intake
-                                </Text>
-                                <Text style={[styles.nutrientFullValueText, { color: colors.text }]}>
-                                  {nutrient.current_intake.toFixed(1)} {nutrient.unit || ''}
-                                </Text>
-                              </View>
-                            )}
+                          {/* Nutrient Name & Info */}
+                          <View style={styles.nutrientHeaderRow}>
+                            <TouchableOpacity 
+                              onPress={() => {
+                                setSelectedNutrient(nutrient);
+                                setNutrientModalVisible(true);
+                              }}
+                              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                              style={styles.infoButton}
+                            >
+                              <Icon name="information-outline" size={22} color={colors.primary} />
+                            </TouchableOpacity>
+                            <Text style={[styles.nutrientName, { color: colors.text }]}>
+                              {nutrient.nutrient || 'Nutrient'}
+                            </Text>
+                          </View>
+
+                          {/* Values Grid */}
+                          <View style={styles.nutrientValuesGrid}>
+                            <View style={[styles.valueCard, { backgroundColor: colors.background }]}>
+                              <Text style={[styles.valueCardLabel, { color: colors.secondary }]}>Today's Intake</Text>
+                              <Text style={[styles.valueCardValue, { color: statusColor }]}>
+                                {nutrient.current_intake?.toFixed(1)}
+                              </Text>
+                              <Text style={[styles.valueCardUnit, { color: colors.secondary }]}>
+                                {nutrient.unit || ''}
+                              </Text>
+                            </View>
+                            
                             {nutrient.optimal_range && (
-                              <View style={styles.nutrientFullValueBox}>
-                                <Text style={[styles.nutrientFullValueLabel, { color: colors.secondary }]}>
-                                  Target Range
-                                </Text>
-                                <Text style={[styles.nutrientFullValueText, { color: statusColor, fontWeight: '700' }]}>
+                              <View style={[styles.valueCard, { backgroundColor: colors.background }]}>
+                                <Text style={[styles.valueCardLabel, { color: colors.secondary }]}>Target Range</Text>
+                                <Text style={[styles.valueCardValue, { color: colors.text }]} numberOfLines={2}>
                                   {nutrient.optimal_range}
                                 </Text>
                               </View>
                             )}
                           </View>
 
-                          {/* Description */}
+                          {/* Interpretation */}
                           {nutrient.interpretation && (
-                            <View style={[styles.nutrientFullTip, { backgroundColor: statusBgColor }]}>
-                              <Icon name="lightbulb-outline" size={18} color={statusColor} />
-                              <Text style={[styles.nutrientFullTipText, { color: statusColor }]}>
+                            <View style={[styles.interpretationBox, { backgroundColor: statusBgColor, borderLeftColor: statusColor }]}>
+                              <Icon name="lightbulb-outline" size={16} color={statusColor} style={{ marginTop: 2 }} />
+                              <Text style={[styles.interpretationText, { color: colors.text }]}>
                                 {nutrient.interpretation}
                               </Text>
                             </View>
@@ -334,20 +410,33 @@ const FoodTrackerScreen = ({ navigation }) => {
 
             {/* Personalized Recommendations - Enhanced Display */}
             {recommendations.length > 0 && (
-              <View style={[styles.recommendationsCard, { backgroundColor: colors.card }]}>
-                <View style={styles.recommendationsHeader}>
-                  <Icon name="clipboard-check" size={24} color={colors.primary} />
-                  <View style={styles.recommendationsHeaderText}>
-                    <Text style={[styles.recommendationsTitle, { color: colors.text }]}>
-                      Your Action Plan
-                    </Text>
-                    <Text style={[styles.recommendationsCount, { color: colors.secondary }]}>
-                      {recommendations.length} personalized {recommendations.length === 1 ? 'recommendation' : 'recommendations'}
-                    </Text>
+              <TouchableOpacity
+                style={[styles.expandableCard, { backgroundColor: colors.card }]}
+                onPress={() => toggleSection('recommendations')}
+                activeOpacity={0.7}
+              >
+                <View style={styles.expandableHeader}>
+                  <View style={styles.expandableTitle}>
+                    <Icon name="clipboard-check" size={24} color={colors.primary} />
+                    <View style={styles.expandableHeaderTextContainer}>
+                      <Text style={[styles.expandableHeaderText, { color: colors.text }]}>
+                        Your Action Plan
+                      </Text>
+                      <Text style={[styles.expandableSubtitle, { color: colors.secondary }]}>
+                        {recommendations.length} personalized {recommendations.length === 1 ? 'recommendation' : 'recommendations'}
+                      </Text>
+                    </View>
                   </View>
+                  <Icon 
+                    name={expandedSections.recommendations ? "chevron-up" : "chevron-down"} 
+                    size={26} 
+                    color={colors.secondary} 
+                  />
                 </View>
                 
-                {recommendations.map((rec, index) => {
+                {expandedSections.recommendations && (
+                  <View style={styles.expandableContent}>
+                    {recommendations.map((rec, index) => {
                   const priorityColor = getPriorityColor(rec.priority);
                   const categoryIcons = {
                     'Diet': 'food-apple',
@@ -406,8 +495,10 @@ const FoodTrackerScreen = ({ navigation }) => {
                       )}
                     </View>
                   );
-                })}
-              </View>
+                    })}
+                  </View>
+                )}
+              </TouchableOpacity>
             )}
 
             {/* Risk Explanation - Expandable */}
@@ -609,7 +700,21 @@ const FoodTrackerScreen = ({ navigation }) => {
                     ))}
                   </View>
                 )}
+
               </TouchableOpacity>
+            )}
+            
+            {/* Diet Timeline Predictions */}
+            {timelinePredictions && Object.keys(timelinePredictions).length > 0 && (
+              <TimelinePredictionCard
+                predictions={timelinePredictions}
+                title="Diet Predictions"
+                subtitle="If current eating pattern continues"
+                iconName="food-apple"
+                iconColor="#27AE60"
+                expanded={expandedSections.predictions}
+                onToggleExpand={() => setExpandedSections(prev => ({ ...prev, predictions: !prev.predictions }))}
+              />
             )}
           </>
         ) : (
@@ -624,6 +729,65 @@ const FoodTrackerScreen = ({ navigation }) => {
 
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      {/* Nutrient Info Modal */}
+      <Modal
+        visible={nutrientModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setNutrientModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <Icon name="information" size={24} color={colors.primary} />
+                <Text style={[styles.modalTitle, { color: colors.text }]}>
+                  {selectedNutrient?.nutrient || 'Nutrient Info'}
+                </Text>
+              </View>
+              <TouchableOpacity 
+                onPress={() => setNutrientModalVisible(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Icon name="close" size={24} color={colors.secondary} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.modalDescription, { color: colors.secondary }]}>
+                {selectedNutrient && getNutrientDescription(selectedNutrient.nutrient)}
+              </Text>
+              
+              {selectedNutrient && (
+                <View style={styles.modalStats}>
+                  <View style={[styles.modalStatItem, { backgroundColor: colors.background }]}>
+                    <Text style={[styles.modalStatLabel, { color: colors.secondary }]}>Today's Intake</Text>
+                    <Text style={[styles.modalStatValue, { color: colors.text }]}>
+                      {selectedNutrient.current_intake?.toFixed(1)} {selectedNutrient.unit || ''}
+                    </Text>
+                  </View>
+                  <View style={[styles.modalStatItem, { backgroundColor: colors.background }]}>
+                    <Text style={[styles.modalStatLabel, { color: colors.secondary }]}>Target Range</Text>
+                    <Text style={[styles.modalStatValue, { color: colors.primary }]}>
+                      {selectedNutrient.optimal_range || 'N/A'}
+                    </Text>
+                  </View>
+                </View>
+              )}
+              
+              {selectedNutrient?.interpretation && (
+                <View style={[styles.modalTip, { backgroundColor: colors.background }]}>
+                  <Icon name="lightbulb-outline" size={18} color={colors.primary} />
+                  <Text style={[styles.modalTipText, { color: colors.text }]}>
+                    {selectedNutrient.interpretation}
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -655,6 +819,14 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  historyButton: {
+    padding: 8,
   },
   editButton: {
     padding: 8,
@@ -787,80 +959,96 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // FULL-WIDTH NUTRIENT CARDS (One Per Row)
+  // FULL-WIDTH NUTRIENT CARDS (One Per Row) - Clean Design
   nutrientFullCard: {
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 14,
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 16,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 3,
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: '#E0E0E030',
   },
-  nutrientFullHeader: {
-    marginBottom: 14,
-  },
-  nutrientFullTitleRow: {
+  statusBadgeTopRight: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
   },
-  nutrientFullNameContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  nutrientFullName: {
-    fontSize: 17,
-    fontWeight: '700',
-    flex: 1,
-  },
-  nutrientFullStatusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 14,
-  },
-  nutrientFullStatusText: {
+  statusBadgeText: {
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
-  nutrientFullValuesSection: {
+  nutrientHeaderRow: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingRight: 80,
+  },
+  nutrientName: {
+    fontSize: 18,
+    fontWeight: '700',
+    flex: 1,
+  },
+  infoButton: {
+    padding: 4,
+  },
+  nutrientValuesGrid: {
+    flexDirection: 'row',
+    gap: 10,
     marginBottom: 12,
   },
-  nutrientFullValueBox: {
+  valueCard: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
-    padding: 12,
-    borderRadius: 10,
+    padding: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    minHeight: 80,
+    justifyContent: 'center',
   },
-  nutrientFullValueLabel: {
+  valueCardLabel: {
     fontSize: 11,
     fontWeight: '600',
-    marginBottom: 4,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    marginBottom: 8,
+    textAlign: 'center',
   },
-  nutrientFullValueText: {
+  valueCardValue: {
     fontSize: 16,
     fontWeight: '700',
+    marginBottom: 2,
+    textAlign: 'center',
   },
-  nutrientFullTip: {
+  valueCardUnit: {
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  interpretationBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    padding: 12,
+    padding: 14,
     borderRadius: 10,
+    borderLeftWidth: 3,
   },
-  nutrientFullTipText: {
+  interpretationText: {
     flex: 1,
     fontSize: 13,
-    lineHeight: 19,
-    fontWeight: '500',
+    lineHeight: 20,
   },
 
   // NUTRIENT SECTION STYLES - Two Cards Per Row
@@ -1259,6 +1447,78 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     lineHeight: 24,
+  },
+
+  // NUTRIENT INFO MODAL
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    maxHeight: '70%',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  modalBody: {
+    padding: 18,
+  },
+  modalDescription: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 16,
+  },
+  modalStats: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  modalStatItem: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 10,
+  },
+  modalStatLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  modalStatValue: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalTip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 12,
+    borderRadius: 10,
+  },
+  modalTipText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
   },
 });
 export default FoodTrackerScreen;
