@@ -383,6 +383,32 @@ class FoodRiskAssessmentController:
                 risk_result['comprehensive_risk_score']
             )
             
+            # Get today's totals (Philippine timezone)
+            today_result = FoodTrackingService.get_today_totals(user_id, timezone='Asia/Manila')
+            today_totals = today_result.get('totals', {}) if today_result['success'] else {}
+            today_meal_count = today_result.get('meal_count', 0) if today_result['success'] else 0
+            
+            # Generate nutrient analysis based on TODAY'S totals (not 7-day averages)
+            today_nutrient_explanations = []
+            if today_totals:
+                thresholds = FoodTrackingService.DAILY_THRESHOLDS
+                
+                for nutrient_key, threshold_data in thresholds.items():
+                    today_value = today_totals.get(nutrient_key, 0)
+                    
+                    # Determine status based on TODAY'S value
+                    status = FoodTrackingService.evaluate_nutrient_status(
+                        nutrient_key, today_value, threshold_data
+                    )
+                    
+                    explanation = FoodExplanation.get_nutrient_explanation(
+                        nutrient_key,
+                        today_value,
+                        status
+                    )
+                    if explanation:
+                        today_nutrient_explanations.append(explanation)
+            
             # Get recommendations (already personalized)
             recommendations_result = FoodTrackingService.get_personalized_recommendations(user_id)
             recommendations = recommendations_result.get('recommendations', []) if recommendations_result['success'] else []
@@ -406,10 +432,14 @@ class FoodRiskAssessmentController:
                         'score': risk_result['breakdown']['daily_log_risk'],
                         'weight_in_overall': 60,
                         'data_quality': risk_result.get('data_quality', 'good'),
-                        'nutrient_analysis': nutrient_explanations,
+                        'nutrient_analysis': today_nutrient_explanations,  # Changed to today's analysis
                         'analysis_period_days': days,
                         'total_meals_logged': daily_analysis.get('total_meals', 0),
-                        'meals_per_day': daily_analysis.get('meals_per_day', 0)
+                        'meals_per_day': daily_analysis.get('meals_per_day', 0),
+                        'days_analyzed': days,
+                        'today_totals': today_totals,
+                        'today_meal_count': today_meal_count,
+                        'seven_day_nutrient_analysis': nutrient_explanations  # Keep 7-day for reference
                     },
                     'recommendations': recommendations,
                     'warning': risk_result.get('warning')

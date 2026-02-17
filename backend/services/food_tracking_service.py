@@ -4,6 +4,7 @@ from config.database import get_db
 from models.food_baseline_assessment import FoodBaselineAssessment
 from models.user_meal import UserMeal
 import logging
+import pytz
 
 class FoodTrackingService:
     """
@@ -64,6 +65,127 @@ class FoodTrackingService:
     }
     
     @staticmethod
+    def evaluate_nutrient_status(nutrient_key, value, threshold_data):
+        """
+        Evaluate the status of a nutrient based on its value and thresholds
+        
+        Args:
+            nutrient_key: The nutrient key (e.g., 'calories', 'fiber')
+            value: The nutrient value
+            threshold_data: The threshold configuration for this nutrient
+            
+        Returns:
+            status string: 'optimal', 'low', 'moderate', or 'high'
+        """
+        if 'optimal_min' in threshold_data and 'optimal_max' in threshold_data:
+            if value < threshold_data['optimal_min']:
+                return 'low'
+            elif value > threshold_data['optimal_max']:
+                return 'high'
+            else:
+                return 'optimal'
+        elif 'optimal_min' in threshold_data:
+            return 'optimal' if value >= threshold_data['optimal_min'] else 'low'
+        elif 'optimal_max' in threshold_data:
+            high_risk = threshold_data.get('high_risk', threshold_data['optimal_max'] * 1.5)
+            if value <= threshold_data['optimal_max']:
+                return 'optimal'
+            elif value <= high_risk:
+                return 'moderate'
+            else:
+                return 'high'
+        else:
+            return 'unknown'
+    
+    @staticmethod
+    def get_today_totals(user_id, timezone='Asia/Manila'):
+        """
+        Get today's meal totals based on user's timezone
+        
+        Args:
+            user_id: User ID
+            timezone: Timezone string (default: 'Asia/Manila' for Philippines)
+            
+        Returns:
+            dict with today's nutrient totals
+        """
+        try:
+            # Get timezone-aware datetime for today
+            tz = pytz.timezone(timezone)
+            now = datetime.now(tz)
+            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+            
+            # Convert to UTC for database query
+            start_date_utc = today_start.astimezone(pytz.UTC)
+            end_date_utc = today_end.astimezone(pytz.UTC)
+            
+            # Get today's meals
+            result = UserMeal.get_user_meals(
+                user_id=user_id,
+                limit=1000,
+                start_date=start_date_utc.isoformat(),
+                end_date=end_date_utc.isoformat()
+            )
+            
+            if not result['success'] or not result['meals']:
+                return {
+                    'success': True,
+                    'totals': {},
+                    'meal_count': 0,
+                    'has_data': False
+                }
+            
+            meals = result['meals']
+            
+            # Calculate totals for today
+            totals = {
+                'calories': 0,
+                'protein': 0,
+                'carbs': 0,
+                'fat': 0,
+                'added_sugars': 0,
+                'fiber': 0,
+                'saturated_fat': 0,
+                'unsaturated_fat': 0,
+                'sodium': 0,
+                'glycemic_load': 0
+            }
+            
+            for meal in meals:
+                nutrients = meal.get('nutrients', {})
+                totals['calories'] += nutrients.get('Calories', 0)
+                totals['protein'] += nutrients.get('Protein (g)', 0)
+                totals['carbs'] += nutrients.get('Carbs (g)', 0)
+                totals['fat'] += nutrients.get('Fat (g)', 0)
+                totals['added_sugars'] += nutrients.get('Added Sugars (g)', 0)
+                totals['fiber'] += nutrients.get('Fiber (g)', 0)
+                totals['saturated_fat'] += nutrients.get('Saturated Fat (g)', 0)
+                totals['unsaturated_fat'] += nutrients.get('Unsaturated Fat (g)', 0)
+                totals['sodium'] += nutrients.get('Sodium (mg)', 0)
+                totals['glycemic_load'] += nutrients.get('Glycemic Load', 0)
+            
+            # Round all values
+            for key in totals:
+                totals[key] = round(totals[key], 2)
+            
+            return {
+                'success': True,
+                'totals': totals,
+                'meal_count': len(meals),
+                'has_data': True,
+                'date': today_start.strftime('%Y-%m-%d'),
+                'timezone': timezone
+            }
+            
+        except Exception as e:
+            logging.error(f"Error getting today's totals for user {user_id}: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    @staticmethod
     def calculate_daily_log_risk(user_id, days=7):
         """
         Calculate risk score based on daily food logs over specified period
@@ -78,15 +200,20 @@ class FoodTrackingService:
         try:
             db = get_db()
             
-            # Get meals from the last N days
-            start_date = datetime.utcnow() - timedelta(days=days)
-            end_date = datetime.utcnow()
+            # Get meals from the last N days using Philippine timezone
+            tz = pytz.timezone('Asia/Manila')
+            now = datetime.now(tz)
+            start_date = now - timedelta(days=days)
+            
+            # Convert to UTC for database query
+            start_date_utc = start_date.astimezone(pytz.UTC)
+            end_date_utc = now.astimezone(pytz.UTC)
             
             result = UserMeal.get_user_meals(
                 user_id=user_id,
                 limit=1000,  # Get all meals in period
-                start_date=start_date.isoformat(),
-                end_date=end_date.isoformat()
+                start_date=start_date_utc.isoformat(),
+                end_date=end_date_utc.isoformat()
             )
             
             if not result['success'] or not result['meals']:
