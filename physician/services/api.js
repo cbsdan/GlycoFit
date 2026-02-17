@@ -512,6 +512,51 @@ export const consultationAPI = {
 };
 
 // ============================================
+// SOAP NOTE API
+// ============================================
+export const soapNoteAPI = {
+  create: async (data) => {
+    try {
+      const response = await api.post('/physician/soap-notes', data);
+      return response.data;
+    } catch (error) {
+      console.error('Create SOAP note error:', error);
+      throw error;
+    }
+  },
+
+  getByPatient: async (patientId) => {
+    try {
+      const response = await api.get(`/physician/patients/${patientId}/soap-notes`);
+      return response.data;
+    } catch (error) {
+      console.error('Get SOAP notes error:', error);
+      throw error;
+    }
+  },
+
+  update: async (noteId, data) => {
+    try {
+      const response = await api.put(`/physician/soap-notes/${noteId}`, data);
+      return response.data;
+    } catch (error) {
+      console.error('Update SOAP note error:', error);
+      throw error;
+    }
+  },
+
+  delete: async (noteId) => {
+    try {
+      const response = await api.delete(`/physician/soap-notes/${noteId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Delete SOAP note error:', error);
+      throw error;
+    }
+  },
+};
+
+// ============================================
 // PRESCRIPTION API
 // ============================================
 export const prescriptionAPI = {

@@ -5,6 +5,17 @@ from models.patient_physician import PatientPhysician
 from models.health_data import HealthData
 from models.prescription import Prescription
 from models.consultation import Consultation
+from models.diabetes_assessment import DiabetesAssessment
+from models.food_baseline_assessment import FoodBaselineAssessment
+from models.sleep_tracking import SleepBaseline, SleepMetrics
+from models.step_tracking import StepBaseline, StepMetrics
+from models.smoking_intake import SmokingIntake
+from models.alcohol_intake import AlcoholBaseline, AlcoholMetrics
+from services.food_tracking_service import FoodTrackingService
+from services.sleep_tracking_service import SleepTrackingService
+from services.smoking_tracking_service import SmokingTrackingService
+from services.step_tracking_service import StepTrackingService
+from config.database import get_db
 from bson import ObjectId
 from datetime import datetime, timedelta
 import logging
@@ -175,12 +186,37 @@ def get_physician_patients():
                 patient_data = patient.to_safe_dict()
                 patient_data['relationship'] = rel.to_safe_dict()
                 
-                # TODO: Add health data like glucose levels, medications count, last visit
-                patient_data['health_info'] = {
-                    'glucose_level': 120,  # Placeholder - should come from health records
-                    'medications': 2,  # Placeholder - should count from prescriptions
+                patient_id = str(rel.patient_id)
+                
+                # Fetch real health data for each patient
+                health_info = {
                     'last_visit': rel.acceptance_date.isoformat() if rel.acceptance_date else None
                 }
+                
+                # Get latest glucose reading
+                try:
+                    latest_glucose = HealthData.get_latest_by_type(patient_id, 'blood_glucose')
+                    health_info['glucose_level'] = latest_glucose.get('value') if latest_glucose else None
+                except Exception:
+                    health_info['glucose_level'] = None
+                
+                # Get active prescription count
+                try:
+                    prescriptions = Prescription.get_patient_prescriptions(patient_id, status='active')
+                    health_info['medications'] = len(prescriptions) if prescriptions else 0
+                except Exception:
+                    health_info['medications'] = 0
+                
+                # Get last consultation date
+                try:
+                    consultations = Consultation.get_patient_consultations(patient_id)
+                    if consultations:
+                        last_consultation = consultations[0]
+                        health_info['last_visit'] = last_consultation.scheduled_date.isoformat() if hasattr(last_consultation, 'scheduled_date') and last_consultation.scheduled_date else health_info['last_visit']
+                except Exception:
+                    pass
+                
+                patient_data['health_info'] = health_info
                 
                 result.append(patient_data)
         
@@ -214,14 +250,25 @@ def get_patient_details(patient_id):
             physician.save()
             logging.info(f"Physician profile created successfully")
         
-        # Verify relationship exists
-        relationship = PatientPhysician.find_by_patient_and_physician(patient_id, physician._id)
+        # Verify relationship exists - prefer active over other statuses
+        # (there may be multiple records, e.g. one active + one inactive)
+        relationship = PatientPhysician.find_by_patient_and_physician(patient_id, physician._id, status='active')
+        if not relationship:
+            relationship = PatientPhysician.find_by_patient_and_physician(patient_id, physician._id, status='pending')
+        if not relationship:
+            relationship = PatientPhysician.find_by_patient_and_physician(patient_id, physician._id)
         
-        if not relationship or relationship.status not in ['active', 'pending']:
+        if not relationship:
             return jsonify({
                 'success': False,
                 'message': 'Patient not found or not associated with this physician'
             }), 404
+        
+        if relationship.status in ['declined']:
+            return jsonify({
+                'success': False,
+                'message': 'Patient relationship has been declined'
+            }), 403
         
         # Get patient data
         patient = User.find_by_id(patient_id)
@@ -285,7 +332,6 @@ def get_patient_details(patient_id):
             'glucose_level': health_data.get('latest_glucose'),
             'heart_rate': health_data.get('latest_heart_rate'),
             'last_visit': relationship.acceptance_date.isoformat() if relationship.acceptance_date else None,
-            'condition': getattr(patient, 'diabetic_type', None) or 'Type 2 Diabetes'
         }
         
         # Get active prescriptions
@@ -305,6 +351,141 @@ def get_patient_details(patient_id):
         except Exception as consult_error:
             logging.warning(f"Error fetching consultations for patient {patient_id}: {str(consult_error)}")
             patient_data['consultations'] = []
+        
+        # ========== COMPREHENSIVE HEALTH TRACKING DATA ==========
+        db = get_db()
+        patient_data['tracking_data'] = {}
+        
+        # 1. Diabetes Assessment Result
+        try:
+            assessment = db.diabetes_assessments.find_one(
+                {'userId': ObjectId(patient_id)},
+                sort=[('createdAt', -1)]
+            )
+            if assessment:
+                patient_data['tracking_data']['diabetes_assessment'] = {
+                    'has_data': True,
+                    'risk_level': assessment.get('prediction', {}).get('risk_level'),
+                    'probability': assessment.get('prediction', {}).get('probability'),
+                    'percentage': assessment.get('prediction', {}).get('percentage'),
+                    'confidence': assessment.get('prediction', {}).get('confidence'),
+                    'last_updated': assessment.get('updatedAt').isoformat() if assessment.get('updatedAt') else None
+                }
+            else:
+                patient_data['tracking_data']['diabetes_assessment'] = {'has_data': False}
+        except Exception as e:
+            logging.warning(f"Error fetching diabetes assessment: {str(e)}")
+            patient_data['tracking_data']['diabetes_assessment'] = {'has_data': False}
+        
+        # 2. Food Risk Assessment
+        try:
+            food_baseline = FoodBaselineAssessment.find_by_user_id(patient_id)
+            if food_baseline:
+                # Get comprehensive food risk
+                risk_data = FoodTrackingService.calculate_comprehensive_risk(patient_id, days=7)
+                if risk_data.get('success'):
+                    patient_data['tracking_data']['food_tracker'] = {
+                        'has_data': True,
+                        'risk_score': risk_data.get('comprehensive_risk_score'),
+                        'risk_category': risk_data.get('risk_category'),
+                        'baseline_risk': risk_data.get('breakdown', {}).get('baseline_risk'),
+                        'daily_log_risk': risk_data.get('breakdown', {}).get('daily_log_risk'),
+                        'meals_analyzed': risk_data.get('breakdown', {}).get('daily_analysis', {}).get('total_meals', 0)
+                    }
+                else:
+                    patient_data['tracking_data']['food_tracker'] = {'has_data': True, 'baseline_only': True}
+            else:
+                patient_data['tracking_data']['food_tracker'] = {'has_data': False}
+        except Exception as e:
+            logging.warning(f"Error fetching food tracker data: {str(e)}")
+            patient_data['tracking_data']['food_tracker'] = {'has_data': False}
+        
+        # 3. Sleep Tracking
+        try:
+            sleep_service = SleepTrackingService()
+            sleep_summary = sleep_service.get_sleep_summary(patient_id)
+            if sleep_summary.get('has_baseline'):
+                metrics = sleep_summary.get('metrics', {})
+                risk = sleep_summary.get('risk_assessment', {})
+                patient_data['tracking_data']['sleep_tracking'] = {
+                    'has_data': True,
+                    'avg_sleep_7d': metrics.get('avg_sleep_7d'),
+                    'avg_sleep_30d': metrics.get('avg_sleep_30d'),
+                    'risk_score': risk.get('score'),
+                    'risk_category': risk.get('category'),
+                    'days_tracked': metrics.get('days_with_data_7d')
+                }
+            else:
+                patient_data['tracking_data']['sleep_tracking'] = {'has_data': False}
+        except Exception as e:
+            logging.warning(f"Error fetching sleep tracking data: {str(e)}")
+            patient_data['tracking_data']['sleep_tracking'] = {'has_data': False}
+        
+        # 4. Step Counter
+        try:
+            step_baseline = StepBaseline.find_by_user_id(patient_id)
+            if step_baseline:
+                step_metrics = StepTrackingService.get_metrics(patient_id)
+                if step_metrics:
+                    patient_data['tracking_data']['step_counter'] = {
+                        'has_data': True,
+                        'avg_steps_7d': step_metrics.get('avg_steps_7d'),
+                        'avg_steps_30d': step_metrics.get('avg_steps_30d'),
+                        'risk_score': step_metrics.get('risk_score'),
+                        'risk_category': step_metrics.get('risk_category'),
+                        'activity_level': step_metrics.get('activity_level')
+                    }
+                else:
+                    patient_data['tracking_data']['step_counter'] = {'has_data': True, 'baseline_only': True}
+            else:
+                patient_data['tracking_data']['step_counter'] = {'has_data': False}
+        except Exception as e:
+            logging.warning(f"Error fetching step counter data: {str(e)}")
+            patient_data['tracking_data']['step_counter'] = {'has_data': False}
+        
+        # 5. Smoking Intake
+        try:
+            smoking_service = SmokingTrackingService()
+            smoking_summary = smoking_service.get_smoking_summary(patient_id)
+            if smoking_summary.get('has_baseline'):
+                baseline = smoking_summary.get('baseline', {})
+                metrics = smoking_summary.get('metrics', {})
+                risk = smoking_summary.get('risk_assessment', {})
+                patient_data['tracking_data']['smoking_intake'] = {
+                    'has_data': True,
+                    'smoking_status': baseline.get('current_status'),
+                    'avg_cigarettes_7d': metrics.get('avg_cigarettes_7d'),
+                    'risk_score': risk.get('risk_score'),
+                    'risk_category': risk.get('risk_category'),
+                    'explanation': risk.get('explanation')
+                }
+            else:
+                patient_data['tracking_data']['smoking_intake'] = {'has_data': False}
+        except Exception as e:
+            logging.warning(f"Error fetching smoking intake data: {str(e)}")
+            patient_data['tracking_data']['smoking_intake'] = {'has_data': False}
+        
+        # 6. Alcohol Intake
+        try:
+            alcohol_baseline = AlcoholBaseline.find_by_user_id(patient_id)
+            if alcohol_baseline:
+                alcohol_metrics = AlcoholMetrics.find_by_user_id(patient_id)
+                if alcohol_metrics:
+                    patient_data['tracking_data']['alcohol_intake'] = {
+                        'has_data': True,
+                        'drinks_per_week_7d': alcohol_metrics.get('drinks_per_week_7d'),
+                        'drinks_per_week_30d': alcohol_metrics.get('drinks_per_week_30d'),
+                        'risk_score': alcohol_metrics.get('risk_score'),
+                        'risk_category': alcohol_metrics.get('risk_category'),
+                        'consumption_pattern': alcohol_metrics.get('consumption_pattern')
+                    }
+                else:
+                    patient_data['tracking_data']['alcohol_intake'] = {'has_data': True, 'baseline_only': True}
+            else:
+                patient_data['tracking_data']['alcohol_intake'] = {'has_data': False}
+        except Exception as e:
+            logging.warning(f"Error fetching alcohol intake data: {str(e)}")
+            patient_data['tracking_data']['alcohol_intake'] = {'has_data': False}
         
         return jsonify({
             'success': True,
