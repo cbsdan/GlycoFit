@@ -38,6 +38,14 @@ class Consultation:
         self.follow_up_required = False
         self.follow_up_date = None
         
+        # SOAP Note fields
+        self.soap_subjective = ""   # Patient complaints / history
+        self.soap_objective = {}     # Vitals & physical exam findings
+        self.soap_assessment = ""   # Diagnosis
+        self.soap_plan = ""         # Treatment / lifestyle advice
+        self.soap_prescriptions = [] # Prescription list from plan
+        self.consultation_mode = "full"  # 'quick_vitals' or 'full'
+        
         # Meeting platform details
         self.platform = self.PLATFORM_GOOGLE_MEET  # google_meet, zoom, other
         self.meeting_link = ""  # Full meeting URL
@@ -73,6 +81,12 @@ class Consultation:
             'treatment_plan': self.treatment_plan,
             'follow_up_required': self.follow_up_required,
             'follow_up_date': self.follow_up_date,
+            'soap_subjective': self.soap_subjective,
+            'soap_objective': self.soap_objective,
+            'soap_assessment': self.soap_assessment,
+            'soap_plan': self.soap_plan,
+            'soap_prescriptions': self.soap_prescriptions,
+            'consultation_mode': self.consultation_mode,
             'platform': self.platform,
             'meeting_link': self.meeting_link,
             'meeting_password': self.meeting_password,
@@ -107,6 +121,12 @@ class Consultation:
         consultation.treatment_plan = data.get('treatment_plan', '')
         consultation.follow_up_required = data.get('follow_up_required', False)
         consultation.follow_up_date = data.get('follow_up_date')
+        consultation.soap_subjective = data.get('soap_subjective', '')
+        consultation.soap_objective = data.get('soap_objective', {})
+        consultation.soap_assessment = data.get('soap_assessment', '')
+        consultation.soap_plan = data.get('soap_plan', '')
+        consultation.soap_prescriptions = data.get('soap_prescriptions', [])
+        consultation.consultation_mode = data.get('consultation_mode', 'full')
         consultation.platform = data.get('platform', cls.PLATFORM_GOOGLE_MEET)
         consultation.meeting_link = data.get('meeting_link', '')
         consultation.meeting_password = data.get('meeting_password', '')
@@ -288,6 +308,12 @@ class Consultation:
             'treatment_plan': self.treatment_plan,
             'follow_up_required': self.follow_up_required,
             'follow_up_date': self.follow_up_date.isoformat() if self.follow_up_date else None,
+            'soap_subjective': self.soap_subjective,
+            'soap_objective': self.soap_objective,
+            'soap_assessment': self.soap_assessment,
+            'soap_plan': self.soap_plan,
+            'soap_prescriptions': self.soap_prescriptions,
+            'consultation_mode': self.consultation_mode,
             'platform': self.platform,
             'meeting_link': self.meeting_link,
             'meeting_password': self.meeting_password,

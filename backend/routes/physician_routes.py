@@ -50,6 +50,12 @@ from controllers.availability_controller import (
     update_availability as update_availability_schedule,
     delete_availability
 )
+from controllers.soap_note_controller import (
+    create_soap_note,
+    get_patient_soap_notes,
+    update_soap_note,
+    delete_soap_note
+)
 from middleware.firebase_auth import firebase_auth_required
 from flask import g
 
@@ -283,3 +289,26 @@ def save_fcm_token():
 def delete_fcm_token():
     """Delete FCM token (e.g., on logout)"""
     return delete_physician_fcm_token()
+
+# ============================================
+# SOAP NOTE / PATIENT CONSULTATION ROUTES
+# ============================================
+@physician_bp.route('/soap-notes', methods=['POST'])
+def soap_note_create():
+    """Create a SOAP consultation note or quick vitals log"""
+    return create_soap_note()
+
+@physician_bp.route('/patients/<patient_id>/soap-notes', methods=['GET'])
+def soap_notes_get(patient_id):
+    """Get SOAP notes for a specific patient"""
+    return get_patient_soap_notes(patient_id)
+
+@physician_bp.route('/soap-notes/<note_id>', methods=['PUT'])
+def soap_note_update(note_id):
+    """Update a SOAP note"""
+    return update_soap_note(note_id)
+
+@physician_bp.route('/soap-notes/<note_id>', methods=['DELETE'])
+def soap_note_delete(note_id):
+    """Delete a SOAP note"""
+    return delete_soap_note(note_id)
