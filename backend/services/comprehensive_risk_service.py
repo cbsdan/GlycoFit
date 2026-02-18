@@ -1,0 +1,962 @@
+"""
+Comprehensive Diabetes Risk Assessment Service
+
+This service combines all risk factors (initial assessment, lifestyle trackers, 
+user biometrics) to generate an overall diabetes risk score with detailed explanations.
+
+See COMPREHENSIVE_DIABETES_RISK_ASSESSMENT.md for full documentation and research references.
+"""
+
+from datetime import datetime, timedelta
+from typing import Dict, Any, List, Optional, Tuple
+import logging
+from config.database import get_db
+from models.overall_risk_assessment import OverallRiskAssessment, RiskCategory
+from models.diabetes_assessment import DiabetesAssessment
+from models.user import User
+from models.sleep_tracking import SleepMetrics, SleepRiskAssessment
+from models.step_tracking import StepMetrics, StepRiskAssessment
+from models.smoking_tracking import SmokingMetrics, SmokingRiskAssessment
+from models.alcohol_intake import AlcoholMetrics
+from services.food_tracking_service import FoodTrackingService
+from bson import ObjectId
+
+logger = logging.getLogger(__name__)
+
+
+class ComprehensiveRiskService:
+    """Service for computing comprehensive diabetes risk assessment"""
+    
+    # Component weights (must sum to 1.0)
+    WEIGHTS = {
+        'initial_assessment': 0.35,
+        'sleep': 0.12,
+        'steps': 0.10,
+        'smoking': 0.15,
+        'alcohol': 0.08,
+        'food': 0.13,
+        'bmi': 0.05,
+        'age': 0.02,
+        'sex': 0.01
+    }
+    
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+    
+    def compute_overall_risk(self, user_id: str) -> Dict[str, Any]:
+        """
+        Compute comprehensive diabetes risk assessment for user.
+        
+        Args:
+            user_id: User identifier
+        
+        Returns:
+            Dict with overall risk assessment
+        """
+        try:
+            # Gather all component data
+            components = self._gather_component_data(user_id)
+            
+            # Calculate component scores
+            component_scores = self._calculate_component_scores(components)
+            
+            # Calculate overall risk score
+            overall_score = self._calculate_overall_score(component_scores)
+            
+            # Classify risk category
+            risk_category = OverallRiskAssessment.classify_risk_category(overall_score)
+            
+            # Determine confidence level
+            confidence = self._determine_confidence_level(components)
+            
+            # Identify primary risk factors
+            primary_risks = self._identify_primary_risks(component_scores)
+            
+            # Identify protective factors
+            protective_factors = self._identify_protective_factors(component_scores)
+            
+            # Generate key improvements
+            key_improvements = self._generate_key_improvements(primary_risks, component_scores)
+            
+            # Generate personalized recommendations
+            recommendations = self._generate_recommendations(
+                risk_category, primary_risks, component_scores, components
+            )
+            
+            # Generate detailed explanation
+            explanation = self._generate_explanation(
+                overall_score, risk_category, component_scores, primary_risks, protective_factors
+            )
+            
+            # Generate data quality notes
+            data_quality_notes = self._generate_data_quality_notes(components, confidence)
+            
+            # Create and save assessment
+            assessment = OverallRiskAssessment(
+                user_id=user_id,
+                overall_risk_score=overall_score,
+                overall_risk_category=risk_category,
+                confidence_level=confidence,
+                component_scores=component_scores,
+                primary_risk_factors=primary_risks,
+                protective_factors=protective_factors,
+                key_improvements=key_improvements,
+                recommendations=recommendations,
+                explanation=explanation,
+                data_quality_notes=data_quality_notes
+            )
+            assessment.save()
+            
+            self.logger.info(f"Overall risk assessment completed for user {user_id}: {risk_category} ({overall_score:.2f})")
+            
+            return assessment.to_dict()
+            
+        except Exception as e:
+            self.logger.error(f"Error computing overall risk for user {user_id}: {str(e)}", exc_info=True)
+            raise
+    
+    def _gather_component_data(self, user_id: str) -> Dict[str, Any]:
+        """Gather all component data for risk assessment"""
+        db = get_db()
+        components = {}
+        
+        # Get user data (using Firebase UID)
+        user = User.find_by_uid(user_id)
+        components['user'] = user
+        
+        # Get initial diabetes assessment (using MongoDB _id from user object)
+        assessment_collection = db['diabetes_assessments']
+        if user and hasattr(user, '_id'):
+            initial_assessment = assessment_collection.find_one({'userId': user._id})
+        else:
+            initial_assessment = None
+        components['initial_assessment'] = initial_assessment
+        
+        # Get sleep metrics and risk assessment (using Firebase UID)
+        sleep_metrics = SleepMetrics.find_by_user_id(user_id)
+        sleep_risk = SleepRiskAssessment.find_latest_by_user(user_id) if sleep_metrics else None
+        components['sleep'] = sleep_metrics
+        components['sleep_risk'] = sleep_risk
+        
+        # Get step metrics and risk assessment (using Firebase UID)
+        step_metrics = StepMetrics.find_by_user_id(user_id)
+        step_risk = StepRiskAssessment.find_latest_by_user(user_id) if step_metrics else None
+        components['steps'] = step_metrics
+        components['steps_risk'] = step_risk
+        
+        # Get smoking metrics and risk assessment (using Firebase UID)
+        smoking_metrics = SmokingMetrics.find_by_user(user_id)
+        smoking_risk = SmokingRiskAssessment.find_latest_by_user(user_id) if smoking_metrics else None
+        components['smoking'] = smoking_metrics
+        components['smoking_risk'] = smoking_risk
+        
+        # Get alcohol metrics (using Firebase UID, risk assessment is part of metrics)
+        alcohol_metrics = AlcoholMetrics.find_by_user_id(user_id)
+        components['alcohol'] = alcohol_metrics
+        
+        # Get food tracking comprehensive risk (using Firebase UID)
+        try:
+            food_risk = FoodTrackingService.calculate_comprehensive_risk(user_id, days=7)
+            if food_risk and food_risk.get('success'):
+                components['food'] = food_risk
+            else:
+                components['food'] = None
+        except Exception as e:
+            self.logger.warning(f"Error fetching food tracking data for user {user_id}: {str(e)}")
+            components['food'] = None
+        
+        return components
+    
+    def _calculate_component_scores(self, components: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate individual component risk scores"""
+        scores = {}
+        
+        # 1.  Initial Assessment Score (0-100)
+        scores['initial_assessment'] = self._score_initial_assessment(
+            components.get('initial_assessment')
+        )
+        
+        # 2. Sleep Score (0-100)
+        scores['sleep'] = self._score_sleep(
+            components.get('sleep'), 
+            components.get('sleep_risk')
+        )
+        
+        # 3. Steps Score (0-100)
+        scores['steps'] = self._score_steps(
+            components.get('steps'), 
+            components.get('steps_risk')
+        )
+        
+        # 4. Smoking Score (0-100)
+        scores['smoking'] = self._score_smoking(
+            components.get('smoking'), 
+            components.get('smoking_risk')
+        )
+        
+        # 5. Alcohol Score (-5 to 100, can be negative for protective effect)
+        scores['alcohol'] = self._score_alcohol(components.get('alcohol'))
+        
+        # 6. Food Score (0-100)
+        scores['food'] = self._score_food(components.get('food'))
+        
+        # 7. BMI Score (0-100)
+        scores['bmi'] = self._score_bmi(components.get('user'))
+        
+        # 8. Age Score (0-100)
+        scores['age'] = self._score_age(components.get('user'))
+        
+        # 9. Sex Score (0-100)
+        scores['sex'] = self._score_sex(components.get('user'))
+        
+        return scores
+    
+    def _score_initial_assessment(self, assessment: Optional[Dict]) -> Dict[str, Any]:
+        """Score initial ML-based diabetes assessment"""
+        if not assessment or 'prediction' not in assessment:
+            return {
+                'raw_score': 0,
+                'weighted_score': 0,
+                'weight': self.WEIGHTS['initial_assessment'],
+                'status': 'not_completed',
+                'details': 'Initial diabetes risk assessment not completed',
+                'has_data': False
+            }
+        
+        prediction = assessment['prediction']
+        risk_level = prediction.get('risk_level', 'moderate')
+        probability = prediction.get('probability', 0.5)
+        
+        # Convert probability to 0-100 scale
+        raw_score = probability * 100
+        
+        # Map risk level to description
+        level_descriptions = {
+            'low': 'Low risk based on initial assessment',
+            'moderate': 'Moderate risk based on initial assessment',
+            'high': 'High risk based on initial assessment'
+        }
+        
+        return {
+            'raw_score': round(raw_score, 2),
+            'weighted_score': round(raw_score * self.WEIGHTS['initial_assessment'], 2),
+            'weight': self.WEIGHTS['initial_assessment'],
+            'risk_level': risk_level,
+            'probability': round(probability * 100, 2),
+            'status': risk_level,
+            'details': level_descriptions.get(risk_level, 'Unknown risk level'),
+            'has_data': True
+        }
+    
+    def _score_sleep(self, metrics: Optional[Any], risk_assessment: Optional[Any]) -> Dict[str, Any]:
+        """Score sleep tracking data using existing risk assessment"""
+        if not risk_assessment and not metrics:
+            return {
+                'raw_score': 0,
+                'weighted_score': 0,
+                'weight': self.WEIGHTS['sleep'],
+                'status': 'no_data',
+                'details': 'Sleep tracking not started',
+                'has_data': False
+            }
+        
+        # Use existing risk assessment if available
+        if risk_assessment:
+            risk_score = getattr(risk_assessment, 'risk_score', 0)
+            risk_category = getattr(risk_assessment, 'risk_category', 'unknown')
+            
+            # Get metrics for details
+            avg_sleep = None
+            if metrics:
+                avg_sleep = getattr(metrics, 'avg_sleep_7d', None) or getattr(metrics, 'avg_sleep_30d', None)
+            
+            details = f"Average sleep: {avg_sleep:.1f}h/night" if avg_sleep else "Sleep data available"
+            
+            return {
+                'raw_score': round(risk_score, 2),
+                'weighted_score': round(risk_score * self.WEIGHTS['sleep'], 2),
+                'weight': self.WEIGHTS['sleep'],
+                'risk_category': risk_category,
+                'avg_sleep_hours': round(avg_sleep, 2) if avg_sleep else None,
+                'status': risk_category,
+                'details': details,
+                'has_data': True
+            }
+        
+        # Fallback to metrics if no risk assessment
+        risk_score = getattr(metrics, 'risk_score', 0)
+        risk_category = getattr(metrics, 'risk_category', 'unknown')
+        avg_sleep = getattr(metrics, 'avg_sleep_7d', None) or getattr(metrics, 'avg_sleep_30d', None)
+        
+        details = f"Average sleep: {avg_sleep:.1f}h/night" if avg_sleep else "Sleep data available"
+        
+        return {
+            'raw_score': round(risk_score, 2),
+            'weighted_score': round(risk_score * self.WEIGHTS['sleep'], 2),
+            'weight': self.WEIGHTS['sleep'],
+            'risk_category': risk_category,
+            'avg_sleep_hours': round(avg_sleep, 2) if avg_sleep else None,
+            'status': risk_category,
+            'details': details,
+            'has_data': True
+        }
+    
+    def _score_steps(self, metrics: Optional[Any], risk_assessment: Optional[Any]) -> Dict[str, Any]:
+        """Score physical activity (step tracking) data using existing risk assessment"""
+        if not risk_assessment and not metrics:
+            return {
+                'raw_score': 0,
+                'weighted_score': 0,
+                'weight': self.WEIGHTS['steps'],
+                'status': 'no_data',
+                'details': 'Step tracking not started',
+                'has_data': False
+            }
+        
+        # Use existing risk assessment if available
+        if risk_assessment:
+            risk_score = getattr(risk_assessment, 'risk_score', 0)
+            risk_category = getattr(risk_assessment, 'risk_category', 'unknown')
+            
+            # Get metrics for details
+            avg_steps = None
+            if metrics:
+                avg_steps = getattr(metrics, 'avg_steps_30d', None) or getattr(metrics, 'avg_steps_7d', None)
+            
+            details = f"Average steps: {int(avg_steps)} steps/day" if avg_steps else "Step data available"
+            
+            return {
+                'raw_score': round(risk_score, 2),
+                'weighted_score': round(risk_score * self.WEIGHTS['steps'], 2),
+                'weight': self.WEIGHTS['steps'],
+                'risk_category': risk_category,
+                'avg_steps_daily': int(avg_steps) if avg_steps else None,
+                'status': risk_category,
+                'details': details,
+                'has_data': True
+            }
+        
+        # Fallback to metrics if no risk assessment
+        risk_score = getattr(metrics, 'risk_score', 0)
+        risk_category = getattr(metrics, 'risk_category', 'unknown')
+        avg_steps = getattr(metrics, 'avg_steps_30d', None) or getattr(metrics, 'avg_steps_7d', None)
+        
+        details = f"Average steps: {int(avg_steps)} steps/day" if avg_steps else "Step data available"
+        
+        return {
+            'raw_score': round(risk_score, 2),
+            'weighted_score': round(risk_score * self.WEIGHTS['steps'], 2),
+            'weight': self.WEIGHTS['steps'],
+            'risk_category': risk_category,
+            'avg_steps_daily': int(avg_steps) if avg_steps else None,
+            'status': risk_category,
+            'details': details,
+            'has_data': True
+        }
+    
+    def _score_smoking(self, metrics: Optional[Any], risk_assessment: Optional[Any]) -> Dict[str, Any]:
+        """Score smoking tracking data using existing risk assessment"""
+        if not risk_assessment and not metrics:
+            return {
+                'raw_score': 0,
+                'weighted_score': 0,
+                'weight': self.WEIGHTS['smoking'],
+                'status': 'no_data',
+                'details': 'Smoking tracking not started',
+                'has_data': False
+            }
+        
+        # Use existing risk assessment if available
+        if risk_assessment:
+            risk_score = getattr(risk_assessment, 'risk_score', 0)
+            risk_category = getattr(risk_assessment, 'risk_category', 'unknown')
+            
+            # Get metrics for details
+            current_status = None
+            if metrics:
+                current_status = getattr(metrics, 'current_status', 'unknown')
+            
+            status_descriptions = {
+                'never': 'Never smoker - excellent!',
+                'former': 'Former smoker - risk decreasing over time',
+                'current': 'Current smoker - significant risk factor'
+            }
+            
+            details = status_descriptions.get(current_status, 'Smoking status tracked')
+            
+            return {
+                'raw_score': round(risk_score, 2),
+                'weighted_score': round(risk_score * self.WEIGHTS['smoking'], 2),
+                'weight': self.WEIGHTS['smoking'],
+                'risk_category': risk_category,
+                'smoking_status': current_status,
+                'status': current_status if current_status else risk_category,
+                'details': details,
+                'has_data': True
+            }
+        
+        # Fallback to metrics if no risk assessment
+        risk_score = getattr(metrics, 'risk_score', 1)
+        risk_category = getattr(metrics, 'risk_category', 'unknown')
+        current_status = getattr(metrics, 'current_status', 'unknown')
+        
+        status_descriptions = {
+            'never': 'Never smoker - excellent!',
+            'former': 'Former smoker - risk decreasing over time',
+            'current': 'Current smoker - significant risk factor'
+        }
+        
+        details = status_descriptions.get(current_status, 'Smoking status unknown')
+        
+        return {
+            'raw_score': round(risk_score, 2),
+            'weighted_score': round(risk_score * self.WEIGHTS['smoking'], 2),
+            'weight': self.WEIGHTS['smoking'],
+            'risk_category': risk_category,
+            'smoking_status': current_status,
+            'status': current_status,
+            'details': details,
+            'has_data': True
+        }
+    
+    def _score_alcohol(self, metrics: Optional[Any]) -> Dict[str, Any]:
+        """Score alcohol intake data"""
+        if not metrics:
+            return {
+                'raw_score': 0,
+                'weighted_score': 0,
+                'weight': self.WEIGHTS['alcohol'],
+                'status': 'no_data',
+                'details': 'Alcohol tracking not started',
+                'has_data': False
+            }
+        
+        risk_category = getattr(metrics, 'risk_category', 'none')
+        avg_drinks_week = getattr(metrics, 'avg_drinks_per_week_30d', 0)
+        
+        # Map alcohol risk category to numeric score
+        category_scores = {
+            'none': 0,
+            'low': -5,  # Protective effect
+            'moderate': 5,
+            'high': 15,
+            'very_high': 20
+        }
+        
+        raw_score = category_scores.get(risk_category, 0)
+        
+        category_descriptions = {
+            'none': 'No alcohol consumption',
+            'low': 'Light drinking - may have protective effect',
+            'moderate': 'Moderate drinking - slightly elevated risk',
+            'high': 'Heavy drinking - significant risk factor',
+            'very_high': 'Binge drinking - very high risk'
+        }
+        
+        details = f"{category_descriptions.get(risk_category, 'Unknown')} ({avg_drinks_week:.1f} drinks/week)"
+        
+        return {
+            'raw_score': round(raw_score, 2),
+            'weighted_score': round(raw_score * self.WEIGHTS['alcohol'], 2),
+            'weight': self.WEIGHTS['alcohol'],
+            'risk_category': risk_category,
+            'avg_drinks_per_week': round(avg_drinks_week, 2),
+            'status': risk_category,
+            'details': details,
+            'has_data': True
+        }
+    
+    def _score_food(self, food_data: Optional[Dict]) -> Dict[str, Any]:
+        """Score food intake data from comprehensive risk assessment"""
+        if not food_data or not food_data.get('success'):
+            return {
+                'raw_score': 0,
+                'weighted_score': 0,
+                'weight': self.WEIGHTS['food'],
+                'status': 'no_data',
+                'details': 'Food tracking not started',
+                'has_data': False
+            }
+        
+        # Get comprehensive risk score (0-100)
+        raw_score = food_data.get('comprehensive_risk_score', 0)
+        risk_category = food_data.get('risk_category', 'Unknown').lower()
+        
+        # Get breakdown for details
+        breakdown = food_data.get('breakdown', {})
+        baseline_risk = breakdown.get('baseline_risk', 0)
+        daily_log_risk = breakdown.get('daily_log_risk', 0)
+        daily_analysis = breakdown.get('daily_analysis', {})
+        days_analyzed = daily_analysis.get('days_analyzed', 0)
+        
+        # Build details string
+        if days_analyzed > 0:
+            details = f"{risk_category.capitalize()} risk - {days_analyzed} days analyzed (Baseline: {baseline_risk:.1f}%, Daily: {daily_log_risk:.1f}%)"
+        else:
+            details = f"{risk_category.capitalize()} risk - Based on baseline assessment only"
+        
+        return {
+            'raw_score': round(raw_score, 2),
+            'weighted_score': round(raw_score * self.WEIGHTS['food'], 2),
+            'weight': self.WEIGHTS['food'],
+            'risk_category': risk_category,
+            'baseline_risk': round(baseline_risk, 2),
+            'daily_log_risk': round(daily_log_risk, 2),
+            'days_analyzed': days_analyzed,
+            'status': risk_category,
+            'details': details,
+            'has_data': True
+        }
+    
+    def _score_bmi(self, user: Optional[Any]) -> Dict[str, Any]:
+        """Score BMI risk factor"""
+        if not user or not user.height or not user.weight:
+            return {
+                'raw_score': 0,
+                'weighted_score': 0,
+                'weight': self.WEIGHTS['bmi'],
+                'status': 'no_data',
+                'details': 'BMI data not available',
+                'has_data': False
+            }
+        
+        # Calculate BMI
+        height_m = user.height / 100  # Convert cm to m
+        bmi = user.weight / (height_m ** 2)
+        
+        # Score based on BMI categories
+        if bmi < 18.5:
+            raw_score = 5
+            category = 'underweight'
+            details = f"BMI {bmi:.1f} - Underweight"
+        elif 18.5 <= bmi < 25:
+            raw_score = 0
+            category = 'normal'
+            details = f"BMI {bmi:.1f} - Normal weight"
+        elif 25 <= bmi < 30:
+            raw_score = 10
+            category = 'overweight'
+            details = f"BMI {bmi:.1f} - Overweight (2x risk)"
+        elif 30 <= bmi < 35:
+            raw_score = 20
+            category = 'obese_class_1'
+            details = f"BMI {bmi:.1f} - Obese Class I (7-8x risk)"
+        elif 35 <= bmi < 40:
+            raw_score = 30
+            category = 'obese_class_2'
+            details = f"BMI {bmi:.1f} - Obese Class II (12-14x risk)"
+        else:
+            raw_score = 40
+            category = 'obese_class_3'
+            details = f"BMI {bmi:.1f} - Obese Class III (20x+ risk)"
+        
+        return {
+            'raw_score': round(raw_score, 2),
+            'weighted_score': round(raw_score * self.WEIGHTS['bmi'], 2),
+            'weight': self.WEIGHTS['bmi'],
+            'bmi': round(bmi, 1),
+            'category': category,
+            'status': category,
+            'details': details,
+            'has_data': True
+        }
+    
+    def _score_age(self, user: Optional[Any]) -> Dict[str, Any]:
+        """Score age risk factor"""
+        if not user or not user.age:
+            return {
+                'raw_score': 0,
+                'weighted_score': 0,
+                'weight': self.WEIGHTS['age'],
+                'status': 'no_data',
+                'details': 'Age data not available',
+                'has_data': False
+            }
+        
+        age = user.age
+        
+        # Score based on age ranges
+        if age < 30:
+            raw_score = 0
+            details = f"Age {age} - Low baseline risk"
+        elif 30 <= age < 40:
+            raw_score = 2
+            details = f"Age {age} - Slightly elevated risk"
+        elif 40 <= age < 50:
+            raw_score = 5
+            details = f"Age {age} - Moderate risk increase"
+        elif 50 <= age < 60:
+            raw_score = 8
+            details = f"Age {age} - Higher risk"
+        elif 60 <= age < 70:
+            raw_score = 12
+            details = f"Age {age} - High risk"
+        else:
+            raw_score = 15
+            details = f"Age {age} - Very high risk"
+        
+        return {
+            'raw_score': round(raw_score, 2),
+            'weighted_score': round(raw_score * self.WEIGHTS['age'], 2),
+            'weight': self.WEIGHTS['age'],
+            'age': age,
+            'status': 'age_factor',
+            'details': details,
+            'has_data': True
+        }
+    
+    def _score_sex(self, user: Optional[Any]) -> Dict[str, Any]:
+        """Score sex/gender risk factor"""
+        if not user or not user.sex:
+            return {
+                'raw_score': 0,
+                'weighted_score': 0,
+                'weight': self.WEIGHTS['sex'],
+                'status': 'no_data',
+                'details': 'Sex data not available',
+                'has_data': False
+            }
+        
+        sex = user.sex.lower()
+        
+        # Males have slightly higher baseline risk
+        if sex == 'male':
+            raw_score = 3
+            details = "Male - slightly higher baseline risk"
+        else:
+            raw_score = 0
+            details = "Female - baseline risk"
+        
+        return {
+            'raw_score': round(raw_score, 2),
+            'weighted_score': round(raw_score * self.WEIGHTS['sex'], 2),
+            'weight': self.WEIGHTS['sex'],
+            'sex': sex,
+            'status': sex,
+            'details': details,
+            'has_data': True
+        }
+    
+    def _calculate_overall_score(self, component_scores: Dict[str, Any]) -> float:
+        """Calculate weighted overall risk score"""
+        total_score = 0
+        
+        for component, score_info in component_scores.items():
+            if score_info['has_data']:
+                total_score += score_info['weighted_score']
+        
+        # Ensure score is between 0 and 100
+        return max(0, min(100, total_score))
+    
+    def _determine_confidence_level(self, components: Dict[str, Any]) -> str:
+        """Determine confidence level based on data completeness"""
+        has_initial = components.get('initial_assessment') is not None
+        
+        # Count lifestyle trackers with data
+        tracker_count = 0
+        tracker_days = 0
+        
+        for tracker in ['sleep', 'steps', 'smoking', 'alcohol']:
+            if components.get(tracker):
+                tracker_count += 1
+                # Check if tracker has sufficient data
+                if tracker == 'sleep':
+                    days = getattr(components[tracker], 'days_with_data_30d', 0)
+                elif tracker == 'steps':
+                    days = getattr(components[tracker], 'days_with_data_30d', 0)
+                elif tracker == 'smoking':
+                    days = getattr(components[tracker], 'days_with_data_30d', 0)
+                elif tracker == 'alcohol':
+                    days = getattr(components[tracker], 'days_with_data_30d', 0)
+                else:
+                    days = 0
+                tracker_days = max(tracker_days, days)
+        
+        # Determine confidence
+        if not has_initial:
+            return 'preliminary'
+        elif tracker_count >= 3 and tracker_days >= 30:
+            return 'high'
+        elif tracker_count >= 2 and tracker_days >= 7:
+            return 'moderate'
+        elif has_initial:
+            return 'low'
+        else:
+            return 'preliminary'
+    
+    def _format_component_name(self, component: str) -> str:
+        """Format component key into readable name"""
+        component_names = {
+            'initial_assessment': 'Initial Risk Assessment',
+            'sleep': 'Sleep Quality',
+            'steps': 'Physical Activity',
+            'smoking': 'Smoking Status',
+            'alcohol': 'Alcohol Consumption',
+            'food': 'Diet & Nutrition',
+            'bmi': 'Body Mass Index',
+            'age': 'Age Factor',
+            'sex': 'Gender Factor'
+        }
+        return component_names.get(component, component.replace('_', ' ').title())
+    
+    def _identify_primary_risks(self, component_scores: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Identify top risk contributors"""
+        risks = []
+        
+        for component, score_info in component_scores.items():
+            if score_info['has_data'] and score_info['weighted_score'] > 0:
+                risks.append({
+                    'component': component,
+                    'component_name': self._format_component_name(component),
+                    'weighted_score': score_info['weighted_score'],
+                    'raw_score': score_info['raw_score'],
+                    'weight_percentage': int(score_info['weight'] * 100),
+                    'details': score_info['details'],
+                    'status': score_info['status']
+                })
+        
+        # Sort by weighted score (descending)
+        risks.sort(key=lambda x: x['weighted_score'], reverse=True)
+        
+        # Return top 5
+        return risks[:5]
+    
+    def _identify_protective_factors(self, component_scores: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Identify protective factors (negative risk scores)"""
+        protective = []
+        
+        for component, score_info in component_scores.items():
+            if score_info['has_data'] and score_info['weighted_score'] < 0:
+                protective.append({
+                    'component': component,
+                    'component_name': self._format_component_name(component),
+                    'weighted_score': abs(score_info['weighted_score']),
+                    'details': score_info['details']
+                })
+        
+        # Also check for optimal ranges
+        if component_scores['bmi']['has_data'] and component_scores['bmi']['raw_score'] == 0:
+            protective.append({
+                'component': 'bmi',
+                'component_name': self._format_component_name('bmi'),
+                'weighted_score': 0,
+                'details': 'Normal weight - optimal BMI range'
+            })
+        
+        if component_scores['smoking']['has_data'] and component_scores['smoking']['status'] == 'never':
+            protective.append({
+                'component': 'smoking',
+                'component_name': self._format_component_name('smoking'),
+                'weighted_score': 0,
+                'details': 'Never smoker - excellent!'
+            })
+        
+        return protective
+    
+    def _generate_key_improvements(
+        self, 
+        primary_risks: List[Dict[str, Any]], 
+        component_scores: Dict[str, Any]
+    ) -> List[str]:
+        """Generate top 3 areas for improvement"""
+        improvements = []
+        
+        # Take top 3 modifiable risk factors
+        modifiable_components = ['sleep', 'steps', 'smoking', 'alcohol', 'food', 'bmi']
+        
+        for risk in primary_risks:
+            component = risk['component']
+            if component in modifiable_components and len(improvements) < 3:
+                improvement_texts = {
+                    'sleep': 'Improve sleep duration and consistency (aim for 7-8 hours nightly)',
+                    'steps': 'Increase daily physical activity (target 7,000-10,000 steps)',
+                    'smoking': 'Quit smoking or continue abstinence',
+                    'alcohol': 'Reduce alcohol consumption or maintain moderate intake',
+                    'food': 'Improve diet quality (reduce sugars, increase fiber)',
+                    'bmi': 'Achieve healthy weight through diet and exercise'
+                }
+                
+                if component in improvement_texts:
+                    improvements.append(improvement_texts[component])
+        
+        # If fewer than 3, add general recommendations
+        while len(improvements) < 3:
+            general_recs = [
+                'Maintain regular health check-ups',
+                'Monitor blood glucose levels',
+                'Stay physically active',
+                'Eat a balanced diet',
+                'Manage stress effectively'
+            ]
+            for rec in general_recs:
+                if rec not in improvements and len(improvements) < 3:
+                    improvements.append(rec)
+        
+        return improvements[:3]
+    
+    def _generate_recommendations(
+        self,
+        risk_category: str,
+        primary_risks: List[Dict[str, Any]],
+        component_scores: Dict[str, Any],
+        components: Dict[str, Any]
+    ) -> List[str]:
+        """Generate personalized recommendations"""
+        recommendations = []
+        
+        # Category-specific general recommendations
+        if risk_category == RiskCategory.VERY_HIGH or risk_category == RiskCategory.HIGH:
+            recommendations.append("🏥 Consult with a healthcare provider immediately to discuss diabetes prevention strategies.")
+            recommendations.append("📊 Schedule regular blood glucose monitoring and HbA1c tests.")
+        
+        # Component-specific recommendations (top 3 risks)
+        for risk in primary_risks[:3]:
+            component = risk['component']
+            
+            if component == 'sleep' and risk['weighted_score'] > 1:
+                recommendations.append("😴 Establish consistent sleep schedule: aim for 7-8 hours nightly with regular bedtime.")
+            
+            if component == 'steps' and risk['weighted_score'] > 1:
+                recommendations.append("🚶 Increase daily activity: target 10,000 steps/day or at least 150 minutes of moderate exercise weekly.")
+            
+            if component == 'smoking' and risk['status'] == 'current':
+                recommendations.append("🚭 Quit smoking: consult healthcare provider about cessation programs and nicotine replacement therapy.")
+            
+            if component == 'alcohol' and risk['weighted_score'] > 1:
+                recommendations.append("🍷 Reduce alcohol intake: limit to ≤7 drinks/week, avoid binge drinking, drink with meals.")
+            
+            if component == 'bmi' and risk['raw_score'] >= 10:
+                recommendations.append("⚖️ Achieve healthy weight: set realistic weight loss goals (5-10% of body weight can significantly reduce risk).")
+            
+            if component == 'food' and risk['weighted_score'] > 1:
+                recommendations.append("🥗 Improve diet: reduce added sugars and refined carbs, increase fiber intake (25g+/day).")
+        
+        # General lifestyle recommendations
+        recommendations.append("📱 Continue tracking your health data to monitor progress over time.")
+        recommendations.append("💪 Join diabetes prevention programs (DPP) if available in your area.")
+        
+        # Limit to 7-8 recommendations
+        return recommendations[:8]
+    
+    def _generate_explanation(
+        self,
+        overall_score: float,
+        risk_category: str,
+        component_scores: Dict[str, Any],
+        primary_risks: List[Dict[str, Any]],
+        protective_factors: List[Dict[str, Any]]
+    ) -> str:
+        """Generate detailed explanation of risk score"""
+        
+        category_info = OverallRiskAssessment.get_risk_category_info(risk_category)
+        
+        explanation_parts = [
+            f"Your overall diabetes risk score is {overall_score:.1f}/100, indicating {category_info['title']}.",
+            f"",
+            f"This assessment is based on {len([s for s in component_scores.values() if s['has_data']])} data sources with weighted contributions:",
+            f""
+        ]
+        
+        # List primary risk factors
+        if primary_risks:
+            explanation_parts.append("**Primary Risk Factors:**")
+            for i, risk in enumerate(primary_risks[:5], 1):
+                component_name = risk.get('component_name', risk['component'].replace('_', ' ').title())
+                explanation_parts.append(
+                    f"{i}. {component_name}: +{risk['weighted_score']:.1f} points ({risk['weight_percentage']}% weight) - {risk['details']}"
+                )
+            explanation_parts.append("")
+        
+        # List protective factors
+        if protective_factors:
+            explanation_parts.append("**Protective Factors:**")
+            for i, factor in enumerate(protective_factors, 1):
+                component_name = factor.get('component_name', factor['component'].replace('_', ' ').title())
+                if factor['weighted_score'] > 0:
+                    explanation_parts.append(f"• {component_name}: -{factor['weighted_score']:.1f} points - {factor['details']}")
+                else:
+                    explanation_parts.append(f"• {component_name}: {factor['details']}")
+            explanation_parts.append("")
+        
+        # Summary interpretation
+        explanation_parts.append(f"**Risk Interpretation:** {category_info['message']}")
+        explanation_parts.append(f"**Probability:** {category_info['probability']}")
+        
+        return "\n".join(explanation_parts)
+    
+    def _generate_data_quality_notes(self, components: Dict[str, Any], confidence: str) -> str:
+        """Generate notes about data quality and completeness"""
+        notes = []
+        
+        notes.append(f"Assessment confidence: {confidence.upper()}")
+        
+        # Check what data is available
+        has_data = []
+        missing_data = []
+        
+        data_sources = {
+            'initial_assessment': 'Initial Risk Assessment',
+            'sleep': 'Sleep Tracking',
+            'steps': 'Step Tracking',
+            'smoking': 'Smoking History',
+            'alcohol': 'Alcohol Intake',
+            'food': 'Food Tracking'
+        }
+        
+        for key, name in data_sources.items():
+            if components.get(key):
+                has_data.append(name)
+            else:
+                missing_data.append(name)
+        
+        # Check user data (BMI, Age, Sex) separately
+        user = components.get('user')
+        if not user or not user.height or not user.weight:
+            missing_data.append('BMI Data')
+        else:
+            has_data.append('BMI Data')
+        
+        if not user or not user.age:
+            missing_data.append('Age')
+        else:
+            has_data.append('Age')
+        
+        if not user or not user.sex:
+            missing_data.append('Sex/Gender')
+        else:
+            has_data.append('Sex/Gender')
+        
+        if missing_data:
+            notes.append(f"\nMissing data sources: {', '.join(missing_data)}")
+            notes.append("Complete all health trackers for most accurate assessment.")
+        
+        if confidence == 'preliminary' or confidence == 'low':
+            notes.append("\n⚠️ Limited data available. Assessment will become more accurate as you track more data over time.")
+        
+        return "\n".join(notes)
+    
+    def get_assessment(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get existing assessment or compute new one"""
+        assessment = OverallRiskAssessment.find_by_user_id(user_id)
+        
+        if assessment:
+            return assessment.to_dict()
+        else:
+            # Compute new assessment
+            return self.compute_overall_risk(user_id)
+    
+    def refresh_assessment(self, user_id: str) -> Dict[str, Any]:
+        """Force refresh of risk assessment"""
+        return self.compute_overall_risk(user_id)
+
+
+# Global service instance
+_comprehensive_risk_service = None
+
+
+def get_comprehensive_risk_service() -> ComprehensiveRiskService:
+    """Get or create the global comprehensive risk service"""
+    global _comprehensive_risk_service
+    if _comprehensive_risk_service is None:
+        _comprehensive_risk_service = ComprehensiveRiskService()
+    return _comprehensive_risk_service

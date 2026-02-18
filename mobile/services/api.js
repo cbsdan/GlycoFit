@@ -1117,6 +1117,59 @@ export const updateAssessmentAnswers = async (answers) => {
   }
 };
 
+// Overall Risk Assessment API
+export const getOverallRiskAssessment = async () => {
+  try {
+    const response = await api.get('/risk-assessment/overall');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching overall risk assessment:', error);
+    throw error;
+  }
+};
+
+export const refreshOverallRiskAssessment = async () => {
+  try {
+    const response = await api.post('/risk-assessment/overall/refresh');
+    return response.data;
+  } catch (error) {
+    console.error('Error refreshing overall risk assessment:', error);
+    throw error;
+  }
+};
+
+export const getOverallRiskHistory = async (limit = 30) => {
+  try {
+    const response = await api.get('/risk-assessment/overall/history', {
+      params: { limit }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching risk assessment history:', error);
+    throw error;
+  }
+};
+
+export const getComponentScores = async () => {
+  try {
+    const response = await api.get('/risk-assessment/overall/components');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching component scores:', error);
+    throw error;
+  }
+};
+
+export const getRiskFactors = async () => {
+  try {
+    const response = await api.get('/risk-assessment/overall/factors');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching risk factors:', error);
+    throw error;
+  }
+};
+
 // ========== CHAT ENDPOINTS ==========
 
 // Get or create a conversation
@@ -2545,6 +2598,11 @@ api.getStatisticsSummary = getStatisticsSummary;
 api.submitDiabetesAssessment = submitDiabetesAssessment;
 api.getMyAssessment = getMyAssessment;
 api.updateAssessmentAnswers = updateAssessmentAnswers;
+api.getOverallRiskAssessment = getOverallRiskAssessment;
+api.refreshOverallRiskAssessment = refreshOverallRiskAssessment;
+api.getOverallRiskHistory = getOverallRiskHistory;
+api.getComponentScores = getComponentScores;
+api.getRiskFactors = getRiskFactors;
 
 // Chat endpoints
 api.getOrCreateConversation = getOrCreateConversation;

@@ -7,8 +7,9 @@ class DiabetesAssessment:
     @staticmethod
     def create(user_id, answers, prediction=None):
         """Create a new diabetes assessment"""
+        # user_id should be MongoDB ObjectId string (from request.current_user_id)
         return {
-            'userId': ObjectId(user_id),
+            'userId': ObjectId(user_id) if isinstance(user_id, str) else user_id,
             'answers': answers,
             'prediction': prediction,
             'createdAt': datetime.utcnow(),

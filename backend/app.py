@@ -29,6 +29,7 @@ from routes.sleep_tracking_routes import sleep_tracking_bp
 from routes.food_risk_routes import food_risk_bp
 from routes.step_tracking_routes import step_tracking_bp
 from routes.lifestyle_routes import lifestyle_bp
+from routes.overall_risk_routes import overall_risk_bp
 from controllers.chat_controller import register_socket_events
 from services.email_service import init_mail
 from services.cloudinary_service import init_cloudinary
@@ -40,6 +41,7 @@ from models.chatbot_message import ChatbotMessage
 from controllers.sleep_tracking_controller import init_sleep_tracking_indexes
 from controllers.alcohol_intake_controller import init_alcohol_tracking_indexes
 from controllers.smoking_tracking_controller import init_smoking_tracking_indexes
+from controllers.overall_risk_controller import init_overall_risk_indexes
 
 # Load environment variables
 load_dotenv()
@@ -160,6 +162,14 @@ def create_app():
         logging.error(f"Failed to create smoking tracking indexes: {str(e)}")
         logging.warning("Smoking tracking queries may be slower without indexes")
     
+    # Initialize Overall Risk Assessment Indexes
+    try:
+        init_overall_risk_indexes()
+        logging.info("Overall risk assessment database indexes created successfully")
+    except Exception as e:
+        logging.error(f"Failed to create overall risk assessment indexes: {str(e)}")
+        logging.warning("Overall risk assessment queries may be slower without indexes")
+    
     # Defer ML Service initialization to avoid blocking startup
     # The ML service will initialize lazily on first use
     logging.info("ML Service will initialize on first use (lazy loading)")
@@ -193,6 +203,7 @@ def create_app():
     app.register_blueprint(sleep_tracking_bp, url_prefix='/api/v1/sleep-tracking')
     app.register_blueprint(step_tracking_bp, url_prefix='/api/v1/step-tracking')  # ← ADD THIS
     app.register_blueprint(food_risk_bp, url_prefix='/api/v1/food-risk')
+    app.register_blueprint(overall_risk_bp, url_prefix='/api/v1/risk-assessment')
     app.register_blueprint(lifestyle_bp)  # Lifestyle recommendations - uses its own prefix
 
     # Health check endpoint

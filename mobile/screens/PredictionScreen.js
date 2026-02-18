@@ -8,13 +8,14 @@ import {
   SafeAreaView,
   Dimensions,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { getMyAssessment } from '../services/api';
+import { getMyAssessment, getOverallRiskAssessment, refreshOverallRiskAssessment } from '../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -23,6 +24,7 @@ const PredictionScreen = ({ navigation }) => {
   const toast = useToast();
   const [selectedPeriod, setSelectedPeriod] = useState('week');
   const [assessment, setAssessment] = useState(null);
+  const [overallRisk, setOverallRisk] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(
@@ -34,15 +36,30 @@ const PredictionScreen = ({ navigation }) => {
   const loadAssessment = async () => {
     try {
       setLoading(true);
+      
+      // Load initial diabetes assessment
       const result = await getMyAssessment();
       if (result && result.assessment) {
         setAssessment(result.assessment);
+        
+        // If initial assessment exists, try to load overall risk assessment
+        try {
+          const overallResult = await getOverallRiskAssessment();
+          if (overallResult && overallResult.success && overallResult.data) {
+            setOverallRisk(overallResult.data);
+          }
+        } catch (overallError) {
+          console.log('Overall risk not available yet:', overallError);
+          // Overall risk might not be available yet, that's okay
+        }
       } else {
         setAssessment(null);
+        setOverallRisk(null);
       }
     } catch (error) {
       console.log('Error loading assessment:', error);
       setAssessment(null);
+      setOverallRisk(null);
     } finally {
       setLoading(false);
     }
@@ -71,6 +88,13 @@ const PredictionScreen = ({ navigation }) => {
           icon: 'alert-octagon',
           message: 'Your diabetes risk is high',
         };
+      case 'very_high':
+        return {
+          title: 'Very High Risk',
+          color: '#C0392B',
+          icon: 'alert',
+          message: 'Your diabetes risk is very high',
+        };
       default:
         return {
           title: 'Unknown',
@@ -78,6 +102,22 @@ const PredictionScreen = ({ navigation }) => {
           icon: 'help-circle',
           message: 'Risk level unknown',
         };
+    }
+  };
+
+  const handleRefreshOverallRisk = async () => {
+    try {
+      setLoading(true);
+      const result = await refreshOverallRiskAssessment();
+      if (result && result.success && result.data) {
+        setOverallRisk(result.data);
+        Alert.alert('Success', 'Your comprehensive risk assessment has been updated.');
+      }
+    } catch (error) {
+      console.log('Error refreshing overall risk:', error);
+      Alert.alert('Error', 'Failed to refresh comprehensive assessment. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -342,6 +382,150 @@ const PredictionScreen = ({ navigation }) => {
       fontSize: 15,
       fontWeight: '600',
     },
+    overallRiskCard: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      padding: 20,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      elevation: 3,
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 3,
+      },
+      shadowOpacity: 0.15,
+      shadowRadius: 4.65,
+    },
+    overallRiskHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 20,
+    },
+    overallRiskHeaderText: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    overallRiskScoreSection: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 20,
+      gap: 20,
+    },
+    overallRiskScoreCircle: {
+      width: 100,
+      height: 100,
+      borderRadius: 50,
+      borderWidth: 4,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: colors.background,
+    },
+    overallRiskScoreValue: {
+      fontSize: 32,
+      fontWeight: '700',
+    },
+    overallRiskScoreLabel: {
+      fontSize: 14,
+      color: colors.secondary,
+      marginTop: -4,
+    },
+    overallRiskScoreInfo: {
+      flex: 1,
+    },
+    overallRiskBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: 20,
+      gap: 6,
+      marginBottom: 8,
+    },
+    overallRiskBadgeText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: '#FFFFFF',
+    },
+    overallRiskProbability: {
+      fontSize: 13,
+      marginBottom: 4,
+    },
+    overallRiskMessage: {
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    riskFactorsSection: {
+      marginBottom: 16,
+      paddingTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    riskFactorsTitle: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 12,
+    },
+    riskFactorItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 8,
+      gap: 10,
+    },
+    riskFactorName: {
+      flex: 1,
+      fontSize: 14,
+      color: colors.text,
+    },
+    riskFactorScore: {
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    recommendationsSection: {
+      marginBottom: 16,
+      paddingTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    recommendationsTitle: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 12,
+    },
+    recommendationItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      marginBottom: 10,
+    },
+    recommendationText: {
+      flex: 1,
+      fontSize: 14,
+      color: colors.secondary,
+      lineHeight: 20,
+    },
+    refreshOverallButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: `${colors.primary}10`,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 10,
+      gap: 8,
+      marginTop: 8,
+    },
+    refreshOverallButtonText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.primary,
+    },
   });
 
   return (
@@ -401,6 +585,89 @@ const PredictionScreen = ({ navigation }) => {
                 <Icon name="arrow-right" size={20} color={colors.primary} />
               </View>
             </TouchableOpacity>
+            
+            {overallRisk && (
+              <>
+                <View style={styles.overallRiskCard}>
+                  <View style={styles.overallRiskHeader}>
+                    <Icon name="chart-line" size={20} color={colors.primary} />
+                    <Text style={styles.overallRiskHeaderText}>Comprehensive Risk Assessment</Text>
+                  </View>
+                  
+                  <View style={styles.overallRiskScoreSection}>
+                    <View style={[styles.overallRiskScoreCircle, { borderColor: overallRisk.category_info.color }]}>
+                      <Text style={[styles.overallRiskScoreValue, { color: overallRisk.category_info.color }]}>
+                        {overallRisk.overall_risk_score.toFixed(1)}
+                      </Text>
+                      <Text style={styles.overallRiskScoreLabel}>/ 100</Text>
+                    </View>
+                    <View style={styles.overallRiskScoreInfo}>
+                      <View style={[styles.overallRiskBadge, { backgroundColor: overallRisk.category_info.color }]}>
+                        <Icon name={overallRisk.category_info.icon} size={16} color="#FFFFFF" />
+                        <Text style={styles.overallRiskBadgeText}>{overallRisk.category_info.title}</Text>
+                      </View>
+                      <Text style={[styles.overallRiskProbability, { color: colors.secondary }]}>
+                        {overallRisk.category_info.probability}
+                      </Text>
+                      <Text style={[styles.overallRiskMessage, { color: colors.secondary }]}>
+                        {overallRisk.category_info.message}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {overallRisk.primary_risk_factors && overallRisk.primary_risk_factors.length > 0 && (
+                    <View style={styles.riskFactorsSection}>
+                      <Text style={styles.riskFactorsTitle}>Primary Risk Factors</Text>
+                      {overallRisk.primary_risk_factors.map((factor, index) => (
+                        <View key={index} style={styles.riskFactorItem}>
+                          <Icon name="alert-circle" size={16} color="#E74C3C" />
+                          <Text style={styles.riskFactorName}>{factor.component_name}</Text>
+                          <Text style={[styles.riskFactorScore, { color: '#E74C3C' }]}>
+                            {factor.weighted_score.toFixed(1)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {overallRisk.protective_factors && overallRisk.protective_factors.length > 0 && (
+                    <View style={styles.riskFactorsSection}>
+                      <Text style={[styles.riskFactorsTitle, { color: '#27AE60' }]}>Protective Factors</Text>
+                      {overallRisk.protective_factors.map((factor, index) => (
+                        <View key={index} style={styles.riskFactorItem}>
+                          <Icon name="check-circle" size={16} color="#27AE60" />
+                          <Text style={styles.riskFactorName}>{factor.component_name}</Text>
+                          <Text style={[styles.riskFactorScore, { color: '#27AE60' }]}>
+                            {factor.weighted_score.toFixed(1)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {overallRisk.recommendations && overallRisk.recommendations.length > 0 && (
+                    <View style={styles.recommendationsSection}>
+                      <Text style={styles.recommendationsTitle}>Recommendations</Text>
+                      {overallRisk.recommendations.slice(0, 3).map((rec, index) => (
+                        <View key={index} style={styles.recommendationItem}>
+                          <Icon name="lightbulb-outline" size={14} color={colors.primary} />
+                          <Text style={styles.recommendationText}>{rec}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.refreshOverallButton}
+                    onPress={handleRefreshOverallRisk}
+                    activeOpacity={0.7}
+                  >
+                    <Icon name="refresh" size={18} color={colors.primary} />
+                    <Text style={styles.refreshOverallButtonText}>Refresh Comprehensive Assessment</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
             
             <TouchableOpacity
               style={[styles.retakeButton, { borderColor: colors.border }]}

@@ -81,6 +81,9 @@ class User:
             avatar=data.get('avatar', {'public_id': None, 'url': None}),
             role=data.get('role', 'user')
         )
+        # Store MongoDB _id if present
+        if '_id' in data:
+            user._id = data['_id']
         user.push_tokens = data.get('push_tokens', [])
         user.enable_push_notifications = data.get('enable_push_notifications', True)
         user.permission_token = data.get('permission_token')
