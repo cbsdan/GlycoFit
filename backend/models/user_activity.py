@@ -14,19 +14,24 @@ class UserActivity:
     def save_daily_activity(self, uid, date, activity_data):
         """Save or update daily activity data"""
         try:
+            from datetime import timezone
+            
             print(f"💾 Saving to MongoDB:")
             print(f"  - Collection: {self.collection.name}")
             print(f"  - UID: {uid}")
             print(f"  - Date: {date}")
             print(f"  - Data: {activity_data}")
             
-            # Convert date to datetime for MongoDB compatibility
+            # Convert date to UTC-aware datetime for MongoDB compatibility
             if isinstance(date, datetime):
                 date_datetime = date
+                # Make sure it's UTC-aware
+                if date_datetime.tzinfo is None:
+                    date_datetime = date_datetime.replace(tzinfo=timezone.utc)
             else:
-                date_datetime = datetime.combine(date, datetime.min.time())
+                date_datetime = datetime.combine(date, datetime.min.time()).replace(tzinfo=timezone.utc)
             
-            print(f"  - Date as datetime: {date_datetime}")
+            print(f"  - Date as datetime: {date_datetime} (UTC-aware)")
             
             query = {
                 "uid": uid,
@@ -40,7 +45,9 @@ class UserActivity:
                 "uid": uid,
                 "date": date_datetime,
                 "activity_type": "daily",
-                "updated_at": datetime.utcnow()
+                "updated_at": datetime.utcnow(),
+                "last_synced_at": datetime.utcnow(),
+                "source": activity_data.get('source')
             }
             
             # Use $max to ensure we always keep the highest value
@@ -134,25 +141,68 @@ class UserActivity:
     def get_activity_by_date_range(self, uid, start_date, end_date):
         """Get activity data for a date range"""
         try:
-            # Convert dates to datetime for MongoDB query
+            from datetime import timezone
+            
+            # Convert dates to UTC-aware datetime for MongoDB query (to match DB format)
             if not isinstance(start_date, datetime):
-                start_date = datetime.combine(start_date, datetime.min.time())
+                start_date = datetime.combine(
+                    datetime.strptime(start_date, '%Y-%m-%d').date(), 
+                    datetime.min.time()
+                ).replace(tzinfo=timezone.utc)
+            elif start_date.tzinfo is None:
+                # If naive datetime, make it UTC-aware
+                start_date = start_date.replace(tzinfo=timezone.utc)
             
             if not isinstance(end_date, datetime):
-                end_date = datetime.combine(end_date, datetime.max.time())
+                end_date = datetime.combine(
+                    datetime.strptime(end_date, '%Y-%m-%d').date(), 
+                    datetime.max.time()
+                ).replace(tzinfo=timezone.utc)
+            elif end_date.tzinfo is None:
+                # If naive datetime, make it UTC-aware
+                end_date = end_date.replace(tzinfo=timezone.utc)
             
-            activities = list(self.collection.find({
+            print(f"🔍 get_activity_by_date_range called:")
+            print(f"  UID: {uid}")
+            print(f"  Start: {start_date} (UTC-aware)")
+            print(f"  End: {end_date} (UTC-aware)")
+            
+            query = {
                 "uid": uid,
                 "date": {"$gte": start_date, "$lte": end_date}
-            }).sort("date", -1))
+            }
+            print(f"  Query: {query}")
+            
+            activities = list(self.collection.find(query).sort("date", -1))
+            print(f"  Found {len(activities)} activities")
+            
+            if len(activities) == 0:
+                # Debug: check if there are ANY records for this user
+                any_records = list(self.collection.find({"uid": uid}).limit(3))
+                print(f"  Debug: Total records for uid={uid}: {len(any_records)}")
+                if any_records:
+                    print(f"  Sample record: {any_records[0]}")
             
             # Convert ObjectId to string
             for activity in activities:
                 activity['_id'] = str(activity['_id'])
+                # Normalize datetime fields to ISO UTC strings with Z suffix for JSON
+                try:
+                    if activity.get('date') and hasattr(activity.get('date'), 'strftime'):
+                        activity['date'] = activity['date'].strftime('%Y-%m-%dT%H:%M:%SZ')
+                except Exception:
+                    pass
+                try:
+                    if activity.get('last_synced_at') and hasattr(activity.get('last_synced_at'), 'strftime'):
+                        activity['last_synced_at'] = activity['last_synced_at'].strftime('%Y-%m-%dT%H:%M:%SZ')
+                except Exception:
+                    pass
             
             return activities
         except Exception as e:
             print(f"Error getting activities: {e}")
+            import traceback
+            traceback.print_exc()
             return []
     
     def get_exercise_sessions(self, uid, start_time, end_time, limit=50):
@@ -176,11 +226,18 @@ class UserActivity:
     def get_activity_summary(self, uid, start_date, end_date):
         """Get aggregated activity summary"""
         try:
+            from datetime import timezone
+            
+            # Convert to UTC-aware datetime for MongoDB query
             if not isinstance(start_date, datetime):
-                start_date = datetime.combine(start_date, datetime.min.time())
+                start_date = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+            elif start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=timezone.utc)
             
             if not isinstance(end_date, datetime):
-                end_date = datetime.combine(end_date, datetime.max.time())
+                end_date = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+            elif end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=timezone.utc)
             
             pipeline = [
                 {

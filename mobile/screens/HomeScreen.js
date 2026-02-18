@@ -17,13 +17,14 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import api from '../services/api';
+import api, { getStepSummary } from '../services/api';
 import {
   healthConnectManager,
   getTodayData,
   getThisWeekData,
   getActivityData,
 } from '../services/healthConnectService';
+import stepDetectionService from '../services/stepDetectionService';
 import HealthMetricsSetupScreen from './HealthMetricsSetupScreen';
 import ChatBotBubble from '../components/ChatBotBubble';
 
@@ -54,13 +55,16 @@ const HomeScreen = ({ navigation }) => {
   const loadDashboardData = async () => {
     try {
       setIsLoading(true);
+      console.log('🏠 HomeScreen: Loading dashboard data...');
+      console.log('👤 Current user:', user?.uid || 'NO USER');
+      
       await Promise.all([
         fetchNutritionData(),
         fetchHealthData(),
         checkHealthMetricsStatus(),
       ]);
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      console.error('❌ Error loading dashboard data:', error);
     } finally {
       setIsLoading(false);
     }
@@ -118,96 +122,114 @@ const HomeScreen = ({ navigation }) => {
 
   const fetchHealthData = async () => {
     try {
-      // Check if Health Connect is available
-      const isAvailable = await healthConnectManager.isAvailable();
-      setHealthConnectAvailable(isAvailable);
-
-      let healthConnectData = null;
+      let stepsData = null;
       
-      // If Health Connect is available, try to fetch data directly from device
-      if (isAvailable) {
+      // 1. First, try to get steps from backend (step tracking API)
+      try {
+        console.log('📡 Calling getStepSummary(30)...');
+        const summary = await getStepSummary(30); // Changed from 7 to 30 days
+        console.log('📊 Step summary response:', JSON.stringify(summary, null, 2));
+        
+        // Check if response is wrapped in data object
+        const summaryData = summary?.data || summary;
+        console.log('📊 Summary data:', summaryData);
+        
+        if (summaryData?.recent_records && summaryData.recent_records.length > 0) {
+          console.log('✅ Found recent_records:', summaryData.recent_records.length, 'records');
+          // Get the most recent day's steps
+          const mostRecent = summaryData.recent_records[0];
+          console.log('📊 Most recent record:', mostRecent);
+          
+          stepsData = {
+            steps: mostRecent.steps || 0,
+            source: 'backend',
+            date: mostRecent.date
+          };
+          console.log('✅ Got steps from backend:', stepsData);
+        } else {
+          console.log('⚠️ Backend returned empty or no recent_records');
+          console.log('   Summary structure:', Object.keys(summaryData || {}));
+        }
+      } catch (backendError) {
+        console.log('⚠️ Backend step summary failed:', backendError);
+        console.log('   Error details:', backendError.message);
+      }
+      
+      // 2. If backend failed, try Health Connect as fallback
+      if (!stepsData || stepsData.steps === 0) {
+        console.log('🔄 Trying Health Connect fallback...');
         try {
-          // Fetch today's data from Health Connect
-          const todayData = await getTodayData();
-          console.log('Health Connect Today Data:', todayData);
+          // Initialize Health Connect first
+          await healthConnectManager.initialize();
+          const sdkStatus = await healthConnectManager.getSdkStatus();
+          const isAvailable = sdkStatus === 1; // SdkAvailabilityStatus.SDK_AVAILABLE = 1
+          setHealthConnectAvailable(isAvailable);
+          console.log('📱 Health Connect SDK status:', sdkStatus, '(available:', isAvailable, ')');
           
-          if (todayData) {
-            // Extract steps and active calories from Health Connect data
-            const steps = todayData.steps || 0;
-            const activeCalories = todayData.activeCalories || 0;
+          if (isAvailable) {
+            const todayData = await getTodayData();
+            console.log('📱 Health Connect data:', todayData);
             
-            healthConnectData = {
-              steps: steps,
-              activeCalories: activeCalories,
-              source: 'healthConnect'
-            };
-            
-            console.log('Health Connect extracted data:', healthConnectData);
-          }
-          
-          // Also try to get weekly data for fallback
-          const weeklyData = await getThisWeekData();
-          if (weeklyData) {
-            healthConnectData.weeklySteps = weeklyData.steps || 0;
-            healthConnectData.weeklyActiveCalories = weeklyData.activeCalories || 0;
+            if (todayData?.steps > 0) {
+              stepsData = {
+                steps: todayData.steps,
+                source: 'healthConnect'
+              };
+              console.log('✅ Got steps from Health Connect:', stepsData);
+            }
           }
         } catch (hcError) {
-          console.log('Error fetching Health Connect data:', hcError);
-          // If Health Connect fails, fall back to backend API
+          console.log('⚠️ Health Connect failed:', hcError.message || hcError);
         }
       }
-
-      // Fetch backend API data as primary or fallback
-      const dailyResponse = await api.getStatisticsSummary('day');
-      if (dailyResponse.success && dailyResponse.data) {
-        // Merge Health Connect data with backend data
-        const mergedData = {
-          ...dailyResponse.data,
-          ...(healthConnectData && {
-            steps: healthConnectData.steps,
-            activeCalories: healthConnectData.activeCalories,
-            healthConnectActive: true
-          })
-        };
-        setHealthData(mergedData);
-      } else if (healthConnectData) {
-        // If backend fails but Health Connect succeeded, use Health Connect data
+      
+      // 3. Set the health data with steps (or null if no data)
+      if (stepsData && stepsData.steps > 0) {
         setHealthData({
-          steps: healthConnectData.steps,
-          activeCalories: healthConnectData.activeCalories,
-          healthConnectActive: true
+          steps: stepsData.steps,
+          source: stepsData.source,
+          date: stepsData.date
         });
+        console.log('✅ Final healthData set:', { steps: stepsData.steps, source: stepsData.source });
+      } else {
+        setHealthData(null);
+        console.log('⚠️ No steps data available from any source');
+      }
+      
+      // Also try to fetch backend API statistics for other health metrics (optional)
+      try {
+        const dailyResponse = await api.getStatisticsSummary('day');
+        if (dailyResponse.success && dailyResponse.data) {
+          setHealthData(prev => ({
+            ...dailyResponse.data,
+            ...prev // Keep steps data from above if available (prioritize it)
+          }));
+        }
+      } catch (apiError) {
+        console.log('ℹ️ Statistics summary not available:', apiError.message);
       }
 
-      // Also fetch weekly data as fallback
+      // Fetch weekly data for fallback
       try {
         const weeklyResponse = await api.getStatisticsSummary('week');
         if (weeklyResponse.success && weeklyResponse.data) {
-          const mergedWeeklyData = {
-            ...weeklyResponse.data,
-            ...(healthConnectData && healthConnectData.weeklySteps && {
-              steps: healthConnectData.weeklySteps,
-              activeCalories: healthConnectData.weeklyActiveCalories,
-              healthConnectActive: true
-            })
-          };
-          setWeeklyHealthData(mergedWeeklyData);
+          setWeeklyHealthData(weeklyResponse.data);
         }
       } catch (weeklyError) {
-        console.log('Error fetching weekly health data:', weeklyError);
+        console.log('ℹ️ Weekly data not available:', weeklyError.message);
       }
 
-      // Also fetch monthly data as fallback
+      // Fetch monthly data for fallback
       try {
         const monthlyResponse = await api.getStatisticsSummary('month');
         if (monthlyResponse.success && monthlyResponse.data) {
           setMonthlyHealthData(monthlyResponse.data);
         }
       } catch (monthlyError) {
-        console.log('Error fetching monthly health data:', monthlyError);
+        console.log('ℹ️ Monthly data not available:', monthlyError.message);
       }
     } catch (error) {
-      console.log('Error fetching health data:', error);
+      console.error('❌ Error in fetchHealthData:', error);
       setHealthData(null);
     }
   };
@@ -295,64 +317,46 @@ const HomeScreen = ({ navigation }) => {
       onPress: () => navigation.navigate('MealHistory'),
     });
 
-    // 2. Calories Burned (Active Calories) - prioritize Health Connect if available
+    // 2. Calories Burned - Calculate from steps
     let caloriesBurned = 'N/A';
-    let caloriesPeriod = '';
+    let caloriesPeriod = 'today';
     
-    // First check if Health Connect data is available (from today)
-    if (healthData?.healthConnectActive && healthData?.activeCalories > 0) {
-      caloriesBurned = healthData.activeCalories;
-      caloriesPeriod = 'today';
+    console.log('🔍 HomeScreen stats - healthData:', healthData);
+    
+    // Get steps from healthData (direct value)
+    const todaySteps = healthData?.steps || 0;
+    
+    if (todaySteps > 0) {
+      // Calculate calories from steps
+      const totalCalories = stepDetectionService.calculateCalories(todaySteps);
+      caloriesBurned = totalCalories * 0.7; // ~70% as active calories
+      console.log('🔥 Calculated', caloriesBurned, 'active calories from', todaySteps, 'steps');
     } else {
-      // Fall back to backend API with multi-level fallback
-      const caloriesBurnedResult = getValueWithFallback(
-        healthData,
-        weeklyHealthData,
-        monthlyHealthData,
-        'active_calories',
-        'total'
-      );
-      caloriesBurned = caloriesBurnedResult.value;
-      caloriesPeriod = caloriesBurnedResult.period;
+      console.log('⚠️ No steps data - showing N/A for calories');
     }
     
     stats.push({
       id: 'calories-burned',
-      title: caloriesPeriod ? `Calories (${caloriesPeriod})` : 'Calories Burned',
-      value: caloriesBurned && caloriesBurned !== 'N/A' ? Math.round(caloriesBurned).toLocaleString() : 'N/A',
-      unit: caloriesBurned && caloriesBurned !== 'N/A' ? 'kcal' : '',
+      title: caloriesBurned !== 'N/A' ? `Calories (${caloriesPeriod})` : 'Calories Burned',
+      value: caloriesBurned !== 'N/A' ? Math.round(caloriesBurned).toLocaleString() : 'N/A',
+      unit: caloriesBurned !== 'N/A' ? 'kcal' : '',
       status: 'good',
       icon: 'fire-circle',
       color: '#E74C3C',
       onPress: () => navigation.navigate('SyncedHealthData'),
     });
 
-    // 3. Steps - prioritize Health Connect if available
-    let steps = 'N/A';
-    let stepsPeriod = '';
+    // 3. Steps - Get from healthData
+    const steps = todaySteps > 0 ? todaySteps : 'N/A';
+    const stepsPeriod = steps !== 'N/A' ? 'today' : '';
     
-    // First check if Health Connect data is available (from today)
-    if (healthData?.healthConnectActive && healthData?.steps > 0) {
-      steps = healthData.steps;
-      stepsPeriod = 'today';
-    } else {
-      // Fall back to backend API with multi-level fallback
-      const stepsResult = getValueWithFallback(
-        healthData,
-        weeklyHealthData,
-        monthlyHealthData,
-        'steps',
-        'total'
-      );
-      steps = stepsResult.value;
-      stepsPeriod = stepsResult.period;
-    }
+    console.log('👣 Steps for display:', steps, stepsPeriod ? `(${stepsPeriod})` : '');
     
     stats.push({
       id: 'steps',
       title: stepsPeriod ? `Steps (${stepsPeriod})` : 'Steps',
-      value: steps && steps !== 'N/A' ? Math.round(steps).toLocaleString() : 'N/A',
-      unit: steps && steps !== 'N/A' ? 'steps' : '',
+      value: steps !== 'N/A' ? Math.round(steps).toLocaleString() : 'N/A',
+      unit: steps !== 'N/A' ? 'steps' : '',
       status: 'good',
       icon: 'walk',
       color: '#3498DB',

@@ -270,8 +270,11 @@ class StepDetectionService {
 
   // Calculate calories from steps
   calculateCalories(steps, weightKg = 70) {
-    // Rough estimation: 0.04-0.05 calories per step per kg
-    return steps * 0.045 * weightKg;
+    // Accurate estimation: ~0.04 calories per step for average person
+    // Weight adjustment: lighter people burn slightly less, heavier burn slightly more
+    const baseCaloriesPerStep = 0.04;
+    const weightFactor = weightKg / 70; // Normalize to 70kg baseline
+    return steps * baseCaloriesPerStep * weightFactor;
   }
 }
 

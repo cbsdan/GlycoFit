@@ -194,25 +194,51 @@ class StepTrackingController:
             # Convert ObjectId to string if needed
             if isinstance(user_id, ObjectId):
                 user_id = str(user_id)
-                
+            
+            # Get the User to retrieve Firebase UID
+            from models.user import User
             from models.user_activity import UserActivity
             from config.database import get_db
             
+            user = User.find_by_id(user_id)
+            if not user:
+                return jsonify({
+                    'success': False,
+                    'error': 'User not found'
+                }), 404
+            
+            # Use Firebase UID for user_activities queries (not MongoDB ObjectId)
+            firebase_uid = user.uid
+            
+            # Use MongoDB ObjectId for baseline/metrics queries
             baseline = StepBaseline.find_by_user_id(user_id)
             metrics = StepMetrics.find_by_user_id(user_id)
             
-            # Get recent activity records from user_activity collection
+            # Get recent activity records from user_activity collection using Firebase UID
             db = get_db()
             user_activity = UserActivity(db)
             
             end_date = datetime.utcnow().date()
             start_date = end_date - timedelta(days=days)
             
+            print(f"🔍 Querying recent records")
+            print(f"  MongoDB ObjectId: {user_id}")
+            print(f"  Firebase UID: {firebase_uid}")
+            print(f"  Date range: {start_date} to {end_date}")
+            
+            # Debug: Check what's actually in the DB for this Firebase UID
+            all_user_records = list(user_activity.collection.find({'uid': firebase_uid}).limit(5))
+            print(f"  Sample records in DB for Firebase UID: {len(all_user_records)}")
+            if all_user_records:
+                print(f"  First record: {all_user_records[0]}")
+            
+            # Query using Firebase UID (not MongoDB ObjectId)
             recent_records = user_activity.get_activity_by_date_range(
-                user_id,
+                firebase_uid,
                 start_date.strftime('%Y-%m-%d'),
                 end_date.strftime('%Y-%m-%d')
             )
+            print(f"  ✅ Found {len(recent_records)} recent records")
             
             return jsonify({
                 'success': True,

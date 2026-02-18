@@ -602,6 +602,20 @@ const saveDailyActivity = async (activityData) => {
     throw error;
   }
 };
+
+/**
+ * Get recent synced daily activities (most recent first)
+ * @param {number} limit - number of days to return (default: 7)
+ */
+const getRecentActivities = async (limit = 7) => {
+  try {
+    const response = await api.get(`/activity/activities?limit=${limit}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching recent activities:', error);
+    throw error;
+  }
+};
 // Physician Management APIs for Patients
 const getAvailablePhysicians = async () => {
   try {
@@ -2500,6 +2514,7 @@ api.updateMeal = updateMeal;
 api.deleteMeal = deleteMeal;
 api.getNutritionSummary = getNutritionSummary;
 api.saveDailyActivity = saveDailyActivity;
+api.getRecentActivities = getRecentActivities;
 api.getAvailablePhysicians = getAvailablePhysicians;
 api.sendPhysicianRequest = sendPhysicianRequest;
 api.getMyPhysician = getMyPhysician;

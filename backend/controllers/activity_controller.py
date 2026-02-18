@@ -63,7 +63,66 @@ def save_daily_activity():
         
         if success:
             print("✅ Activity saved successfully to MongoDB")
-            return jsonify({'success': True, 'message': 'Activity saved successfully'}), 200
+            # Retrieve the saved document to return for better client-side sync confirmation
+            saved = user_activity_model.get_activity_by_date_range(uid, activity_date, activity_date)
+            saved_doc = saved[0] if saved and len(saved) > 0 else None
+
+            # Ensure _id is string for JSON serialization
+            if saved_doc and saved_doc.get('_id'):
+                try:
+                    saved_doc['_id'] = str(saved_doc['_id'])
+                except Exception:
+                    pass
+            # Normalize datetime fields to ISO strings
+            if saved_doc:
+                try:
+                    if saved_doc.get('date') and hasattr(saved_doc.get('date'), 'strftime'):
+                        # Ensure UTC Z suffix so JS parses as UTC
+                        saved_doc['date'] = saved_doc['date'].strftime('%Y-%m-%dT%H:%M:%SZ')
+                except Exception:
+                    pass
+                try:
+                    if saved_doc.get('last_synced_at') and hasattr(saved_doc.get('last_synced_at'), 'strftime'):
+                        saved_doc['last_synced_at'] = saved_doc['last_synced_at'].strftime('%Y-%m-%dT%H:%M:%SZ')
+                except Exception:
+                    pass
+
+            # Also fetch previous day's saved activity (if any) to return for UI display
+            previous_day_saved = None
+            previous_day_steps = None
+            try:
+                prev_date = activity_date - timedelta(days=1)
+                prev = user_activity_model.get_activity_by_date_range(uid, prev_date, prev_date)
+                previous_day_saved = prev[0] if prev and len(prev) > 0 else None
+                if previous_day_saved and previous_day_saved.get('_id'):
+                    try:
+                        previous_day_saved['_id'] = str(previous_day_saved['_id'])
+                    except Exception:
+                        pass
+                # Normalize previous day datetime fields
+                if previous_day_saved:
+                    try:
+                        if previous_day_saved.get('date') and hasattr(previous_day_saved.get('date'), 'strftime'):
+                            previous_day_saved['date'] = previous_day_saved['date'].strftime('%Y-%m-%dT%H:%M:%SZ')
+                    except Exception:
+                        pass
+                    try:
+                        if previous_day_saved.get('last_synced_at') and hasattr(previous_day_saved.get('last_synced_at'), 'strftime'):
+                            previous_day_saved['last_synced_at'] = previous_day_saved['last_synced_at'].strftime('%Y-%m-%dT%H:%M:%SZ')
+                    except Exception:
+                        pass
+                if previous_day_saved:
+                    previous_day_steps = previous_day_saved.get('steps', 0)
+            except Exception as e:
+                print(f"⚠️ Warning fetching previous day activity: {e}")
+
+            return jsonify({
+                'success': True,
+                'message': 'Activity saved successfully',
+                'saved': saved_doc,
+                'previous_day_steps': previous_day_steps,
+                'previous_day_saved': previous_day_saved
+            }), 200
         else:
             print("❌ Failed to save activity")
             return jsonify({'success': False, 'error': 'Failed to save activity'}), 500
@@ -135,6 +194,34 @@ def get_activities():
         # Get query parameters
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
+        limit = int(request.args.get('limit', 0))
+
+        # If caller requests recent items with a limit, return the most recent 'limit' daily records
+        if limit and not start_date and not end_date:
+            try:
+                docs = list(user_activity_model.collection.find({
+                    'uid': uid,
+                    'activity_type': 'daily'
+                }).sort('date', -1).limit(limit))
+
+                # Normalize docs
+                for d in docs:
+                    d['_id'] = str(d['_id'])
+                    try:
+                        if d.get('date') and hasattr(d.get('date'), 'isoformat'):
+                            d['date'] = d['date'].isoformat()
+                    except Exception:
+                        pass
+                    try:
+                        if d.get('last_synced_at') and hasattr(d.get('last_synced_at'), 'isoformat'):
+                            d['last_synced_at'] = d['last_synced_at'].isoformat()
+                    except Exception:
+                        pass
+
+                return jsonify({'success': True, 'activities': docs}), 200
+            except Exception as e:
+                print(f"Error fetching recent activities: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
         
         # Default to last 30 days if not provided
         if not end_date:

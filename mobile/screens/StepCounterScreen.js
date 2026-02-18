@@ -56,6 +56,8 @@ const StepCounterScreen = ({ navigation }) => {
   const [selectedPeriod, setSelectedPeriod] = useState('today');
   const [phoneSensorSteps, setPhoneSensorSteps] = useState(0);
   const [lastSyncedSteps, setLastSyncedSteps] = useState(0);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const [previousDaySteps, setPreviousDaySteps] = useState(null);
   const [activityData, setActivityData] = useState({
     steps: 0,
     distance: 0,
@@ -271,25 +273,22 @@ const groupDataByDay = useCallback((stepsData, distanceData, caloriesData, activ
     dayMap.get(date)[field] += value;
   };
 
-  // Process all data
+  // Process steps and distance data (ignore Health Connect calorie data)
   stepsData?.forEach(record => processRecord(record, 'steps', r => Number(r?.count || 0)));
   distanceData?.forEach(record => processRecord(record, 'distance', r => Number(r?.distance?.inMeters || 0)));
-  caloriesData?.forEach(record => processRecord(record, 'calories', r => Number(r?.energy?.inKilocalories || 0)));
-  activeCaloriesData?.forEach(record => processRecord(record, 'activeCalories', r => Number(r?.energy?.inKilocalories || 0)));
+  // ⚠️ Skip Health Connect calorie data - we'll calculate from steps for accuracy
 
-  // ✅ FIX: Calculate missing distance/calories from steps
+  // ✅ FIX: Always calculate calories from steps (more reliable than Health Connect data)
   const result = Array.from(dayMap.values()).map(day => {
-    // If no distance data, calculate from steps
+    // Calculate distance from steps if not available
     if (day.distance === 0 && day.steps > 0) {
       day.distance = stepDetectionService.calculateDistance(day.steps);
-      console.log(`📊 Calculated distance for ${day.date}: ${day.distance}m from ${day.steps} steps`);
     }
     
-    // If no calorie data, calculate from steps
-    if (day.calories === 0 && day.steps > 0) {
+    // Always calculate calories from steps (don't trust Health Connect calorie data)
+    if (day.steps > 0) {
       day.calories = stepDetectionService.calculateCalories(day.steps);
-      day.activeCalories = day.calories * 0.7; // Approximate 70% as active calories
-      console.log(`📊 Calculated calories for ${day.date}: ${day.calories} kcal from ${day.steps} steps`);
+      day.activeCalories = day.calories * 0.7; // ~70% of total calories are active
     }
     
     return day;
@@ -317,7 +316,8 @@ const groupDataByDay = useCallback((stepsData, distanceData, caloriesData, activ
 
         totalSteps = calculateTotalSteps(healthData.steps);
         distance = calculateTotalDistance(healthData.distance);
-        calories = calculateTotalCalories(healthData.totalCalories);
+        // ✅ FIX: Always calculate calories from steps (don't trust Health Connect calorie data)
+        calories = stepDetectionService.calculateCalories(totalSteps);
         
 
         console.log(`📊 Health Connect: ${totalSteps} steps`);
@@ -375,20 +375,20 @@ const loadActivityData = useCallback(async () => {
 
     const totalSteps = calculateTotalSteps(data.steps);
     let totalDistance = calculateTotalDistance(data.distance);
-    let totalActiveCalories = calculateTotalCalories(data.activeCalories);
-    let totalCalories = calculateTotalCalories(data.totalCalories);
+    
+    // ✅ FIX: Always calculate calories from steps (don't trust Health Connect calorie data)
+    let totalCalories = stepDetectionService.calculateCalories(totalSteps);
+    let totalActiveCalories = totalCalories * 0.7; // ~70% of total calories are active
 
-    // ✅ FIX: Calculate missing totals from steps
+    // Calculate missing distance from steps if needed
     if (totalDistance === 0 && totalSteps > 0) {
       totalDistance = stepDetectionService.calculateDistance(totalSteps);
       console.log(`📊 Calculated total distance: ${totalDistance}m from ${totalSteps} steps`);
+    } else if (totalDistance > 0) {
+      console.log(`📊 Using Health Connect distance: ${totalDistance}m`);
     }
 
-    if (totalCalories === 0 && totalSteps > 0) {
-      totalCalories = stepDetectionService.calculateCalories(totalSteps);
-      totalActiveCalories = totalCalories * 0.7;
-      console.log(`📊 Calculated total calories: ${totalCalories} kcal from ${totalSteps} steps`);
-    }
+    console.log(`📊 Calculated calories from ${totalSteps} steps: ${totalCalories} kcal (${totalActiveCalories} active)`);
 
     console.log('📊 Totals calculated:', {
       totalSteps,
@@ -455,10 +455,51 @@ const loadActivityData = useCallback(async () => {
 
       const response = await api.saveDailyActivity(dataToSync);
 
-      if (response.success) {
+      if (response && response.success) {
         if (!silent) {
           console.log('✅ Sync successful');
           toast.success('Activity synced successfully');
+        }
+
+        // Mark last synced steps so auto-sync milestones don't re-send the same delta
+        const syncedSteps = (response.saved && (response.saved.steps || response.saved.steps === 0)) ? response.saved.steps : (dataToSync.steps || phoneSensorSteps);
+        if (isMountedRef.current) {
+          setLastSyncedSteps(syncedSteps);
+        }
+
+        // Set last synced timestamp if returned by backend
+        const serverLastSynced = response.saved && (response.saved.last_synced_at || response.saved.lastSyncedAt || response.last_synced_at);
+        if (serverLastSynced) {
+          try {
+            const parsed = new Date(serverLastSynced);
+            if (isMountedRef.current) setLastSyncedAt(parsed);
+          } catch (e) {
+            // ignore parse errors
+          }
+        }
+
+        // Merge saved values returned from backend into local activity state
+        if (response.saved) {
+          const saved = response.saved;
+          setActivityData(prev => ({
+            ...prev,
+            steps: saved.steps != null ? saved.steps : prev.steps,
+            distance: saved.distance != null ? saved.distance : prev.distance,
+            activeCalories: saved.active_calories != null ? saved.active_calories : prev.activeCalories,
+            totalCalories: saved.total_calories != null ? saved.total_calories : prev.totalCalories,
+          }));
+        }
+        // Also capture previous day steps (if backend returned it)
+        if (response.previous_day_steps !== undefined) {
+          if (isMountedRef.current) setPreviousDaySteps(response.previous_day_steps);
+        }
+        // Refresh summary/recent records from backend to ensure UI shows synced data and risk
+        try {
+          const summaryResp = await getStepSummary(7);
+          const summaryData = summaryResp?.data || summaryResp;
+          if (isMountedRef.current) setSummary(summaryData);
+        } catch (e) {
+          console.warn('Failed to refresh summary after sync', e);
         }
       } else {
         console.error('❌ Sync failed:', response);
@@ -595,6 +636,35 @@ const checkBaseline = async () => {
       const summaryData = summaryResponse?.data || summaryResponse;
       console.log('📊 Summary data:', summaryData);
       setSummary(summaryData);
+
+      // Extract previous day steps and last sync time from recent records
+      if (summaryData?.recent_records && summaryData.recent_records.length > 0) {
+        // Most recent record for last sync time
+        const mostRecent = summaryData.recent_records[0];
+        if (mostRecent.last_synced_at) {
+          try {
+            setLastSyncedAt(new Date(mostRecent.last_synced_at));
+          } catch (e) {
+            console.warn('Failed to parse last_synced_at:', e);
+          }
+        }
+
+        // Find yesterday's record
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(0, 0, 0, 0);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+        const yesterdayRecord = summaryData.recent_records.find(rec => {
+          const recDate = new Date(rec.date).toISOString().split('T')[0];
+          return recDate === yesterdayStr;
+        });
+
+        if (yesterdayRecord) {
+          setPreviousDaySteps(yesterdayRecord.steps || 0);
+          console.log('📅 Found yesterday record:', yesterdayRecord.steps, 'steps');
+        }
+      }
     } catch (summaryError) {
       console.error('❌ Failed to load summary:', summaryError);
       setSummary(null);
@@ -1055,6 +1125,60 @@ const renderMetricsGrid = useCallback(() => {
   );
 }, [summary, colors]);
 
+// Render risk assessment card
+const renderRiskAssessment = useCallback(() => {
+  const metrics = summary?.metrics;
+  if (!metrics) return null;
+
+  const score = metrics.risk_score ?? metrics.riskScore ?? 0;
+  const category = metrics.risk_category || metrics.riskCategory || 'unknown';
+  const factors = metrics.risk_factors || metrics.riskFactors || [];
+  const avgSteps = Math.round(metrics.avg_steps_30d || 0);
+  const daysTracked = metrics.days_with_data_30d || 0;
+
+  const color = category === 'very_high' ? '#E74C3C' : category === 'high' ? '#F39C12' : category === 'moderate' ? '#FF9800' : '#27AE60';
+
+  // Generate explanation
+  let explanation = '';
+  if (avgSteps < 3000) {
+    explanation = `Very low activity (${avgSteps.toLocaleString()} avg steps) significantly increases diabetes risk. Sedentary lifestyle is strongly linked to insulin resistance.`;
+  } else if (avgSteps < 5000) {
+    explanation = `Low activity level (${avgSteps.toLocaleString()} avg steps). Studies show 5,000+ steps/day reduces diabetes risk. Your current level carries elevated risk.`;
+  } else if (avgSteps < 7000) {
+    explanation = `Moderate activity (${avgSteps.toLocaleString()} avg steps). You're on the right track! Reaching 7,000+ steps provides stronger diabetes protection.`;
+  } else if (avgSteps < 10000) {
+    explanation = `Good activity level (${avgSteps.toLocaleString()} avg steps). Evidence shows 7,000+ steps significantly reduce diabetes risk. Keep it up!`;
+  } else {
+    explanation = `Excellent activity (${avgSteps.toLocaleString()} avg steps)! 10,000+ steps/day provides strong metabolic protection and reduces diabetes risk.`;
+  }
+
+  if (daysTracked < 7) {
+    explanation += ` Assessment is preliminary (${daysTracked} days tracked). Track for 2+ weeks for reliable risk estimate.`;
+  }
+
+  return (
+    <View style={styles.riskCard}>
+      <View style={styles.riskHeader}>
+        <Text style={styles.riskTitle}>Diabetes Risk Assessment</Text>
+        <View style={[styles.riskBadge, { backgroundColor: color + '20', borderColor: color }]}>
+          <Text style={[styles.riskScore, { color }]}>{score}</Text>
+        </View>
+      </View>
+      <Text style={[styles.riskCategory, { color }]}>{category.replace('_', ' ').toUpperCase()}</Text>
+      <Text style={styles.riskExplanation}>{explanation}</Text>
+      {factors.length > 0 && (
+        <View style={styles.riskFactors}>
+          <Text style={styles.riskFactorsTitle}>Risk Factors:</Text>
+          {factors.map((f, i) => (
+            <Text key={`f-${i}`} style={styles.riskFactor}>{'• ' + f.replace('_', ' ')}</Text>
+          ))}
+        </View>
+      )}
+      <Text style={styles.riskNote}>Based on 30-day activity patterns and baseline assessment. Regular physical activity improves insulin sensitivity.</Text>
+    </View>
+  );
+}, [summary, colors]);
+
 // REPLACE renderRetakeBaseline (around line 600):
 const renderRetakeBaseline = () => {
   if (!hasBaseline || !baselineData) return null;
@@ -1134,6 +1258,42 @@ const renderEducationCard = () => (
       </View>
     );
   }, [healthInsights, predictedSteps, selectedPeriod, colors]);
+
+  // Render recent synced records (max 7)
+  const renderRecentSynced = useCallback(() => {
+    const records = summary?.recent_records || [];
+    if (!records || records.length === 0) return null;
+
+    const display = records.slice(0, 7);
+
+    return (
+      <View style={{ marginBottom: 16 }}>
+        <Text style={styles.sectionTitle}>Recent Synced Days</Text>
+        {display.map((rec, idx) => (
+          <View key={`rec-${idx}`} style={styles.dailyCard}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={styles.dailyDate}>{formatDate(rec.date)}</Text>
+              <Text style={styles.dailySteps}>{(rec.steps || 0).toLocaleString()} steps</Text>
+            </View>
+            <View style={styles.dailyMetrics}>
+              <View style={styles.dailyMetric}>
+                <Text style={styles.dailyMetricValue}>{formatDistance(rec.distance || 0)}</Text>
+                <Text style={styles.dailyMetricLabel}>Distance</Text>
+              </View>
+              <View style={styles.dailyMetric}>
+                <Text style={styles.dailyMetricValue}>{Math.round(rec.active_calories || rec.activeCalories || 0)}</Text>
+                <Text style={styles.dailyMetricLabel}>Active Cal</Text>
+              </View>
+              <View style={styles.dailyMetric}>
+                <Text style={styles.dailyMetricValue}>{new Date(rec.date).toLocaleString()}</Text>
+                <Text style={styles.dailyMetricLabel}>Date/Time</Text>
+              </View>
+            </View>
+          </View>
+        ))}
+      </View>
+    );
+  }, [summary, formatDate, formatDistance]);
 
   // Render steps badge
   const renderStepsBadge = useCallback(() => {
@@ -1394,6 +1554,75 @@ retakeBaselineText: {
   color: colors.secondary,
   marginLeft: 8,
 },
+previousDayText: {
+  fontSize: 13,
+  color: colors.secondary,
+  marginTop: 6,
+},
+// Risk Assessment Card
+riskCard: {
+  backgroundColor: colors.card,
+  borderRadius: 16,
+  padding: 20,
+  marginBottom: 16,
+  borderWidth: 1,
+  borderColor: colors.border,
+},
+riskHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 8,
+},
+riskTitle: {
+  fontSize: 18,
+  fontWeight: '700',
+  color: colors.text,
+  flex: 1,
+},
+riskBadge: {
+  paddingHorizontal: 16,
+  paddingVertical: 8,
+  borderRadius: 20,
+  borderWidth: 2,
+},
+riskScore: {
+  fontSize: 24,
+  fontWeight: '700',
+},
+riskCategory: {
+  fontSize: 16,
+  fontWeight: '600',
+  marginBottom: 12,
+},
+riskExplanation: {
+  fontSize: 14,
+  lineHeight: 22,
+  color: colors.text,
+  marginBottom: 12,
+},
+riskFactors: {
+  marginTop: 8,
+  marginBottom: 12,
+},
+riskFactorsTitle: {
+  fontSize: 13,
+  fontWeight: '600',
+  color: colors.secondary,
+  marginBottom: 4,
+},
+riskFactor: {
+  fontSize: 13,
+  color: colors.secondary,
+  marginLeft: 8,
+  lineHeight: 20,
+},
+riskNote: {
+  fontSize: 11,
+  color: colors.secondary,
+  fontStyle: 'italic',
+  marginTop: 8,
+},
 // Education Card
 educationCard: {
   backgroundColor: `${colors.primary}10`,
@@ -1590,7 +1819,13 @@ educationBullet: {
               <Icon name="walk" size={64} color={colors.primary} />
             </View>
             <Text style={styles.stepsCount}>{activityData.steps.toLocaleString()}</Text>
-            <Text style={styles.stepsLabel}>{selectedPeriod === 'today' ? 'Steps Today' : 'Total Steps'}</Text>
+              <Text style={styles.stepsLabel}>{selectedPeriod === 'today' ? 'Steps Today' : 'Total Steps'}</Text>
+              {selectedPeriod === 'today' && previousDaySteps != null && (
+                <Text style={styles.previousDayText}>Yesterday: {previousDaySteps.toLocaleString()} steps</Text>
+              )}
+              {lastSyncedAt && (
+                <Text style={styles.previousDayText}>Last sync: {lastSyncedAt.toLocaleString()}</Text>
+              )}
             {renderStepsBadge()}
           </View>
 
@@ -1616,11 +1851,13 @@ educationBullet: {
         {/* ADD THESE NEW COMPONENTS HERE */}
         {renderMetricsGrid()}
         {renderRetakeBaseline()}
-        {renderEducationCard()}
+
 
 
         {renderStreakBadge()}
         {renderHealthInsights()}
+        {renderRecentSynced()}
+        {renderRiskAssessment()}
         {renderAchievements()}
         {renderChart()}
 
@@ -1658,6 +1895,7 @@ educationBullet: {
 
         {/* AI-Powered Timeline Predictions */}
         <LifestyleRecommendationsSection trackerType="activity" />
+                {renderEducationCard()}
       </ScrollView>
     </SafeAreaView>
   );
