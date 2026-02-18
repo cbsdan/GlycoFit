@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   Dimensions,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../context/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -85,6 +86,15 @@ const AssessmentResultsScreen = ({ navigation, route }) => {
   };
 
   const riskConfig = getRiskConfig();
+
+  const handleRetakeAssessment = async () => {
+    try {
+      await AsyncStorage.removeItem('@assessment_skipped');
+    } catch (error) {
+      console.log('Error clearing skip flag:', error);
+    }
+    navigation.navigate('DiabetesRiskAssessment');
+  };
 
   const styles = StyleSheet.create({
     container: {
@@ -310,6 +320,14 @@ const AssessmentResultsScreen = ({ navigation, route }) => {
         ))}
 
         <View style={styles.actionsContainer}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={handleRetakeAssessment}
+          >
+            <Icon name="refresh" size={20} color="#FFFFFF" />
+            <Text style={styles.actionButtonText}>Update Assessment</Text>
+          </TouchableOpacity>
+
           {risk_level !== 'low' && (
             <TouchableOpacity 
               style={styles.actionButton}

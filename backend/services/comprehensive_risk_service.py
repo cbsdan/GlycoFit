@@ -116,45 +116,58 @@ class ComprehensiveRiskService:
             raise
     
     def _gather_component_data(self, user_id: str) -> Dict[str, Any]:
-        """Gather all component data for risk assessment"""
+        """
+        Gather all component data for risk assessment.
+        
+        Note: user_id is the MongoDB ObjectId string (from auth middleware).
+        All trackers use this MongoDB ObjectId string, not Firebase UID.
+        
+        ID Usage:
+        - MongoDB ObjectId string (user_id): All queries use this
+        """
         db = get_db()
         components = {}
         
-        # Get user data (using Firebase UID)
-        user = User.find_by_uid(user_id)
+        # Get user data (using MongoDB ObjectId)
+        user = User.find_by_id(user_id)
         components['user'] = user
         
-        # Get initial diabetes assessment (using MongoDB _id from user object)
-        assessment_collection = db['diabetes_assessments']
-        if user and hasattr(user, '_id'):
-            initial_assessment = assessment_collection.find_one({'userId': user._id})
-        else:
-            initial_assessment = None
-        components['initial_assessment'] = initial_assessment
+        if not user:
+            self.logger.error(f"User not found with ID: {user_id}")
+            return components
         
-        # Get sleep metrics and risk assessment (using Firebase UID)
+        # Get initial diabetes assessment (using MongoDB _id as ObjectId)
+        assessment_collection = db['diabetes_assessments']
+        try:
+            initial_assessment = assessment_collection.find_one({'userId': ObjectId(user_id)})
+            components['initial_assessment'] = initial_assessment
+        except Exception as e:
+            self.logger.warning(f"Could not fetch initial assessment: {str(e)}")
+            components['initial_assessment'] = None
+        
+        # Get sleep metrics and risk assessment (using MongoDB ObjectId string)
         sleep_metrics = SleepMetrics.find_by_user_id(user_id)
         sleep_risk = SleepRiskAssessment.find_latest_by_user(user_id) if sleep_metrics else None
         components['sleep'] = sleep_metrics
         components['sleep_risk'] = sleep_risk
         
-        # Get step metrics and risk assessment (using Firebase UID)
+        # Get step metrics and risk assessment (using MongoDB ObjectId string)
         step_metrics = StepMetrics.find_by_user_id(user_id)
         step_risk = StepRiskAssessment.find_latest_by_user(user_id) if step_metrics else None
         components['steps'] = step_metrics
         components['steps_risk'] = step_risk
         
-        # Get smoking metrics and risk assessment (using Firebase UID)
+        # Get smoking metrics and risk assessment (using MongoDB ObjectId string)
         smoking_metrics = SmokingMetrics.find_by_user(user_id)
         smoking_risk = SmokingRiskAssessment.find_latest_by_user(user_id) if smoking_metrics else None
         components['smoking'] = smoking_metrics
         components['smoking_risk'] = smoking_risk
         
-        # Get alcohol metrics (using Firebase UID, risk assessment is part of metrics)
+        # Get alcohol metrics (using MongoDB ObjectId string)
         alcohol_metrics = AlcoholMetrics.find_by_user_id(user_id)
         components['alcohol'] = alcohol_metrics
         
-        # Get food tracking comprehensive risk (using Firebase UID)
+        # Get food tracking comprehensive risk (using MongoDB ObjectId string)
         try:
             food_risk = FoodTrackingService.calculate_comprehensive_risk(user_id, days=7)
             if food_risk and food_risk.get('success'):

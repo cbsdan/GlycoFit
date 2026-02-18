@@ -154,6 +154,16 @@ const PredictionScreen = ({ navigation }) => {
     }
   };
 
+  const handleRiskFactorTap = (factor) => {
+    // Check if this is the Initial Risk Assessment factor
+    if (factor.component_name === 'Initial Risk Assessment' && assessment) {
+      navigation.navigate('AssessmentResults', {
+        prediction: assessment.prediction,
+        isUpdate: true
+      });
+    }
+  };
+
 
 
   const styles = StyleSheet.create({
@@ -526,6 +536,49 @@ const PredictionScreen = ({ navigation }) => {
       fontWeight: '600',
       color: colors.primary,
     },
+    explanationSection: {
+      marginBottom: 16,
+      paddingTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    explanationTitle: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 12,
+    },
+    explanationText: {
+      fontSize: 14,
+      color: colors.secondary,
+      lineHeight: 22,
+    },
+    dataQualitySection: {
+      marginBottom: 16,
+      paddingTop: 16,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      backgroundColor: `${colors.secondary}10`,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    dataQualityHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 8,
+    },
+    dataQualityTitle: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.secondary,
+    },
+    dataQualityText: {
+      fontSize: 13,
+      color: colors.secondary,
+      lineHeight: 20,
+    },
   });
 
   return (
@@ -542,50 +595,8 @@ const PredictionScreen = ({ navigation }) => {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
-        ) : assessment ? (
+        ) : (assessment || overallRisk) ? (
           <View style={styles.resultSection}>
-            <TouchableOpacity
-              style={styles.resultCard}
-              onPress={() => handlePredictionTap('diabetes-assessment')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.resultHeader}>
-                <View style={[styles.resultIconContainer, { backgroundColor: `${getRiskConfig(assessment.prediction.risk_level).color}15` }]}>
-                  <Icon name={getRiskConfig(assessment.prediction.risk_level).icon} size={32} color={getRiskConfig(assessment.prediction.risk_level).color} />
-                </View>
-                <View style={styles.resultInfo}>
-                  <Text style={styles.resultLabel}>Your Assessment Result</Text>
-                  <Text style={[styles.resultTitle, { color: getRiskConfig(assessment.prediction.risk_level).color }]}>
-                    {getRiskConfig(assessment.prediction.risk_level).title}
-                  </Text>
-                </View>
-              </View>
-              
-              <Text style={[styles.resultMessage, { color: colors.secondary }]}>
-                {getRiskConfig(assessment.prediction.risk_level).message}
-              </Text>
-              
-              <View style={styles.resultStats}>
-                <View style={styles.resultStat}>
-                  <Text style={[styles.resultStatLabel, { color: colors.secondary }]}>Risk Percentage</Text>
-                  <Text style={[styles.resultStatValue, { color: colors.text }]}>
-                    {(assessment.prediction.percentage).toFixed(2)}%
-                  </Text>
-                </View>
-                <View style={styles.resultStat}>
-                  <Text style={[styles.resultStatLabel, { color: colors.secondary }]}>Confidence</Text>
-                  <Text style={[styles.resultStatValue, { color: colors.text }]}>
-                    {(assessment.prediction.confidence).toFixed(2)}%
-                  </Text>
-                </View>
-              </View>
-              
-              <View style={styles.resultFooter}>
-                <Text style={[styles.resultFooterText, { color: colors.primary }]}>View Full Report</Text>
-                <Icon name="arrow-right" size={20} color={colors.primary} />
-              </View>
-            </TouchableOpacity>
-            
             {overallRisk && (
               <>
                 <View style={styles.overallRiskCard}>
@@ -618,15 +629,28 @@ const PredictionScreen = ({ navigation }) => {
                   {overallRisk.primary_risk_factors && overallRisk.primary_risk_factors.length > 0 && (
                     <View style={styles.riskFactorsSection}>
                       <Text style={styles.riskFactorsTitle}>Primary Risk Factors</Text>
-                      {overallRisk.primary_risk_factors.map((factor, index) => (
-                        <View key={index} style={styles.riskFactorItem}>
-                          <Icon name="alert-circle" size={16} color="#E74C3C" />
-                          <Text style={styles.riskFactorName}>{factor.component_name}</Text>
-                          <Text style={[styles.riskFactorScore, { color: '#E74C3C' }]}>
-                            {factor.weighted_score.toFixed(1)}
-                          </Text>
-                        </View>
-                      ))}
+                      {overallRisk.primary_risk_factors.map((factor, index) => {
+                        const isInitialAssessment = factor.component_name === 'Initial Risk Assessment';
+                        const Component = isInitialAssessment ? TouchableOpacity : View;
+                        
+                        return (
+                          <Component 
+                            key={index} 
+                            style={styles.riskFactorItem}
+                            onPress={isInitialAssessment ? () => handleRiskFactorTap(factor) : undefined}
+                            activeOpacity={isInitialAssessment ? 0.7 : 1}
+                          >
+                            <Icon name="alert-circle" size={16} color="#E74C3C" />
+                            <Text style={styles.riskFactorName}>{factor.component_name}</Text>
+                            {isInitialAssessment && (
+                              <Icon name="chevron-right" size={18} color={colors.primary} style={{ marginLeft: 'auto', marginRight: 4 }} />
+                            )}
+                            <Text style={[styles.riskFactorScore, { color: '#E74C3C' }]}>
+                              {factor.weighted_score.toFixed(1)}
+                            </Text>
+                          </Component>
+                        );
+                      })}
                     </View>
                   )}
 
@@ -657,6 +681,16 @@ const PredictionScreen = ({ navigation }) => {
                     </View>
                   )}
 
+                  {overallRisk.data_quality_notes && (
+                    <View style={styles.dataQualitySection}>
+                      <View style={styles.dataQualityHeader}>
+                        <Icon name="information-outline" size={18} color={colors.secondary} />
+                        <Text style={styles.dataQualityTitle}>Data Quality Notes</Text>
+                      </View>
+                      <Text style={styles.dataQualityText}>{overallRisk.data_quality_notes}</Text>
+                    </View>
+                  )}
+
                   <TouchableOpacity
                     style={styles.refreshOverallButton}
                     onPress={handleRefreshOverallRisk}
@@ -669,21 +703,23 @@ const PredictionScreen = ({ navigation }) => {
               </>
             )}
             
-            <TouchableOpacity
-              style={[styles.retakeButton, { borderColor: colors.border }]}
-              onPress={async () => {
-                try {
-                  await AsyncStorage.removeItem('@assessment_skipped');
-                } catch (error) {
-                  console.log('Error clearing skip flag:', error);
-                }
-                navigation.navigate('DiabetesRiskAssessment');
-              }}
-              activeOpacity={0.7}
-            >
-              <Icon name="refresh" size={20} color={colors.text} />
-              <Text style={[styles.retakeButtonText, { color: colors.text }]}>Retake Assessment</Text>
-            </TouchableOpacity>
+            {!assessment && (
+              <TouchableOpacity
+                style={[styles.retakeButton, { borderColor: colors.border }]}
+                onPress={async () => {
+                  try {
+                    await AsyncStorage.removeItem('@assessment_skipped');
+                  } catch (error) {
+                    console.log('Error clearing skip flag:', error);
+                  }
+                  navigation.navigate('DiabetesRiskAssessment');
+                }}
+                activeOpacity={0.7}
+              >
+                <Icon name="clipboard-text" size={20} color={colors.primary} />
+                <Text style={[styles.retakeButtonText, { color: colors.primary }]}>Take Initial Assessment</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           <>
