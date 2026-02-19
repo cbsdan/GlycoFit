@@ -102,6 +102,8 @@ const ProfileScreen = ({ navigation }) => {
   const loadProfile = async () => {
     setIsLoading(true);
     try {
+      // Note: api.getProfile() is automatically cached via CacheService
+      // Cache is invalidated after profile updates
       const response = await api.getProfile();
       
       if (response.success) {

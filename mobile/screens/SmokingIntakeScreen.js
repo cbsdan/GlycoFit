@@ -45,7 +45,10 @@ const SmokingTrackingScreen = ({ navigation }) => {
 
   const loadData = async () => {
     try {
-      setIsLoading(true);
+      // Only show loading spinner if we don't have data yet (first load)
+      if (!summary && recentRecords.length === 0) {
+        setIsLoading(true);
+      }
 
       // Check if baseline exists
       const baselineCheck = await api.checkSmokingBaseline();
@@ -53,14 +56,14 @@ const SmokingTrackingScreen = ({ navigation }) => {
       setHasBaseline(hasBaselineValue);
 
       if (hasBaselineValue) {
-        // Load full summary if baseline exists
+        // Load full summary if baseline exists (uses cache if available)
         try {
           const summaryResponse = await api.getSmokingSummary(30); // Get 30 days summary
           if (summaryResponse?.success && summaryResponse?.data) {
             setSummary(summaryResponse.data);
           }
 
-          // Fetch recent records
+          // Fetch recent records (uses cache if available)
           const recordsResponse = await api.getDailySmokingRecords(null, null, 30);
           if (recordsResponse?.success && recordsResponse?.data) {
             setRecentRecords(recordsResponse.data);
@@ -86,7 +89,23 @@ const SmokingTrackingScreen = ({ navigation }) => {
     setIsRefreshing(true);
     try {
       await api.refreshSmokingMetrics();
-      await loadData();
+      
+      // Force refresh to bypass cache and get fresh data
+      const baselineCheck = await api.checkSmokingBaseline();
+      const hasBaselineValue = baselineCheck?.has_baseline || false;
+      setHasBaseline(hasBaselineValue);
+
+      if (hasBaselineValue) {
+        const summaryResponse = await api.getSmokingSummary(30, true); // forceRefresh = true
+        if (summaryResponse?.success && summaryResponse?.data) {
+          setSummary(summaryResponse.data);
+        }
+
+        const recordsResponse = await api.getDailySmokingRecords(null, null, 30, true); // forceRefresh = true
+        if (recordsResponse?.success && recordsResponse?.data) {
+          setRecentRecords(recordsResponse.data);
+        }
+      }
     } catch (error) {
       console.error('Error refreshing:', error);
     }

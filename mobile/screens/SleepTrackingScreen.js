@@ -107,7 +107,21 @@ const SleepTrackingScreen = ({ navigation }) => {
     setIsRefreshing(true);
     try {
       await refreshSleepMetrics();
-      await loadData();
+      // Force refresh to bypass cache and get fresh data
+      const baselineCheck = await checkSleepBaseline();
+      setHasBaseline(baselineCheck.has_baseline);
+
+      if (baselineCheck.has_baseline) {
+        const summaryResponse = await getSleepSummary(true); // forceRefresh = true
+        if (summaryResponse?.success && summaryResponse?.data) {
+          setSummary(summaryResponse.data);
+        }
+
+        const recordsResponse = await getDailySleepRecords(null, null, 60, null, true); // forceRefresh = true
+        if (recordsResponse?.success && recordsResponse?.data) {
+          setRecentRecords(recordsResponse.data);
+        }
+      }
     } catch (error) {
       console.error('Error refreshing:', error);
     }

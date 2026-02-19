@@ -54,11 +54,15 @@ const HomeScreen = ({ navigation }) => {
     }, [])
   );
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = async (forceRefresh = false) => {
     try {
       setIsLoading(true);
-      console.log('🏠 HomeScreen: Loading dashboard data...');
+      console.log('🏠 HomeScreen: Loading dashboard data...', forceRefresh ? '(force refresh)' : '');
       console.log('👤 Current user:', user?.uid || 'NO USER');
+      
+      // Note: API calls below are automatically cached via CacheService
+      // Fresh data is fetched only if cache is stale (configurable per endpoint)
+      // Pass forceRefresh to bypass cache when user pulls to refresh
       
       // Check profile completion first
       const isProfileComplete = await checkProfileCompletion();
@@ -66,9 +70,9 @@ const HomeScreen = ({ navigation }) => {
       // Only load other data if profile is complete
       if (isProfileComplete) {
         await Promise.all([
-          fetchNutritionData(),
-          fetchHealthData(),
-          checkHealthMetricsStatus(),
+          fetchNutritionData(forceRefresh),
+          fetchHealthData(forceRefresh),
+          checkHealthMetricsStatus(forceRefresh),
         ]);
       }
     } catch (error) {
@@ -78,7 +82,7 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  const fetchNutritionData = async () => {
+  const fetchNutritionData = async (forceRefresh = false) => {
     try {
       // Get today's date range (same logic as MealHistoryScreen)
       const now = new Date();
@@ -87,7 +91,7 @@ const HomeScreen = ({ navigation }) => {
       const endDate = new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString();
       
       // Fetch meals for today (same as MealHistoryScreen approach)
-      const response = await api.getUserMeals(50, 0, startDate, endDate);
+      const response = await api.getUserMeals(50, 0, startDate, endDate, forceRefresh);
       
       console.log('Meals Response:', response);
       
@@ -128,14 +132,14 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  const fetchHealthData = async () => {
+  const fetchHealthData = async (forceRefresh = false) => {
     try {
       let stepsData = null;
       
       // 1. First, try to get steps from backend (step tracking API)
       try {
         console.log('📡 Calling getStepSummary(30)...');
-        const summary = await getStepSummary(30); // Changed from 7 to 30 days
+        const summary = await getStepSummary(30, forceRefresh); // Changed from 7 to 30 days
         console.log('📊 Step summary response:', JSON.stringify(summary, null, 2));
         
         // Check if response is wrapped in data object
@@ -206,7 +210,7 @@ const HomeScreen = ({ navigation }) => {
       
       // Also try to fetch backend API statistics for other health metrics (optional)
       try {
-        const dailyResponse = await api.getStatisticsSummary('day');
+        const dailyResponse = await api.getStatisticsSummary('day', null, forceRefresh);
         if (dailyResponse.success && dailyResponse.data) {
           setHealthData(prev => ({
             ...dailyResponse.data,
@@ -219,7 +223,7 @@ const HomeScreen = ({ navigation }) => {
 
       // Fetch weekly data for fallback
       try {
-        const weeklyResponse = await api.getStatisticsSummary('week');
+        const weeklyResponse = await api.getStatisticsSummary('week', null, forceRefresh);
         if (weeklyResponse.success && weeklyResponse.data) {
           setWeeklyHealthData(weeklyResponse.data);
         }
@@ -229,7 +233,7 @@ const HomeScreen = ({ navigation }) => {
 
       // Fetch monthly data for fallback
       try {
-        const monthlyResponse = await api.getStatisticsSummary('month');
+        const monthlyResponse = await api.getStatisticsSummary('month', null, forceRefresh);
         if (monthlyResponse.success && monthlyResponse.data) {
           setMonthlyHealthData(monthlyResponse.data);
         }
@@ -242,7 +246,7 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  const checkHealthMetricsStatus = async () => {
+  const checkHealthMetricsStatus = async (forceRefresh = false) => {
     try {
       // Don't show health metrics prompt if user is already diagnosed
       if (isDiagnosed) {
@@ -250,7 +254,7 @@ const HomeScreen = ({ navigation }) => {
         return;
       }
 
-      const response = await api.getHealthMetrics();
+      const response = await api.getHealthMetrics(forceRefresh);
       const metrics = response?.health_metrics;
       
       // Check if all required metrics are set
@@ -436,7 +440,7 @@ const HomeScreen = ({ navigation }) => {
 
   const onRefresh = async () => {
     setIsRefreshing(true);
-    await loadDashboardData();
+    await loadDashboardData(true); // Force refresh to bypass cache
     setIsRefreshing(false);
   };
 

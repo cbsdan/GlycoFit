@@ -222,8 +222,11 @@ const MealHistoryScreen = ({ navigation }) => {
         setIsLoading(true);
       }
 
+      // Note: api.getUserMeals() is automatically cached via CacheService
+      // Different date ranges use different cache keys for optimal performance
+      // Cache is invalidated after meal create/update/delete operations
       const dateRange = getDateRange(period);
-      const response = await api.getUserMeals(50, offset, dateRange.start, dateRange.end);
+      const response = await api.getUserMeals(50, offset, dateRange.start, dateRange.end, refresh);
       
       console.log('API response:', response);
       

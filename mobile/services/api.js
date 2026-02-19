@@ -10,6 +10,7 @@ import {
 import { auth, isTokenExpired } from '../config/firebase-config';
 import { API_URL } from '../config/constants';
 import { GoogleSignin as RNGoogleSignin } from '@react-native-google-signin/google-signin';
+import CacheService from './cacheService';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -344,6 +345,11 @@ export const authService = {
       await SecureStore.deleteItemAsync('auth_token');
       await SecureStore.deleteItemAsync('login_timestamp');
       await AsyncStorage.removeItem('user');
+      
+      // Clear all cached data on logout
+      await CacheService.clearAll();
+      console.log('[Cache] All caches cleared on logout');
+      
     } catch (error) {
       console.log("Logout error:", error);
       throw error;
@@ -408,7 +414,80 @@ export const authService = {
   },
 };
 
-// Nutrient Prediction APIs (Using Gemini AI)
+// ==================== CACHE CONFIGURATION ====================
+/**
+ * Cache configuration for different data types
+ * maxAge: How long data is considered fresh (in milliseconds)
+ */
+const CACHE_CONFIG = {
+  // User data - rarely changes
+  user_profile: { maxAge: 30 * 60 * 1000 }, // 30 minutes
+  health_metrics: { maxAge: 30 * 60 * 1000 }, // 30 minutes
+  
+  // Meals - today changes often, history rarely
+  meals_today: { maxAge: 5 * 60 * 1000 }, // 5 minutes
+  meals_history: { maxAge: 30 * 60 * 1000 }, // 30 minutes
+  nutrition_summary: { maxAge: 10 * 60 * 1000 }, // 10 minutes
+  
+  // Physicians list - rarely changes
+  physicians: { maxAge: 24 * 60 * 60 * 1000 }, // 24 hours
+  physician_slots: { maxAge: 10 * 60 * 1000 }, // 10 minutes
+  my_physician: { maxAge: 30 * 60 * 1000 }, // 30 minutes
+  
+  // Appointments - can change frequently
+  appointments: { maxAge: 10 * 60 * 1000 }, // 10 minutes 
+  
+  // Health tracking summaries
+  step_summary: { maxAge: 5 * 60 * 1000 }, // 5 minutes
+  sleep_summary: { maxAge: 10 * 60 * 1000 }, // 10 minutes
+  alcohol_summary:{ maxAge: 10 * 60 * 1000 }, // 10 minutes
+  smoking_summary: { maxAge: 10 * 60 * 1000 }, // 10 minutes
+  statistics_summary: { maxAge: 5 * 60 * 1000 }, // 5 minutes
+  
+  // Baselines (rarely change after creation)
+  baseline: { maxAge: 60 * 60 * 1000 }, // 1 hour
+  
+  // Risk assessments
+  risk_assessment: { maxAge: 10 * 60 * 1000 }, // 10 minutes
+  overall_risk: { maxAge: 15 * 60 * 1000 }, // 15 minutes
+  
+  // Activity data (historical)
+  activities: { maxAge: 10 * 60 * 1000 }, // 10 minutes
+  
+  // Chatbot
+  chatbot_history: { maxAge: 5 * 60 * 1000 }, // 5 minutes
+  
+  // Meal details
+  meal_detail: { maxAge: 30 * 60 * 1000 }, // 30 minutes
+  
+  // Daily records (sleep, alcohol, smoking)
+  daily_records: { maxAge: 10 * 60 * 1000 }, // 10 minutes
+};
+
+/**
+ * Helper to create a cached GET method
+ * @param {string} cacheKey - Unique cache key
+ * @param {function} fetchFunction - Original fetch function
+ * @param {object} config - Cache configuration
+ * @returns {function} Cached version of the function
+ */
+const withCache = (cacheKey, fetchFunction, config = {}) => {
+  return async (...args) => {
+    // Create dynamic cache key with arguments if needed
+    const dynamicKey = typeof cacheKey === 'function' ? cacheKey(...args) : cacheKey;
+    const cacheOptions = { ...CACHE_CONFIG[config.configKey || 'default'], ...config };
+    
+    try {
+      return await CacheService.getData(dynamicKey, () => fetchFunction(...args), cacheOptions);
+    } catch (error) {
+      // If cache fails, try direct call
+      console.warn(`[API] Cache failed for ${dynamicKey}, calling directly`);
+      return await fetchFunction(...args);
+    }
+  };
+};
+
+// ==================== NUTRIENT PREDICTION APIs ====================
 const predictNutrientsOnly = async (imageUri, note = '') => {
   try {
     const formData = new FormData();
@@ -478,6 +557,10 @@ const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePubl
       timeout: 30000, // 30 seconds timeout for image processing
     });
 
+    // Invalidate meal caches
+    await CacheService.invalidatePattern(/^meals_/);
+    await CacheService.invalidatePattern(/^nutrition_summary_/);
+
     return response.data;
   } catch (error) {
     console.error('Error saving meal:', error);
@@ -506,6 +589,10 @@ const saveMealFromText = async (nutrients, mealName, foodType, notes = '', servi
       timeout: 30000,
     });
 
+    // Invalidate meal caches
+    await CacheService.invalidatePattern(/^meals_/);
+    await CacheService.invalidatePattern(/^nutrition_summary_/);
+
     return response.data;
   } catch (error) {
     console.error('Error saving text-based meal:', error);
@@ -515,7 +602,7 @@ const saveMealFromText = async (nutrients, mealName, foodType, notes = '', servi
 
 
 // Meal Management APIs
-const getUserMeals = async (limit = 50, offset = 0, startDate = null, endDate = null) => {
+const getUserMealsUncached = async (limit = 50, offset = 0, startDate = null, endDate = null) => {
   try {
     const params = new URLSearchParams({
       limit: limit.toString(),
@@ -533,7 +620,24 @@ const getUserMeals = async (limit = 50, offset = 0, startDate = null, endDate = 
   }
 };
 
-const getMealById = async (mealId) => {
+// Cached version with dynamic key based on date range
+const getUserMeals = async (limit = 50, offset = 0, startDate = null, endDate = null, forceRefresh = false) => {
+  // Determine if this is today's data or historical
+  const isToday = startDate && startDate === new Date().toISOString().split('T')[0];
+  const cacheKey = isToday 
+    ? 'meals_today' 
+    : `meals_${startDate || 'all'}_${endDate || 'all'}_${offset}`;
+  
+  const configKey = isToday ? 'meals_today' : 'meals_history';
+  
+  return await CacheService.getData(
+    cacheKey,
+    () => getUserMealsUncached(limit, offset, startDate, endDate),
+    { ...CACHE_CONFIG[configKey], forceRefresh }
+  );
+};
+
+const getMealByIdUncached = async (mealId) => {
   try {
     const response = await api.get(`/users/meals/${mealId}`);
     return response.data;
@@ -541,6 +645,14 @@ const getMealById = async (mealId) => {
     console.error('Error getting meal by id:', error);
     throw error;
   }
+};
+
+const getMealById = async (mealId, forceRefresh = false) => {
+  return await CacheService.getData(
+    `meal_detail_${mealId}`,
+    () => getMealByIdUncached(mealId),
+    { ...CACHE_CONFIG.meal_detail, forceRefresh }
+  );
 };
 
 const updateMeal = async (mealId, mealName = null, notes = null, foodType = null, nutrients = null, servingSize = null, ingredientNutrients = null, ingredientProportions = null) => {
@@ -555,6 +667,12 @@ const updateMeal = async (mealId, mealName = null, notes = null, foodType = null
     if (ingredientProportions !== null) updateData.ingredient_proportions = ingredientProportions;
 
     const response = await api.put(`/users/meals/${mealId}`, updateData);
+    
+    // Invalidate meal caches
+    await CacheService.invalidatePattern(/^meals_/);
+    await CacheService.invalidatePattern(/^meal_detail_/);
+    await CacheService.invalidatePattern(/^nutrition_summary_/);
+    
     return response.data;
   } catch (error) {
     console.error('Error updating meal:', error);
@@ -565,6 +683,12 @@ const updateMeal = async (mealId, mealName = null, notes = null, foodType = null
 const deleteMeal = async (mealId) => {
   try {
     const response = await api.delete(`/users/meals/${mealId}`);
+    
+    // Invalidate meal caches
+    await CacheService.invalidatePattern(/^meals_/);
+    await CacheService.invalidatePattern(/^meal_detail_/);
+    await CacheService.invalidatePattern(/^nutrition_summary_/);
+    
     return response.data;
   } catch (error) {
     console.error('Error deleting meal:', error);
@@ -572,7 +696,7 @@ const deleteMeal = async (mealId) => {
   }
 };
 
-const getNutritionSummary = async (startDate = null, endDate = null) => {
+const getNutritionSummaryUncached = async (startDate = null, endDate = null) => {
   try {
     const params = new URLSearchParams();
     if (startDate) params.append('start_date', startDate);
@@ -587,6 +711,15 @@ const getNutritionSummary = async (startDate = null, endDate = null) => {
     console.error('Error getting nutrition summary:', error);
     throw error;
   }
+};
+
+const getNutritionSummary = async (startDate = null, endDate = null, forceRefresh = false) => {
+  const cacheKey = `nutrition_summary_${startDate || 'all'}_${endDate || 'all'}`;
+  return await CacheService.getData(
+    cacheKey,
+    () => getNutritionSummaryUncached(startDate, endDate),
+    { ...CACHE_CONFIG.nutrition_summary, forceRefresh }
+  );
 };
 
 // Activity Tracking API
@@ -607,7 +740,7 @@ const saveDailyActivity = async (activityData) => {
  * Get recent synced daily activities (most recent first)
  * @param {number} limit - number of days to return (default: 7)
  */
-const getRecentActivities = async (limit = 7) => {
+const getRecentActivitiesUncached = async (limit = 7) => {
   try {
     const response = await api.get(`/activity/activities?limit=${limit}`);
     return response.data;
@@ -616,8 +749,16 @@ const getRecentActivities = async (limit = 7) => {
     throw error;
   }
 };
+
+const getRecentActivities = async (limit = 7, forceRefresh = false) => {
+  return await CacheService.getData(
+    `activities_${limit}`,
+    () => getRecentActivitiesUncached(limit),
+    { ...CACHE_CONFIG.activities, forceRefresh }
+  );
+};
 // Physician Management APIs for Patients
-const getAvailablePhysicians = async () => {
+const getAvailablePhysiciansUncached = async () => {
   try {
     const response = await api.get('/users/physicians/available');
     return response.data;
@@ -627,6 +768,14 @@ const getAvailablePhysicians = async () => {
   }
 };
 
+const getAvailablePhysicians = async (forceRefresh = false) => {
+  return await CacheService.getData(
+    'physicians',
+    getAvailablePhysiciansUncached,
+    { ...CACHE_CONFIG.physicians, forceRefresh }
+  );
+};
+
 const sendPhysicianRequest = async (physicianId, reason = '', urgency = 'low') => {
   try {
     const response = await api.post('/users/physicians/request', {
@@ -634,6 +783,8 @@ const sendPhysicianRequest = async (physicianId, reason = '', urgency = 'low') =
       reason,
       urgency
     });
+    // Invalidate my_physician cache since request status may change
+    await CacheService.invalidate('my_physician');
     return response.data;
   } catch (error) {
     console.error('Error sending physician request:', error);
@@ -641,7 +792,7 @@ const sendPhysicianRequest = async (physicianId, reason = '', urgency = 'low') =
   }
 };
 
-const getMyPhysician = async () => {
+const getMyPhysicianUncached = async () => {
   try {
     const response = await api.get('/users/physicians/my-physician');
     return response.data;
@@ -651,7 +802,15 @@ const getMyPhysician = async () => {
   }
 };
 
-const getPhysicianAvailableSlots = async (physicianId, startDate = null, endDate = null) => {
+const getMyPhysician = async (forceRefresh = false) => {
+  return await CacheService.getData(
+    'my_physician',
+    getMyPhysicianUncached,
+    { ...CACHE_CONFIG.my_physician, forceRefresh }
+  );
+};
+
+const getPhysicianAvailableSlotsUncached = async (physicianId, startDate = null, endDate = null) => {
   try {
     const params = {};
     if (startDate) params.start_date = startDate;
@@ -665,9 +824,20 @@ const getPhysicianAvailableSlots = async (physicianId, startDate = null, endDate
   }
 };
 
+const getPhysicianAvailableSlots = async (physicianId, startDate = null, endDate = null, forceRefresh = false) => {
+  const cacheKey = `physician_slots_${physicianId}_${startDate || 'all'}_${endDate || 'all'}`;
+  return await CacheService.getData(
+    cacheKey,
+    () => getPhysicianAvailableSlotsUncached(physicianId, startDate, endDate),
+    { ...CACHE_CONFIG.physician_slots, forceRefresh }
+  );
+};
+
 const cancelPhysicianRequest = async (requestId) => {
   try {
     const response = await api.post(`/users/physicians/requests/${requestId}/cancel`);
+    // Invalidate my_physician cache since request status changed
+    await CacheService.invalidate('my_physician');
     return response.data;
   } catch (error) {
     console.error('Error cancelling physician request:', error);
@@ -678,6 +848,8 @@ const cancelPhysicianRequest = async (requestId) => {
 const disconnectPhysician = async (relationshipId) => {
   try {
     const response = await api.post(`/users/physicians/relationship/${relationshipId}/disconnect`);
+    // Invalidate my_physician cache since relationship ended
+    await CacheService.invalidate('my_physician');
     return response.data;
   } catch (error) {
     console.error('Error disconnecting from physician:', error);
@@ -971,6 +1143,8 @@ export const syncHealthData = async (healthDataArray) => {
     const response = await api.post('/health-data/sync', {
       data: healthDataArray
     });
+    // Invalidate all statistics caches after syncing new health data
+    await CacheService.invalidatePattern(/^statistics_/);
     return response.data;
   } catch (error) {
     console.error('Error syncing health data:', error);
@@ -1071,7 +1245,7 @@ export const getMonthlyStatistics = async (dataType, year = null, month = null) 
  * @param {string} date - Date for the period (optional)
  * @returns {Promise<Object>} Statistics summary
  */
-export const getStatisticsSummary = async (period = 'day', date = null) => {
+const getStatisticsSummaryUncached = async (period = 'day', date = null) => {
   try {
     const params = { period };
     if (date) params.date = date;
@@ -1083,10 +1257,22 @@ export const getStatisticsSummary = async (period = 'day', date = null) => {
   }
 };
 
+export const getStatisticsSummary = async (period = 'day', date = null, forceRefresh = false) => {
+  // Create unique cache key for each period and date combination
+  const cacheKey = `statistics_${period}_${date || 'current'}`;
+  return await CacheService.getData(
+    cacheKey,
+    () => getStatisticsSummaryUncached(period, date),
+    { ...CACHE_CONFIG.statistics_summary, forceRefresh }
+  );
+};
+
 // Diabetes Assessment API
 export const submitDiabetesAssessment = async (answers) => {
   try {
     const response = await api.post('/diabetes-assessment/submit', { answers });
+    // Invalidate assessment cache after submission
+    await CacheService.invalidatePattern(/^diabetes_assessment/);
     return response.data;
   } catch (error) {
     console.error('Error submitting diabetes assessment:', error);
@@ -1094,7 +1280,7 @@ export const submitDiabetesAssessment = async (answers) => {
   }
 };
 
-export const getMyAssessment = async () => {
+const getMyAssessmentUncached = async () => {
   try {
     const response = await api.get('/diabetes-assessment/my');
     return response.data;
@@ -1107,9 +1293,19 @@ export const getMyAssessment = async () => {
   }
 };
 
+export const getMyAssessment = async (forceRefresh = false) => {
+  return await CacheService.getData(
+    'diabetes_assessment_my',
+    () => getMyAssessmentUncached(),
+    { ...CACHE_CONFIG.risk_assessment, forceRefresh }
+  );
+};
+
 export const updateAssessmentAnswers = async (answers) => {
   try {
     const response = await api.put('/diabetes-assessment/update', { answers });
+    // Invalidate assessment cache after update
+    await CacheService.invalidatePattern(/^diabetes_assessment/);
     return response.data;
   } catch (error) {
     console.error('Error updating diabetes assessment:', error);
@@ -1118,7 +1314,7 @@ export const updateAssessmentAnswers = async (answers) => {
 };
 
 // Overall Risk Assessment API
-export const getOverallRiskAssessment = async () => {
+const getOverallRiskAssessmentUncached = async () => {
   try {
     const response = await api.get('/risk-assessment/overall');
     return response.data;
@@ -1128,9 +1324,20 @@ export const getOverallRiskAssessment = async () => {
   }
 };
 
+export const getOverallRiskAssessment = async (forceRefresh = false) => {
+  return await CacheService.getData(
+    'overall_risk_assessment',
+    () => getOverallRiskAssessmentUncached(),
+    { ...CACHE_CONFIG.risk_assessment, forceRefresh }
+  );
+};
+
 export const refreshOverallRiskAssessment = async () => {
   try {
     const response = await api.post('/risk-assessment/overall/refresh');
+    // Invalidate risk assessment cache after refresh
+    await CacheService.invalidatePattern(/^overall_risk_assessment/);
+    await CacheService.invalidatePattern(/^diabetes_assessment/);
     return response.data;
   } catch (error) {
     console.error('Error refreshing overall risk assessment:', error);
@@ -1328,7 +1535,7 @@ export const deleteFCMToken = async (fcmToken = null) => {
 };
 
 // Health Metrics Management
-export const getHealthMetrics = async () => {
+const getHealthMetricsUncached = async () => {
   try {
     const response = await api.get('/users/health-metrics');
     return response.data;
@@ -1338,6 +1545,14 @@ export const getHealthMetrics = async () => {
   }
 };
 
+export const getHealthMetrics = async (forceRefresh = false) => {
+  return await CacheService.getData(
+    'health_metrics',
+    getHealthMetricsUncached,
+    { ...CACHE_CONFIG.health_metrics, forceRefresh }
+  );
+};
+
 export const updateHealthMetrics = async (age, sex, height, weight, diagnosis_status = null) => {
   try {
     const payload = { age, sex, height, weight };
@@ -1345,6 +1560,11 @@ export const updateHealthMetrics = async (age, sex, height, weight, diagnosis_st
       payload.diagnosis_status = diagnosis_status;
     }
     const response = await api.put('/users/health-metrics', payload);
+    
+    // Invalidate caches
+    await CacheService.invalidate('health_metrics');
+    await CacheService.invalidate('user_profile');
+    
     return response.data;
   } catch (error) {
     console.error('Error updating health metrics:', error.response?.data || error.message);
@@ -1364,7 +1584,7 @@ export const updateDisclaimerStatus = async (accepted) => {
 };
 
 // Profile Management APIs
-export const getProfile = async () => {
+const getProfileUncached = async () => {
   try {
     const response = await api.get('/users/profile');
     return response.data;
@@ -1372,6 +1592,14 @@ export const getProfile = async () => {
     console.error('Error getting profile:', error.response?.data || error.message);
     throw error;
   }
+};
+
+export const getProfile = async (forceRefresh = false) => {
+  return await CacheService.getData(
+    'user_profile',
+    getProfileUncached,
+    { ...CACHE_CONFIG.user_profile, forceRefresh }
+  );
 };
 
 export const updateProfile = async (profileData) => {
@@ -1405,6 +1633,10 @@ export const updateProfile = async (profileData) => {
       },
     });
     
+    // Invalidate caches
+    await CacheService.invalidate('user_profile');
+    await CacheService.invalidate('health_metrics');
+    
     return response.data;
   } catch (error) {
     console.error('Error updating profile:', error.response?.data || error.message);
@@ -1415,6 +1647,8 @@ export const updateProfile = async (profileData) => {
 export const sendChatbotMessage = async (message) => {
   try {
     const response = await api.post('/chatbot/message', { message });
+    // Invalidate chatbot history cache after sending new message
+    await CacheService.invalidatePattern(/^chatbot_history_/);
     return response.data;
   } catch (error) {
     console.error('Error sending chatbot message:', error);
@@ -1422,7 +1656,7 @@ export const sendChatbotMessage = async (message) => {
   }
 };
 
-export const getChatbotHistory = async (skip = 0, limit = 20) => {
+const getChatbotHistoryUncached = async (skip = 0, limit = 20) => {
   try {
     const response = await api.get('/chatbot/history', {
       params: {
@@ -1435,6 +1669,16 @@ export const getChatbotHistory = async (skip = 0, limit = 20) => {
     console.error('Error fetching chatbot history:', error);
     throw error;
   }
+};
+
+export const getChatbotHistory = async (skip = 0, limit = 20, forceRefresh = false) => {
+  // Create unique cache key for each pagination offset
+  const cacheKey = `chatbot_history_${skip}_${limit}`;
+  return await CacheService.getData(
+    cacheKey,
+    () => getChatbotHistoryUncached(skip, limit),
+    { ...CACHE_CONFIG.chatbot_history, forceRefresh }
+  );
 };
 
 // ==================== Smoking Intake Management ====================
@@ -1513,6 +1757,8 @@ export const getLatestSmokingIntake = async () => {
 const createSmokingBaseline = async (baselineData) => {
   try {
     const response = await api.post('/smoking-tracking/baseline', baselineData);
+    // Invalidate all smoking-related caches
+    await CacheService.invalidatePattern(/^smoking_/);
     return response.data;
   } catch (error) {
     console.error('Error creating smoking baseline:', error.response?.data || error.message);
@@ -1536,7 +1782,7 @@ const getSmokingBaseline = async () => {
 /**
  * Check if user has baseline (quick check without full data)
  */
-const checkSmokingBaseline = async () => {
+const checkSmokingBaselineUncached = async () => {
   try {
     const response = await api.get('/smoking-tracking/baseline/check');
     return response.data;
@@ -1546,6 +1792,14 @@ const checkSmokingBaseline = async () => {
   }
 };
 
+const checkSmokingBaseline = async (forceRefresh = false) => {
+  return await CacheService.getData(
+    'smoking_baseline_check',
+    () => checkSmokingBaselineUncached(),
+    { ...CACHE_CONFIG.baseline, forceRefresh }
+  );
+};
+
 /**
  * Update smoking baseline (only allowed if not locked)
  * @param {object} updates - Fields to update
@@ -1553,6 +1807,8 @@ const checkSmokingBaseline = async () => {
 const updateSmokingBaseline = async (updates) => {
   try {
     const response = await api.put('/smoking-tracking/baseline', updates);
+    // Invalidate all smoking-related caches
+    await CacheService.invalidatePattern(/^smoking_/);
     return response.data;
   } catch (error) {
     console.error('Error updating smoking baseline:', error.response?.data || error.message);
@@ -1569,6 +1825,8 @@ const updateSmokingBaseline = async (updates) => {
 const logDailySmoking = async (recordData) => {
   try {
     const response = await api.post('/smoking-tracking/daily', recordData);
+    // Invalidate all smoking-related caches
+    await CacheService.invalidatePattern(/^smoking_/);
     return response.data;
   } catch (error) {
     console.error('Error logging daily smoking:', error.response?.data || error.message);
@@ -1582,7 +1840,7 @@ const logDailySmoking = async (recordData) => {
  * @param {string} endDate - End date (YYYY-MM-DD)
  * @param {number} limit - Max records to return
  */
-const getDailySmokingRecords = async (startDate = null, endDate = null, limit = 30) => {
+const getDailySmokingRecordsUncached = async (startDate = null, endDate = null, limit = 30) => {
   try {
     const params = {};
     if (startDate) params.start_date = startDate;
@@ -1597,6 +1855,15 @@ const getDailySmokingRecords = async (startDate = null, endDate = null, limit = 
   }
 };
 
+const getDailySmokingRecords = async (startDate = null, endDate = null, limit = 30, forceRefresh = false) => {
+  const cacheKey = `smoking_records_${startDate || 'all'}_${endDate || 'all'}_${limit}`;
+  return await CacheService.getData(
+    cacheKey,
+    () => getDailySmokingRecordsUncached(startDate, endDate, limit),
+    { ...CACHE_CONFIG.daily_records, forceRefresh }
+  );
+};
+
 /**
  * Delete a daily smoking record
  * @param {string} date - Date to delete (YYYY-MM-DD)
@@ -1604,6 +1871,8 @@ const getDailySmokingRecords = async (startDate = null, endDate = null, limit = 
 const deleteDailySmokingRecord = async (date) => {
   try {
     const response = await api.delete(`/smoking-tracking/daily/${date}`);
+    // Invalidate all smoking-related caches
+    await CacheService.invalidatePattern(/^smoking_/);
     return response.data;
   } catch (error) {
     console.error('Error deleting daily smoking record:', error.response?.data || error.message);
@@ -1630,6 +1899,8 @@ const getSmokingMetrics = async () => {
 const refreshSmokingMetrics = async () => {
   try {
     const response = await api.post('/smoking-tracking/metrics/refresh');
+    // Invalidate all smoking-related caches
+    await CacheService.invalidatePattern(/^smoking_/);
     return response.data;
   } catch (error) {
     console.error('Error refreshing smoking metrics:', error.response?.data || error.message);
@@ -1668,7 +1939,7 @@ const getSmokingRiskHistory = async (limit = 10) => {
  * Get smoking tracking summary (dashboard data)
  * @param {number} days - Days of history to include
  */
-const getSmokingSummary = async (days = 7) => {
+const getSmokingSummaryUncached = async (days = 7) => {
   try {
     const response = await api.get('/smoking-tracking/summary', { params: { days } });
     return response.data;
@@ -1676,6 +1947,14 @@ const getSmokingSummary = async (days = 7) => {
     console.error('Error fetching smoking summary:', error.response?.data || error.message);
     throw error;
   }
+};
+
+export const getSmokingSummary = async (days = 7, forceRefresh = false) => {
+  return await CacheService.getData(
+    `smoking_summary_${days}d`,
+    () => getSmokingSummaryUncached(days),
+    { ...CACHE_CONFIG.risk_assessment, forceRefresh }
+  );
 };
 
 // ==================== Alcohol Intake Management ====================
@@ -1707,6 +1986,8 @@ export const createAlcoholBaseline = async (
       years_at_current_pattern: yearsAtCurrentPattern,
       drinks_with_meals: drinksWithMeals
     });
+    // Invalidate all alcohol-related caches
+    await CacheService.invalidatePattern(/^alcohol_/);
     return response.data;
   } catch (error) {
     console.error('Error creating alcohol baseline:', error);
@@ -1771,6 +2052,8 @@ export const updateAlcoholBaseline = async (
     if (drinksWithMeals !== null) payload.drinks_with_meals = drinksWithMeals;
     
     const response = await api.put('/alcohol-intake/baseline', payload);
+    // Invalidate all alcohol-related caches
+    await CacheService.invalidatePattern(/^alcohol_/);
     return response.data;
   } catch (error) {
     console.error('Error updating alcohol baseline:', error);
@@ -1807,6 +2090,8 @@ export const logDailyAlcohol = async (
     if (notes) payload.notes = notes;
     
     const response = await api.post('/alcohol-intake/daily', payload);
+    // Invalidate all alcohol-related caches
+    await CacheService.invalidatePattern(/^alcohol_/);
     return response.data;
   } catch (error) {
     console.error('Error logging daily alcohol:', error);
@@ -1821,7 +2106,7 @@ export const logDailyAlcohol = async (
  * @param {number} days - Number of days (default: 30)
  * @returns {Promise<Object>} List of records
  */
-export const getDailyAlcoholRecords = async (startDate = null, endDate = null, days = 30) => {
+const getDailyAlcoholRecordsUncached = async (startDate = null, endDate = null, days = 30) => {
   try {
     const params = new URLSearchParams();
     if (startDate) params.append('start_date', startDate);
@@ -1836,6 +2121,15 @@ export const getDailyAlcoholRecords = async (startDate = null, endDate = null, d
   }
 };
 
+export const getDailyAlcoholRecords = async (startDate = null, endDate = null, days = 30, forceRefresh = false) => {
+  const cacheKey = `alcohol_records_${startDate || 'all'}_${endDate || 'all'}_${days}`;
+  return await CacheService.getData(
+    cacheKey,
+    () => getDailyAlcoholRecordsUncached(startDate, endDate, days),
+    { ...CACHE_CONFIG.daily_records, forceRefresh }
+  );
+};
+
 /**
  * Delete daily alcohol record
  * @param {string} date - Date to delete (YYYY-MM-DD)
@@ -1844,6 +2138,8 @@ export const getDailyAlcoholRecords = async (startDate = null, endDate = null, d
 export const deleteDailyAlcoholRecord = async (date) => {
   try {
     const response = await api.delete(`/alcohol-intake/daily/${date}`);
+    // Invalidate all alcohol-related caches
+    await CacheService.invalidatePattern(/^alcohol_/);
     return response.data;
   } catch (error) {
     console.error('Error deleting daily alcohol record:', error);
@@ -1899,7 +2195,7 @@ export const getAlcoholRiskAssessment = async () => {
  * Get comprehensive alcohol summary for dashboard
  * @returns {Promise<Object>} Complete alcohol status (baseline + metrics + risk + records)
  */
-export const getAlcoholSummary = async () => {
+const getAlcoholSummaryUncached = async () => {
   try {
     const response = await api.get('/alcohol-intake/summary');
     return response.data.data; // Extract the nested data object
@@ -1907,6 +2203,14 @@ export const getAlcoholSummary = async () => {
     console.error('Error fetching alcohol summary:', error);
     throw error;
   }
+};
+
+export const getAlcoholSummary = async (forceRefresh = false) => {
+  return await CacheService.getData(
+    'alcohol_summary',
+    () => getAlcoholSummaryUncached(),
+    { ...CACHE_CONFIG.risk_assessment, forceRefresh }
+  );
 };
 
 // ==================== LEGACY ALCOHOL INTAKE (DEPRECATED) ====================
@@ -2000,6 +2304,8 @@ export const createSleepBaseline = async (
     if (usualWakeTime) payload.usual_wake_time = usualWakeTime;
     
     const response = await api.post('/sleep-tracking/baseline', payload);
+    // Invalidate all sleep-related caches
+    await CacheService.invalidatePattern(/^sleep_/);
     return response.data;
   } catch (error) {
     console.error('Error creating sleep baseline:', error.response?.data || error.message);
@@ -2061,6 +2367,8 @@ export const updateSleepBaseline = async (
     if (usualWakeTime) payload.usual_wake_time = usualWakeTime;
     
     const response = await api.put('/sleep-tracking/baseline', payload);
+    // Invalidate all sleep-related caches
+    await CacheService.invalidatePattern(/^sleep_/);
     return response.data;
   } catch (error) {
     console.error('Error updating sleep baseline:', error.response?.data || error.message);
@@ -2097,6 +2405,8 @@ export const logDailySleep = async (
     if (notes) payload.notes = notes;
     
     const response = await api.post('/sleep-tracking/daily', payload);
+    // Invalidate all sleep-related caches
+    await CacheService.invalidatePattern(/^sleep_/);
     return response.data;
   } catch (error) {
     console.error('Error logging daily sleep:', error.response?.data || error.message);
@@ -2112,7 +2422,7 @@ export const logDailySleep = async (
  * @param {string} source - Filter by source (manual, health_connect)
  * @returns {Promise<Object>} List of records
  */
-export const getDailySleepRecords = async (startDate = null, endDate = null, days = 30, source = null) => {
+const getDailySleepRecordsUncached = async (startDate = null, endDate = null, days = 30, source = null) => {
   try {
     const params = new URLSearchParams();
     if (startDate) params.append('start_date', startDate);
@@ -2128,6 +2438,15 @@ export const getDailySleepRecords = async (startDate = null, endDate = null, day
   }
 };
 
+export const getDailySleepRecords = async (startDate = null, endDate = null, days = 30, source = null, forceRefresh = false) => {
+  const cacheKey = `sleep_records_${startDate || 'all'}_${endDate || 'all'}_${days}_${source || 'all'}`;
+  return await CacheService.getData(
+    cacheKey,
+    () => getDailySleepRecordsUncached(startDate, endDate, days, source),
+    { ...CACHE_CONFIG.daily_records, forceRefresh }
+  );
+};
+
 /**
  * Delete daily sleep record
  * @param {string} date - Date to delete (YYYY-MM-DD)
@@ -2138,6 +2457,8 @@ export const deleteDailySleepRecord = async (date, source = null) => {
   try {
     const params = source ? `?source=${source}` : '';
     const response = await api.delete(`/sleep-tracking/daily/${date}${params}`);
+    // Invalidate all sleep-related caches
+    await CacheService.invalidatePattern(/^sleep_/);
     return response.data;
   } catch (error) {
     console.error('Error deleting daily sleep record:', error.response?.data || error.message);
@@ -2221,7 +2542,7 @@ export const getSleepRiskHistory = async (limit = 30) => {
  * Get comprehensive sleep summary for dashboard
  * @returns {Promise<Object>} Complete sleep status
  */
-export const getSleepSummary = async () => {
+const getSleepSummaryUncached = async () => {
   try {
     const response = await api.get('/sleep-tracking/summary');
     return response.data;
@@ -2229,6 +2550,14 @@ export const getSleepSummary = async () => {
     console.error('Error fetching sleep summary:', error.response?.data || error.message);
     throw error;
   }
+};
+
+export const getSleepSummary = async (forceRefresh = false) => {
+  return await CacheService.getData(
+    'sleep_summary',
+    () => getSleepSummaryUncached(),
+    { ...CACHE_CONFIG.risk_assessment, forceRefresh }
+  );
 };
 
 /**
@@ -2280,7 +2609,7 @@ export const submitFoodBaseline = async (responses) => {
  * Get user's food baseline assessment
  * @returns {Promise<Object>} Baseline assessment data
  */
-export const getFoodBaseline = async () => {
+const getFoodBaselineUncached = async () => {
   try {
     const response = await api.get('/food-risk/baseline');
     return response.data;
@@ -2289,6 +2618,14 @@ export const getFoodBaseline = async () => {
     throw error;
   }
 };
+
+export const getFoodBaseline = async (forceRefresh = false) => {
+  return await CacheService.getData(
+    'food_baseline',
+    getFoodBaselineUncached,
+    { ...CACHE_CONFIG.baseline, forceRefresh }
+  )};
+
 
 /**
  * Get comprehensive food risk assessment
@@ -2324,7 +2661,7 @@ export const getFoodRecommendations = async () => {
  * @param {number} days - Number of days to analyze (default: 7)
  * @returns {Promise<Object>} Comprehensive assessment with detailed explanations
  */
-export const getDetailedFoodAssessment = async (days = 7) => {
+const getDetailedFoodAssessmentUncached = async (days = 7) => {
   try {
     const response = await api.get(`/food-risk/detailed-assessment?days=${days}`);
     console.log('Detailed Food Assessment Response:', response.data);
@@ -2333,6 +2670,14 @@ export const getDetailedFoodAssessment = async (days = 7) => {
     console.error('Error fetching detailed assessment:', error.response?.data || error.message);
     throw error;
   }
+};
+
+export const getDetailedFoodAssessment = async (days = 7, forceRefresh = false) => {
+  return await CacheService.getData(
+    `food_assessment_${days}d`,
+    () => getDetailedFoodAssessmentUncached(days),
+    { ...CACHE_CONFIG.risk_assessment, forceRefresh }
+  );
 };
 
 /**
@@ -2388,7 +2733,7 @@ export const getHealthyDefaults = async () => {
  * @param {number} days - Number of days to analyze (default: 7)
  * @returns {Promise<Object>} Food timeline predictions
  */
-export const getFoodPredictions = async (days = 7) => {
+const getFoodPredictionsUncached = async (days = 7) => {
   try {
     const response = await api.get(`/lifestyle/food/predictions?days=${days}`);
     return response.data;
@@ -2396,6 +2741,14 @@ export const getFoodPredictions = async (days = 7) => {
     console.error('Error fetching food predictions:', error.response?.data || error.message);
     throw error;
   }
+};
+
+export const getFoodPredictions = async (days = 7, forceRefresh = false) => {
+  return await CacheService.getData(
+    `food_predictions_${days}d`,
+    () => getFoodPredictionsUncached(days),
+    { ...CACHE_CONFIG.risk_assessment, forceRefresh }
+  );
 };
 
 /**
@@ -2474,6 +2827,8 @@ export const createStepBaseline = async (
       baseline_exercise_minutes_per_week: exerciseMinutes,
       baseline_work_type: workType,
     });
+    // Invalidate all step-related caches
+    await CacheService.invalidatePattern(/^step_/);
     return response.data;
   } catch (error) {
     console.error('Error creating step baseline:', error.response?.data || error.message);
@@ -2485,7 +2840,7 @@ export const createStepBaseline = async (
 /**
  * Get user's step baseline
  */
-export const getStepBaseline = async () => {
+const getStepBaselineUncached = async () => {
   try {
     const response = await api.get('/step-tracking/baseline');
     return response.data;
@@ -2494,10 +2849,18 @@ export const getStepBaseline = async () => {
     throw error;
   }
 };
+
+export const getStepBaseline = async (forceRefresh = false) => {
+  return await CacheService.getData(
+    'step_baseline',
+    () => getStepBaselineUncached(),
+    { ...CACHE_CONFIG.baseline, forceRefresh }
+  );
+};
 /**
  * Check if user has completed step baseline
  */
-export const checkStepBaseline = async () => {
+const checkStepBaselineUncached = async () => {
   try {
     const response = await api.get('/step-tracking/baseline/check');
     return response.data;
@@ -2505,6 +2868,14 @@ export const checkStepBaseline = async () => {
     console.error('Error checking step baseline:', error.response?.data || error.message);
     throw error;
   }
+};
+
+export const checkStepBaseline = async (forceRefresh = false) => {
+  return await CacheService.getData(
+    'step_baseline_check',
+    () => checkStepBaselineUncached(),
+    { ...CACHE_CONFIG.meals_today, forceRefresh }
+  );
 };
 /**
  * Update step baseline (retake questionnaire)
@@ -2524,6 +2895,8 @@ export const updateStepBaseline = async (
       baseline_exercise_minutes_per_week: exerciseMinutes,
       baseline_work_type: workType,
     });
+    // Invalidate all step-related caches
+    await CacheService.invalidatePattern(/^step_/);
     return response.data;
   } catch (error) {
     console.error('Error updating step baseline:', error.response?.data || error.message);
@@ -2546,7 +2919,7 @@ export const getStepMetrics = async () => { // ← ADD export here
 /**
  * Get comprehensive step summary for dashboard
  */
-export const getStepSummary = async (days = 7) => { // ← ADD export here
+const getStepSummaryUncached = async (days = 7) => {
   try {
     const response = await api.get(`/step-tracking/summary?days=${days}`);
     return response.data;
@@ -2554,6 +2927,14 @@ export const getStepSummary = async (days = 7) => { // ← ADD export here
     console.error('Error getting step summary:', error);
     throw error;
   }
+};
+
+export const getStepSummary = async (days = 7, forceRefresh = false) => {
+  return await CacheService.getData(
+    `step_summary_${days}d`,
+    () => getStepSummaryUncached(days),
+    { ...CACHE_CONFIG.risk_assessment, forceRefresh }
+  );
 };
 
 // Add the functions to the api object

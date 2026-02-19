@@ -51,14 +51,17 @@ const AlcoholTrackingScreen = ({ navigation }) => {
 
   const loadData = async () => {
     try {
-      setLoading(true);
+      // Only show loading spinner if we don't have data yet (first load)
+      if (!baseline && !metrics && records.length === 0) {
+        setLoading(true);
+      }
       
       // Check if baseline exists
       const baselineCheck = await checkAlcoholBaseline();
       setHasBaseline(baselineCheck.has_baseline);
 
       if (baselineCheck.has_baseline) {
-        // Load full summary
+        // Load full summary (uses cache if available)
         const summary = await getAlcoholSummary();
         setBaseline(summary.baseline);
         setMetrics(summary.metrics);
@@ -75,8 +78,24 @@ const AlcoholTrackingScreen = ({ navigation }) => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
-    setRefreshing(false);
+    try {
+      // Check baseline
+      const baselineCheck = await checkAlcoholBaseline();
+      setHasBaseline(baselineCheck.has_baseline);
+
+      if (baselineCheck.has_baseline) {
+        // Force refresh to bypass cache
+        const summary = await getAlcoholSummary(true); // forceRefresh = true
+        setBaseline(summary.baseline);
+        setMetrics(summary.metrics);
+        setRisk(summary.risk_assessment);
+        setRecords(summary.recent_records || []);
+      }
+    } catch (error) {
+      console.error('Error refreshing alcohol data:', error);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleDeleteRecord = (date) => {

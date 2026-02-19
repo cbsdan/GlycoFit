@@ -40,9 +40,12 @@ const PredictionScreen = ({ navigation }) => {
 
   const loadAssessment = async () => {
     try {
-      setLoading(true);
+      // Only show loading spinner if we don't have data yet (first load)
+      if (!assessment && !overallRisk) {
+        setLoading(true);
+      }
       
-      // Load initial diabetes assessment
+      // Load initial diabetes assessment (uses cache if available)
       const result = await getMyAssessment();
       if (result && result.assessment) {
         setAssessment(result.assessment);
