@@ -11,6 +11,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../services/api';
@@ -27,6 +28,7 @@ import { LifestyleRecommendationsSection } from '../components/recommendations';
  */
 const SmokingTrackingScreen = ({ navigation }) => {
   const { colors, isDarkMode } = useTheme();
+  const { user } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -491,8 +493,8 @@ const SmokingTrackingScreen = ({ navigation }) => {
     );
   }
 
-  // Baseline CTA if no baseline
-  if (!hasBaseline) {
+  // Baseline CTA if no baseline (skip for diagnosed users)
+  if (!hasBaseline && !isDiagnosed) {
     return (
       <SafeAreaView style={styles.container}>
         <ScrollView 
@@ -544,6 +546,9 @@ const SmokingTrackingScreen = ({ navigation }) => {
   const metrics = summary?.metrics;
   const risk = summary?.risk_assessment;
 
+  // Check if user is diagnosed with prediabetes or type 2 diabetes
+  const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView 
@@ -564,8 +569,8 @@ const SmokingTrackingScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Risk Assessment Card */}
-        {risk && (
+        {/* Risk Assessment Card - Only show for non-diagnosed users */}
+        {!isDiagnosed && risk && (
           <View style={[styles.riskCard, { backgroundColor: getRiskColor(risk.risk_category) }]}>
             <View style={styles.riskHeader}>
               <Text style={styles.riskTitle}>Risk Assessment</Text>
@@ -627,13 +632,16 @@ const SmokingTrackingScreen = ({ navigation }) => {
             <Text style={styles.actionButtonText}>Log Today</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[styles.actionButton, styles.secondaryActionButton]} 
-            onPress={handleStartBaseline}
-          >
-            <Icon name="cog" size={20} color={colors.text} />
-            <Text style={[styles.actionButtonText, styles.secondaryActionButtonText]}>Baseline</Text>
-          </TouchableOpacity>
+          {/* Hide baseline button for diagnosed users */}
+          {!isDiagnosed && (
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.secondaryActionButton]} 
+              onPress={handleStartBaseline}
+            >
+              <Icon name="cog" size={20} color={colors.text} />
+              <Text style={[styles.actionButtonText, styles.secondaryActionButtonText]}>Baseline</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Educational Info */}

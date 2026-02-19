@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
   initializeHealthConnect,
@@ -48,6 +49,7 @@ const ACHIEVEMENTS = [
 const StepCounterScreen = ({ navigation }) => {
   const { colors } = useTheme();
   const toast = useToast();
+  const { user } = useAuth();
 
   // State management
   const [isLoading, setIsLoading] = useState(true);
@@ -72,6 +74,9 @@ const StepCounterScreen = ({ navigation }) => {
   const [hasBaseline, setHasBaseline] = useState(false);
   const [baselineData, setBaselineData] = useState(null);
   const [summary, setSummary] = useState(null); // ADD THIS LINE
+
+  // Check if user is diagnosed with prediabetes or type 2 diabetes
+  const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
 
   // Refs
   const syncIntervalRef = useRef(null);
@@ -690,17 +695,20 @@ const checkBaseline = async () => {
         setHasBaseline(false);
         setBaselineData(null);
         
-        Alert.alert(
-          'Complete Activity Baseline',
-          'Before tracking your steps, please complete a quick baseline assessment to establish your typical activity patterns.',
-          [
-            {
-              text: 'Start Assessment',
-              onPress: () => navigation.navigate('StepBaseline', { isEdit: false }),
-            },
-          ],
-          { cancelable: false }
-        );
+        // Skip baseline prompt for diagnosed users
+        if (!isDiagnosed) {
+          Alert.alert(
+            'Complete Activity Baseline',
+            'Before tracking your steps, please complete a quick baseline assessment to establish your typical activity patterns.',
+            [
+              {
+                text: 'Start Assessment',
+                onPress: () => navigation.navigate('StepBaseline', { isEdit: false }),
+              },
+            ],
+            { cancelable: false }
+          );
+        }
       }
       
       return exists;
@@ -1181,6 +1189,8 @@ const renderRiskAssessment = useCallback(() => {
 
 // REPLACE renderRetakeBaseline (around line 600):
 const renderRetakeBaseline = () => {
+  // Hide for diagnosed users
+  if (isDiagnosed) return null;
   if (!hasBaseline || !baselineData) return null;
 
   return (
@@ -1857,7 +1867,8 @@ educationBullet: {
         {renderStreakBadge()}
         {renderHealthInsights()}
         {renderRecentSynced()}
-        {renderRiskAssessment()}
+        {/* Risk Assessment - Only show for non-diagnosed users */}
+        {!isDiagnosed && renderRiskAssessment()}
         {renderAchievements()}
         {renderChart()}
 

@@ -13,6 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -46,6 +47,7 @@ import { LifestyleRecommendationsSection } from '../components/recommendations';
  */
 const SleepTrackingScreen = ({ navigation }) => {
   const { colors, isDarkMode } = useTheme();
+  const { user } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -1015,8 +1017,8 @@ const SleepTrackingScreen = ({ navigation }) => {
     );
   }
 
-  // Show baseline CTA if not completed
-  if (!hasBaseline) {
+  // Show baseline CTA if not completed (skip for diagnosed users)
+  if (!hasBaseline && !isDiagnosed) {
     return (
       <SafeAreaView style={styles.container}>
         <ScrollView contentContainerStyle={styles.scrollContainer}>
@@ -1105,6 +1107,9 @@ const SleepTrackingScreen = ({ navigation }) => {
   const riskColor = getRiskColor(risk.risk_category);
   const sourceInfo = getDataSourceLabel(metrics.dominant_sleep_source);
 
+  // Check if user is diagnosed with prediabetes or type 2 diabetes
+  const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -1139,43 +1144,47 @@ const SleepTrackingScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Risk Assessment Card */}
-        <View style={[styles.riskCard, { backgroundColor: riskColor }]}>
-          <View style={styles.riskHeader}>
-            <Text style={styles.riskTitle}>SLEEP-RELATED DIABETES RISK</Text>
-          </View>
-          <Text style={styles.riskScore}>{Math.round(risk.risk_score || 0)}</Text>
-          <Text style={styles.riskLabel}>{getRiskLabel(risk.risk_category)}</Text>
-
-          {risk.risk_factors && risk.risk_factors.length > 0 && (
-            <View style={styles.riskFactors}>
-              {risk.risk_factors.slice(0, 3).map((factor, index) => (
-                <View key={index} style={styles.riskFactorItem}>
-                  <Icon name="alert-circle" size={14} color="#FFFFFF" />
-                  <Text style={styles.riskFactorText}>
-                    {factor.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                  </Text>
-                </View>
-              ))}
+        {/* Risk Assessment Card - Only show for non-diagnosed users */}
+        {!isDiagnosed && (
+          <View style={[styles.riskCard, { backgroundColor: riskColor }]}>
+            <View style={styles.riskHeader}>
+              <Text style={styles.riskTitle}>SLEEP-RELATED DIABETES RISK</Text>
             </View>
-          )}
-          <View style={styles.riskBadge}>
-            <Text style={styles.riskBadgeText}>
-              {metrics.days_with_data_30d || 0} days tracked
-            </Text>
-          </View>
-        </View>
+            <Text style={styles.riskScore}>{Math.round(risk.risk_score || 0)}</Text>
+            <Text style={styles.riskLabel}>{getRiskLabel(risk.risk_category)}</Text>
 
-        {/* Retake Baseline Button */}
-        <TouchableOpacity
-          style={styles.retakeBaselineButton}
-          onPress={() => navigation.navigate('SleepBaseline', { baseline: summary?.baseline })}
-          accessibilityRole="button"
-          accessibilityLabel="Retake sleep baseline questionnaire"
-        >
-          <Icon name="refresh" size={18} color={colors.secondary} />
-          <Text style={styles.retakeBaselineText}>Retake Baseline Questionnaire</Text>
-        </TouchableOpacity>
+            {risk.risk_factors && risk.risk_factors.length > 0 && (
+              <View style={styles.riskFactors}>
+                {risk.risk_factors.slice(0, 3).map((factor, index) => (
+                  <View key={index} style={styles.riskFactorItem}>
+                    <Icon name="alert-circle" size={14} color="#FFFFFF" />
+                    <Text style={styles.riskFactorText}>
+                      {factor.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            <View style={styles.riskBadge}>
+              <Text style={styles.riskBadgeText}>
+                {metrics.days_with_data_30d || 0} days tracked
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Retake Baseline Button - Hide for diagnosed users */}
+        {!isDiagnosed && (
+          <TouchableOpacity
+            style={styles.retakeBaselineButton}
+            onPress={() => navigation.navigate('SleepBaseline', { baseline: summary?.baseline })}
+            accessibilityRole="button"
+            accessibilityLabel="Retake sleep baseline questionnaire"
+          >
+            <Icon name="refresh" size={18} color={colors.secondary} />
+            <Text style={styles.retakeBaselineText}>Retake Baseline Questionnaire</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Metrics Grid */}
         <View style={styles.metricsGrid}>

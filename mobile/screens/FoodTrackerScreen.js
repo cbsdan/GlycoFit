@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../services/api';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -24,6 +25,7 @@ const { width } = Dimensions.get('window');
 const FoodTrackerScreen = ({ navigation }) => {
   const { colors } = useTheme();
   const toast = useToast();
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -43,6 +45,9 @@ const FoodTrackerScreen = ({ navigation }) => {
   });
   const [nutrientModalVisible, setNutrientModalVisible] = useState(false);
   const [selectedNutrient, setSelectedNutrient] = useState(null);
+
+  // Check if user is diagnosed with prediabetes or type 2 diabetes
+  const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
 
   // Nutrient descriptions with diabetes context
   const nutrientDescriptions = {
@@ -195,8 +200,8 @@ const FoodTrackerScreen = ({ navigation }) => {
     );
   }
 
-  // Show baseline prompt if no baseline completed
-  if (!hasBaseline) {
+  // Show baseline prompt if no baseline completed (skip for diagnosed users)
+  if (!hasBaseline && !isDiagnosed) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         {/* Header */}
@@ -250,9 +255,12 @@ const FoodTrackerScreen = ({ navigation }) => {
           <TouchableOpacity onPress={() => navigation.navigate('MealHistory')} style={styles.historyButton}>
             <Icon name="history" size={20} color={colors.primary} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('FoodBaseline')} style={styles.editButton}>
-            <Icon name="pencil" size={20} color={colors.primary} />
-          </TouchableOpacity>
+          {/* Hide baseline edit button for diagnosed users */}
+          {!isDiagnosed && (
+            <TouchableOpacity onPress={() => navigation.navigate('FoodBaseline')} style={styles.editButton}>
+              <Icon name="pencil" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -273,26 +281,28 @@ const FoodTrackerScreen = ({ navigation }) => {
 
         {riskAssessment ? (
           <>
-            {/* Risk Score Card - Enhanced */}
-            <LinearGradient
-              colors={getRiskGradient(riskAssessment.overall_risk.score)}
-              style={styles.riskCard}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <View style={styles.riskScoreContainer}>
-                <Text style={styles.riskScoreLabel}>YOUR PREDIABETES RISK</Text>
-                <Text style={styles.riskScore}>{riskAssessment.overall_risk.score.toFixed(1)}%</Text>
-                <View style={styles.riskCategoryBadge}>
-                  <Text style={styles.riskCategoryText}>{riskAssessment.overall_risk.category.toUpperCase()} RISK</Text>
+            {/* Risk Score Card - Enhanced (Hide for diagnosed users) */}
+            {!isDiagnosed && (
+              <LinearGradient
+                colors={getRiskGradient(riskAssessment.overall_risk.score)}
+                style={styles.riskCard}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <View style={styles.riskScoreContainer}>
+                  <Text style={styles.riskScoreLabel}>YOUR PREDIABETES RISK</Text>
+                  <Text style={styles.riskScore}>{riskAssessment.overall_risk.score.toFixed(1)}%</Text>
+                  <View style={styles.riskCategoryBadge}>
+                    <Text style={styles.riskCategoryText}>{riskAssessment.overall_risk.category.toUpperCase()} RISK</Text>
+                  </View>
                 </View>
-              </View>
-              
-              <View style={styles.riskMessageContainer}>
-                <Icon name="information-outline" size={22} color="#FFF" />
-                <Text style={styles.riskMessage}>{riskAssessment.overall_risk.message}</Text>
-              </View>
-            </LinearGradient>
+                
+                <View style={styles.riskMessageContainer}>
+                  <Icon name="information-outline" size={22} color="#FFF" />
+                  <Text style={styles.riskMessage}>{riskAssessment.overall_risk.message}</Text>
+                </View>
+              </LinearGradient>
+            )}
 
             {/* Nutrient Analysis - Collapsible Section with Full-Width Cards */}
             {riskAssessment.daily_log_assessment.nutrient_analysis && riskAssessment.daily_log_assessment.nutrient_analysis.length > 0 && (
@@ -501,8 +511,8 @@ const FoodTrackerScreen = ({ navigation }) => {
               </TouchableOpacity>
             )}
 
-            {/* Risk Explanation - Expandable */}
-            {riskAssessment.overall_risk.explanation && (
+            {/* Risk Explanation - Expandable (Hide for diagnosed users) */}
+            {!isDiagnosed && riskAssessment.overall_risk.explanation && (
               <TouchableOpacity
                 style={[styles.expandableCard, { backgroundColor: colors.card }]}
                 onPress={() => toggleSection('explanation')}
@@ -547,12 +557,13 @@ const FoodTrackerScreen = ({ navigation }) => {
               </TouchableOpacity>
             )}
 
-            {/* Risk Breakdown - Expandable */}
-            <TouchableOpacity
-              style={[styles.expandableCard, { backgroundColor: colors.card }]}
-              onPress={() => toggleSection('breakdown')}
-              activeOpacity={0.7}
-            >
+            {/* Risk Breakdown - Expandable (Hide for diagnosed users) */}
+            {!isDiagnosed && (
+              <TouchableOpacity
+                style={[styles.expandableCard, { backgroundColor: colors.card }]}
+                onPress={() => toggleSection('breakdown')}
+                activeOpacity={0.7}
+              >
               <View style={styles.expandableHeader}>
                 <View style={styles.expandableTitle}>
                   <Icon name="chart-bar" size={24} color="#2196F3" />
@@ -636,10 +647,11 @@ const FoodTrackerScreen = ({ navigation }) => {
                   )}
                 </View>
               )}
-            </TouchableOpacity>
+              </TouchableOpacity>
+            )}
 
-            {/* Top Risk Contributors - Expandable */}
-            {riskAssessment.baseline_assessment.top_contributors && riskAssessment.baseline_assessment.top_contributors.length > 0 && (
+            {/* Top Risk Contributors - Expandable (Hide for diagnosed users) */}
+            {!isDiagnosed && riskAssessment.baseline_assessment.top_contributors && riskAssessment.baseline_assessment.top_contributors.length > 0 && (
               <TouchableOpacity
                 style={[styles.expandableCard, { backgroundColor: colors.card }]}
                 onPress={() => toggleSection('contributors')}

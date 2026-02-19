@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { getMyAssessment, submitDiabetesAssessment } from '../services/api';
 import api from '../services/api';
@@ -23,6 +24,7 @@ import HealthMetricsSetupScreen from './HealthMetricsSetupScreen';
 const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, onComplete }) => {
   const { colors } = useTheme();
   const toast = useToast();
+  const { user } = useAuth();
   
   const [currentStep, setCurrentStep] = useState(0);
   const [answers, setAnswers] = useState({});
@@ -894,7 +896,80 @@ const DiabetesRiskAssessmentScreen = ({ navigation, isInitial = false, onSkip, o
       fontSize: 13,
       fontWeight: '500',
     },
+    diagnosedMessageContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 32,
+    },
+    diagnosedTitle: {
+      fontSize: 22,
+      fontWeight: '700',
+      color: colors.text,
+      marginTop: 24,
+      marginBottom: 16,
+      textAlign: 'center',
+    },
+    diagnosedMessage: {
+      fontSize: 16,
+      color: colors.secondary,
+      textAlign: 'center',
+      lineHeight: 24,
+      marginBottom: 32,
+    },
   });
+
+  // Check if user is diagnosed - skip initial assessment
+  const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
+  
+  if (isDiagnosed) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => {
+              if (isInitial && onSkip) {
+                onSkip();
+              } else {
+                navigation.goBack();
+              }
+            }}
+            style={styles.backButton}
+          >
+            <Icon name="arrow-left" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Risk Assessment</Text>
+          <View style={styles.headerActions} />
+        </View>
+        
+        <ScrollView contentContainerStyle={styles.scrollContainer}>
+          <View style={styles.diagnosedMessageContainer}>
+            <Icon name="information-outline" size={64} color={colors.primary} />
+            <Text style={styles.diagnosedTitle}>Assessment Not Required</Text>
+            <Text style={styles.diagnosedMessage}>
+              Since you have been diagnosed with {user?.diagnosis_status === 'prediabetes' ? 'prediabetes' : 'type 2 diabetes'}, 
+              you don't need to complete this risk assessment.
+              {'\n\n'}
+              You can track your health through lifestyle monitoring and receive personalized recommendations.
+            </Text>
+            <TouchableOpacity
+              style={styles.submitButton}
+              onPress={() => {
+                if (isInitial && onSkip) {
+                  onSkip();
+                } else {
+                  navigation.goBack();
+                }
+              }}
+            >
+              <Icon name="arrow-left" size={20} color="#FFFFFF" />
+              <Text style={styles.submitButtonText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>

@@ -45,6 +45,8 @@ const HomeScreen = ({ navigation }) => {
   const [healthConnectAvailable, setHealthConnectAvailable] = useState(false);
   const [showHealthMetricsPrompt, setShowHealthMetricsPrompt] = useState(false);
   const [showHealthMetricsModal, setShowHealthMetricsModal] = useState(false);
+  const [showProfilePrompt, setShowProfilePrompt] = useState(false);
+  const [isDiagnosed, setIsDiagnosed] = useState(false);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -58,11 +60,17 @@ const HomeScreen = ({ navigation }) => {
       console.log('🏠 HomeScreen: Loading dashboard data...');
       console.log('👤 Current user:', user?.uid || 'NO USER');
       
-      await Promise.all([
-        fetchNutritionData(),
-        fetchHealthData(),
-        checkHealthMetricsStatus(),
-      ]);
+      // Check profile completion first
+      const isProfileComplete = await checkProfileCompletion();
+      
+      // Only load other data if profile is complete
+      if (isProfileComplete) {
+        await Promise.all([
+          fetchNutritionData(),
+          fetchHealthData(),
+          checkHealthMetricsStatus(),
+        ]);
+      }
     } catch (error) {
       console.error('❌ Error loading dashboard data:', error);
     } finally {
@@ -236,6 +244,12 @@ const HomeScreen = ({ navigation }) => {
 
   const checkHealthMetricsStatus = async () => {
     try {
+      // Don't show health metrics prompt if user is already diagnosed
+      if (isDiagnosed) {
+        setShowHealthMetricsPrompt(false);
+        return;
+      }
+
       const response = await api.getHealthMetrics();
       const metrics = response?.health_metrics;
       
@@ -250,12 +264,53 @@ const HomeScreen = ({ navigation }) => {
       setShowHealthMetricsPrompt(!hasAllMetrics);
     } catch (error) {
       console.log('Error checking health metrics:', error);
-      // If there's an error (like 404), show the prompt
-      setShowHealthMetricsPrompt(true);
+      // If there's an error (like 404), show the prompt only if not diagnosed
+      setShowHealthMetricsPrompt(!isDiagnosed);
+    }
+  };
+
+  const checkProfileCompletion = async () => {
+    try {
+      // Check if user has completed their profile (especially diagnosis_status)
+      const diagnosisStatus = user?.diagnosis_status;
+      
+      // Check if diagnosis_status is set
+      const hasProfileComplete = diagnosisStatus && 
+        diagnosisStatus !== '' && 
+        diagnosisStatus !== null && 
+        diagnosisStatus !== undefined;
+      
+      if (!hasProfileComplete) {
+        setShowProfilePrompt(true);
+        setShowHealthMetricsPrompt(false);
+        return false;
+      }
+      
+      // Check if user is diagnosed with prediabetes or type 2 diabetes
+      const diagnosed = diagnosisStatus === 'prediabetes' || diagnosisStatus === 'type2_diabetes';
+      setIsDiagnosed(diagnosed);
+      setShowProfilePrompt(false);
+      
+      console.log('✅ Profile completion check:', {
+        diagnosisStatus,
+        isDiagnosed: diagnosed,
+        profileComplete: hasProfileComplete
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('❌ Error checking profile completion:', error);
+      setShowProfilePrompt(true);
+      return false;
     }
   };
 
   const handleCompleteProfile = async () => {
+    // Navigate to ProfileScreen for user to complete diagnosis_status
+    navigation.navigate('Profile');
+  };
+
+  const handleHealthMetricsSetup = async () => {
     // Clear the skip flag so user can complete it
     await AsyncStorage.removeItem('@health_metrics_skipped');
     // Show the health metrics modal
@@ -664,11 +719,33 @@ const HomeScreen = ({ navigation }) => {
           </Text>
         </View>
 
-        {/* Health Metrics Prompt Banner */}
-        {showHealthMetricsPrompt && (
+        {/* Profile Completion Prompt Banner */}
+        {showProfilePrompt && (
           <TouchableOpacity
             style={styles.healthMetricsPrompt}
             onPress={handleCompleteProfile}
+            activeOpacity={0.8}
+          >
+            <View style={styles.promptIconContainer}>
+              <Icon name="account-edit" size={28} color="#FFFFFF" />
+            </View>
+            <View style={styles.promptContent}>
+              <Text style={styles.promptTitle}>Complete Your Profile</Text>
+              <Text style={styles.promptSubtitle}>
+                Please complete your profile to access all features
+              </Text>
+            </View>
+            <View style={styles.promptArrow}>
+              <Icon name="chevron-right" size={24} color="#FFFFFF" />
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {/* Health Metrics Prompt Banner (only show if profile complete and not diagnosed) */}
+        {!showProfilePrompt && showHealthMetricsPrompt && !isDiagnosed && (
+          <TouchableOpacity
+            style={styles.healthMetricsPrompt}
+            onPress={handleHealthMetricsSetup}
             activeOpacity={0.8}
           >
             <View style={styles.promptIconContainer}>

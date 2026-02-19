@@ -355,6 +355,28 @@ const AlcoholIntakeScreen = ({ navigation }) => {
       fontSize: 16,
       color: colors.secondary,
     },
+    diagnosedMessageContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 32,
+      marginTop: 40,
+    },
+    diagnosedTitle: {
+      fontSize: 22,
+      fontWeight: '700',
+      color: colors.text,
+      marginTop: 24,
+      marginBottom: 16,
+      textAlign: 'center',
+    },
+    diagnosedMessage: {
+      fontSize: 16,
+      color: colors.secondary,
+      textAlign: 'center',
+      lineHeight: 24,
+      marginBottom: 32,
+    },
     header: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -907,6 +929,9 @@ const AlcoholIntakeScreen = ({ navigation }) => {
 
     const { current_consumption, risk_level, recommendations, trend } = riskAssessment;
 
+    // Check if user is diagnosed with prediabetes or type 2 diabetes
+    const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
+
     return (
       <Modal
         visible={showResults}
@@ -921,25 +946,35 @@ const AlcoholIntakeScreen = ({ navigation }) => {
           <View style={[styles.resultsModal, { backgroundColor: colors.card }]}>
             <ScrollView>
               <View style={styles.resultsHeader}>
-                <View style={[
-                  styles.riskBadge,
-                  { backgroundColor: `${getRiskColor(risk_level)}20` }
-                ]}>
-                  <Icon 
-                    name={getRiskIcon(risk_level)} 
-                    size={48} 
-                    color={getRiskColor(risk_level)} 
-                  />
-                </View>
-                <Text style={[styles.resultsTitle, { color: colors.text }]}>
-                  Your Alcohol Intake Assessment
-                </Text>
-                <Text style={[
-                  styles.riskLevel,
-                  { color: getRiskColor(risk_level) }
-                ]}>
-                  {risk_level.charAt(0).toUpperCase() + risk_level.slice(1)} Risk
-                </Text>
+                {/* Risk Badge and Level - Only show for non-diagnosed users */}
+                {!isDiagnosed && (
+                  <>
+                    <View style={[
+                      styles.riskBadge,
+                      { backgroundColor: `${getRiskColor(risk_level)}20` }
+                    ]}>
+                      <Icon 
+                        name={getRiskIcon(risk_level)} 
+                        size={48} 
+                        color={getRiskColor(risk_level)} 
+                      />
+                    </View>
+                    <Text style={[styles.resultsTitle, { color: colors.text }]}>
+                      Your Alcohol Intake Assessment
+                    </Text>
+                    <Text style={[
+                      styles.riskLevel,
+                      { color: getRiskColor(risk_level) }
+                    ]}>
+                      {risk_level.charAt(0).toUpperCase() + risk_level.slice(1)} Risk
+                    </Text>
+                  </>
+                )}
+                {isDiagnosed && (
+                  <Text style={[styles.resultsTitle, { color: colors.text }]}>
+                    Your Alcohol Intake Summary
+                  </Text>
+                )}
               </View>
 
               <View style={styles.summarySection}>
@@ -1045,6 +1080,47 @@ const AlcoholIntakeScreen = ({ navigation }) => {
             Loading your data...
           </Text>
         </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Check if user is diagnosed - skip questionnaire
+  const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
+  
+  if (isDiagnosed) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+            accessibilityLabel="Go back"
+          >
+            <Icon name="arrow-left" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Alcohol Intake</Text>
+          <View style={styles.headerActions} />
+        </View>
+        
+        <ScrollView contentContainerStyle={styles.scrollContainer}>
+          <View style={styles.diagnosedMessageContainer}>
+            <Icon name="information-outline" size={64} color={colors.primary} />
+            <Text style={styles.diagnosedTitle}>Questionnaire Not Required</Text>
+            <Text style={styles.diagnosedMessage}>
+              Since you have been diagnosed with {user?.diagnosis_status === 'prediabetes' ? 'prediabetes' : 'type 2 diabetes'}, 
+              you don't need to complete this risk assessment questionnaire.
+              {'\n\n'}
+              You can still track your overall health and receive personalized recommendations through other features.
+            </Text>
+            <TouchableOpacity
+              style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+              onPress={() => navigation.goBack()}
+            >
+              <Icon name="arrow-left" size={20} color="#FFFFFF" />
+              <Text style={styles.primaryButtonText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }

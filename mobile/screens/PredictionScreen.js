@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -21,11 +22,15 @@ const { width } = Dimensions.get('window');
 
 const PredictionScreen = ({ navigation }) => {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const toast = useToast();
   const [selectedPeriod, setSelectedPeriod] = useState('week');
   const [assessment, setAssessment] = useState(null);
   const [overallRisk, setOverallRisk] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Check if user is diagnosed with prediabetes or type 2 diabetes
+  const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
 
   useFocusEffect(
     React.useCallback(() => {
@@ -597,36 +602,43 @@ const PredictionScreen = ({ navigation }) => {
           </View>
         ) : (assessment || overallRisk) ? (
           <View style={styles.resultSection}>
+            {/* Overall Risk Assessment - Hide risk score and factors for diagnosed users */}
             {overallRisk && (
               <>
                 <View style={styles.overallRiskCard}>
                   <View style={styles.overallRiskHeader}>
                     <Icon name="chart-line" size={20} color={colors.primary} />
-                    <Text style={styles.overallRiskHeaderText}>Comprehensive Risk Assessment</Text>
+                    <Text style={styles.overallRiskHeaderText}>
+                      {isDiagnosed ? 'Health Summary' : 'Comprehensive Risk Assessment'}
+                    </Text>
                   </View>
                   
-                  <View style={styles.overallRiskScoreSection}>
-                    <View style={[styles.overallRiskScoreCircle, { borderColor: overallRisk.category_info.color }]}>
-                      <Text style={[styles.overallRiskScoreValue, { color: overallRisk.category_info.color }]}>
-                        {overallRisk.overall_risk_score.toFixed(1)}
-                      </Text>
-                      <Text style={styles.overallRiskScoreLabel}>/ 100</Text>
-                    </View>
-                    <View style={styles.overallRiskScoreInfo}>
-                      <View style={[styles.overallRiskBadge, { backgroundColor: overallRisk.category_info.color }]}>
-                        <Icon name={overallRisk.category_info.icon} size={16} color="#FFFFFF" />
-                        <Text style={styles.overallRiskBadgeText}>{overallRisk.category_info.title}</Text>
+                  {/* Risk Score Section - Only show for non-diagnosed users */}
+                  {!isDiagnosed && (
+                    <View style={styles.overallRiskScoreSection}>
+                      <View style={[styles.overallRiskScoreCircle, { borderColor: overallRisk.category_info.color }]}>
+                        <Text style={[styles.overallRiskScoreValue, { color: overallRisk.category_info.color }]}>
+                          {overallRisk.overall_risk_score.toFixed(1)}
+                        </Text>
+                        <Text style={styles.overallRiskScoreLabel}>/ 100</Text>
                       </View>
-                      <Text style={[styles.overallRiskProbability, { color: colors.secondary }]}>
-                        {overallRisk.category_info.probability}
-                      </Text>
-                      <Text style={[styles.overallRiskMessage, { color: colors.secondary }]}>
-                        {overallRisk.category_info.message}
-                      </Text>
+                      <View style={styles.overallRiskScoreInfo}>
+                        <View style={[styles.overallRiskBadge, { backgroundColor: overallRisk.category_info.color }]}>
+                          <Icon name={overallRisk.category_info.icon} size={16} color="#FFFFFF" />
+                          <Text style={styles.overallRiskBadgeText}>{overallRisk.category_info.title}</Text>
+                        </View>
+                        <Text style={[styles.overallRiskProbability, { color: colors.secondary }]}>
+                          {overallRisk.category_info.probability}
+                        </Text>
+                        <Text style={[styles.overallRiskMessage, { color: colors.secondary }]}>
+                          {overallRisk.category_info.message}
+                        </Text>
+                      </View>
                     </View>
-                  </View>
+                  )}
 
-                  {overallRisk.primary_risk_factors && overallRisk.primary_risk_factors.length > 0 && (
+                  {/* Risk Factors - Hide for diagnosed users */}
+                  {!isDiagnosed && overallRisk.primary_risk_factors && overallRisk.primary_risk_factors.length > 0 && (
                     <View style={styles.riskFactorsSection}>
                       <Text style={styles.riskFactorsTitle}>Primary Risk Factors</Text>
                       {overallRisk.primary_risk_factors.map((factor, index) => {
@@ -654,7 +666,8 @@ const PredictionScreen = ({ navigation }) => {
                     </View>
                   )}
 
-                  {overallRisk.protective_factors && overallRisk.protective_factors.length > 0 && (
+                  {/* Protective Factors - Hide for diagnosed users */}
+                  {!isDiagnosed && overallRisk.protective_factors && overallRisk.protective_factors.length > 0 && (
                     <View style={styles.riskFactorsSection}>
                       <Text style={[styles.riskFactorsTitle, { color: '#27AE60' }]}>Protective Factors</Text>
                       {overallRisk.protective_factors.map((factor, index) => (

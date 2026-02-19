@@ -22,7 +22,7 @@ import api from '../services/api';
 const ProfileScreen = ({ navigation }) => {
   const { colors } = useTheme();
   const toast = useToast();
-  const { user, updateUser } = useAuth();
+  const { user, updateUserData } = useAuth();
 
   // State
   const [isEditing, setIsEditing] = useState(false);
@@ -300,8 +300,8 @@ const ProfileScreen = ({ navigation }) => {
         setIsEditing(false);
         
         // Update auth context
-        if (updateUser) {
-          updateUser(response.user);
+        if (updateUserData) {
+          updateUserData(response.user);
         }
         
         // Reload profile to get updated data
