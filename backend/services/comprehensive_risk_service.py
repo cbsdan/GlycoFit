@@ -962,6 +962,480 @@ class ComprehensiveRiskService:
         """Force refresh of risk assessment"""
         return self.compute_overall_risk(user_id)
 
+    # ==================== TREND PREDICTION ====================
+
+    def compute_trend_prediction(self, user_id: str) -> Dict[str, Any]:
+        """
+        Predict whether the user's overall health status is likely to improve or decline.
+
+        Uses current lifestyle component data to evaluate trajectories:
+        - Sleep: recent 7-day vs 30-day average
+        - Steps: recent 7-day vs 30-day average
+        - Smoking: current status trajectory
+        - Alcohol: consumption pattern
+        - Food: recent daily risk vs baseline risk
+        - BMI: current category as static anchor
+
+        Returns:
+            Dict with prediction status, forecast scores, component trends,
+            and driving factors.
+        """
+        try:
+            # Gather current component data
+            components = self._gather_component_data(user_id)
+            component_scores = self._calculate_component_scores(components)
+
+            # Get current assessment for baseline score
+            current_assessment = OverallRiskAssessment.find_by_user_id(user_id)
+            current_score = current_assessment.overall_risk_score if current_assessment else None
+
+            if current_score is None:
+                # Compute it inline if not saved yet
+                current_score = self._calculate_overall_score(component_scores)
+
+            # Analyse per-component trends
+            component_trends = self._analyse_component_trends(components, component_scores)
+
+            # Aggregate into an overall trajectory score
+            # +100 = fully improving, -100 = fully declining, 0 = stable
+            trajectory_score = self._compute_trajectory_score(component_trends)
+
+            # Determine status label
+            if trajectory_score >= 8:
+                status = 'improving'
+            elif trajectory_score <= -8:
+                status = 'declining'
+            else:
+                status = 'stable'
+
+            # Forecast future scores  (conservative linear projection)
+            change_per_30d = self._estimate_score_change_per_30d(trajectory_score, current_score)
+            change_per_90d = change_per_30d * 2.5  # non-linear dampening for 90-day
+
+            forecast_30d_score = round(max(0, min(100, current_score + change_per_30d)), 1)
+            forecast_90d_score = round(max(0, min(100, current_score + change_per_90d)), 1)
+
+            forecast_30d_cat = OverallRiskAssessment.classify_risk_category(forecast_30d_score)
+            forecast_90d_cat = OverallRiskAssessment.classify_risk_category(forecast_90d_score)
+
+            # Identify driving factors
+            driving_factors = self._identify_driving_factors(component_trends)
+
+            # Determine prediction confidence
+            confidence = self._prediction_confidence(components, component_trends)
+
+            # Human-readable message
+            trend_message = self._build_trend_message(status, trajectory_score, change_per_30d, component_trends)
+
+            return {
+                'status': status,
+                'trajectory_score': round(trajectory_score, 1),
+                'current_risk_score': current_score,
+                'current_risk_category': OverallRiskAssessment.classify_risk_category(current_score),
+                'forecast': {
+                    'days_30': {
+                        'predicted_score': forecast_30d_score,
+                        'predicted_change': round(change_per_30d, 1),
+                        'predicted_category': forecast_30d_cat,
+                        'category_info': OverallRiskAssessment.get_risk_category_info(forecast_30d_cat)
+                    },
+                    'days_90': {
+                        'predicted_score': forecast_90d_score,
+                        'predicted_change': round(change_per_90d, 1),
+                        'predicted_category': forecast_90d_cat,
+                        'category_info': OverallRiskAssessment.get_risk_category_info(forecast_90d_cat)
+                    }
+                },
+                'component_trends': component_trends,
+                'driving_factors': driving_factors,
+                'trend_message': trend_message,
+                'prediction_basis': 'lifestyle_analysis',
+                'confidence': confidence
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error computing trend prediction for user {user_id}: {str(e)}", exc_info=True)
+            raise
+
+    # ---------- helpers for trend prediction ----------
+
+    def _analyse_component_trends(
+        self, components: Dict[str, Any], component_scores: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Analyse each modifiable component for improving/declining/stable trend."""
+        trends = {}
+
+        # --- Sleep ---
+        sleep_metrics = components.get('sleep')
+        if sleep_metrics:
+            avg_7d = getattr(sleep_metrics, 'avg_sleep_7d', None)
+            avg_30d = getattr(sleep_metrics, 'avg_sleep_30d', None)
+            variability_7d = getattr(sleep_metrics, 'sleep_variability_7d', None)
+            variability_30d = getattr(sleep_metrics, 'sleep_variability_30d', None)
+
+            direction = 'stable'
+            description = 'Sleep pattern is stable'
+            change = 0.0
+
+            if avg_7d is not None and avg_30d is not None and avg_30d > 0:
+                diff = avg_7d - avg_30d
+                change = round(diff, 2)
+                if diff > 0.5:
+                    direction = 'improving'
+                    description = f'Recent sleep improved (+{diff:.1f}h over 30-day avg)'
+                elif diff < -0.5:
+                    direction = 'declining'
+                    description = f'Recent sleep declined ({diff:.1f}h vs 30-day avg)'
+                else:
+                    # Check if current avg is in optimal range
+                    if 7.0 <= avg_7d <= 8.5:
+                        direction = 'stable'
+                        description = f'Sleep is consistently healthy ({avg_7d:.1f}h)'
+                    elif avg_7d < 6.0:
+                        direction = 'declining'
+                        description = f'Chronic short sleep ({avg_7d:.1f}h) increases risk'
+                    else:
+                        direction = 'stable'
+                        description = f'Sleep averaging {avg_7d:.1f}h (target 7-8h)'
+
+                # Bonus: if variability is also improving, strengthen signal
+                if (variability_7d is not None and variability_30d is not None
+                        and variability_30d > 0 and variability_7d < variability_30d * 0.8):
+                    if direction == 'stable':
+                        direction = 'improving'
+                        description += ' with improved consistency'
+
+            trends['sleep'] = {
+                'direction': direction,
+                'current_score': component_scores.get('sleep', {}).get('raw_score', 0),
+                'change': change,
+                'description': description,
+                'has_data': sleep_metrics is not None
+            }
+        else:
+            trends['sleep'] = {
+                'direction': 'no_data',
+                'current_score': 0,
+                'change': 0,
+                'description': 'Sleep tracking not started',
+                'has_data': False
+            }
+
+        # --- Steps / Physical Activity ---
+        step_metrics = components.get('steps')
+        if step_metrics:
+            avg_steps_7d = getattr(step_metrics, 'avg_steps_7d', None)
+            avg_steps_30d = getattr(step_metrics, 'avg_steps_30d', None)
+
+            direction = 'stable'
+            description = 'Activity level is stable'
+            change = 0.0
+
+            if avg_steps_7d is not None and avg_steps_30d is not None and avg_steps_30d > 0:
+                ratio = avg_steps_7d / avg_steps_30d
+                change = round(avg_steps_7d - avg_steps_30d, 0)
+                if ratio >= 1.10:
+                    direction = 'improving'
+                    description = f'Activity increased (+{int(change)} steps vs 30-day avg)'
+                elif ratio <= 0.90:
+                    direction = 'declining'
+                    description = f'Activity decreased ({int(change)} steps vs 30-day avg)'
+                else:
+                    if avg_steps_7d >= 10000:
+                        direction = 'stable'
+                        description = f'Consistently active ({int(avg_steps_7d):,} steps/day)'
+                    elif avg_steps_7d < 5000:
+                        direction = 'declining'
+                        description = f'Low activity level ({int(avg_steps_7d):,} steps/day)'
+                    else:
+                        direction = 'stable'
+                        description = f'Moderate activity ({int(avg_steps_7d):,} steps/day)'
+
+            trends['steps'] = {
+                'direction': direction,
+                'current_score': component_scores.get('steps', {}).get('raw_score', 0),
+                'change': change,
+                'description': description,
+                'has_data': True
+            }
+        else:
+            trends['steps'] = {
+                'direction': 'no_data',
+                'current_score': 0,
+                'change': 0,
+                'description': 'Step tracking not started',
+                'has_data': False
+            }
+
+        # --- Smoking ---
+        smoking_metrics = components.get('smoking')
+        if smoking_metrics:
+            current_status = getattr(smoking_metrics, 'current_status', 'unknown')
+            quit_duration_days = getattr(smoking_metrics, 'quit_duration_days', 0) or 0
+
+            if current_status == 'never':
+                direction = 'stable'
+                description = 'Non-smoker – no smoking risk'
+                change = 0.0
+            elif current_status == 'current':
+                direction = 'declining'
+                description = 'Active smoking continues to elevate diabetes risk'
+                change = -5.0
+            elif current_status == 'former':
+                if quit_duration_days >= 365:
+                    direction = 'improving'
+                    years = quit_duration_days / 365
+                    description = f'Quit {years:.1f} yr(s) ago – risk steadily decreasing'
+                    change = min(3.0, quit_duration_days / 365)
+                else:
+                    months = quit_duration_days / 30
+                    direction = 'improving'
+                    description = f'Quit {months:.0f} month(s) ago – risk will decrease over time'
+                    change = 1.0
+            else:
+                direction = 'stable'
+                description = 'Smoking status tracked'
+                change = 0.0
+
+            trends['smoking'] = {
+                'direction': direction,
+                'current_score': component_scores.get('smoking', {}).get('raw_score', 0),
+                'change': change,
+                'description': description,
+                'has_data': True
+            }
+        else:
+            trends['smoking'] = {
+                'direction': 'no_data',
+                'current_score': 0,
+                'change': 0,
+                'description': 'Smoking tracking not started',
+                'has_data': False
+            }
+
+        # --- Alcohol ---
+        alcohol_metrics = components.get('alcohol')
+        if alcohol_metrics:
+            risk_category = getattr(alcohol_metrics, 'risk_category', 'none')
+            avg_drinks_week = getattr(alcohol_metrics, 'avg_drinks_per_week_30d', 0) or 0
+
+            # Alcohol trend direction based on risk category
+            if risk_category in ('none', 'low'):
+                direction = 'stable'
+                description = 'Low alcohol consumption – within healthy range'
+                change = 0.0
+            elif risk_category == 'moderate':
+                direction = 'stable'
+                description = f'Moderate drinking ({avg_drinks_week:.1f} drinks/week) – some risk'
+                change = -1.0
+            else:
+                direction = 'declining'
+                description = f'Heavy alcohol use ({avg_drinks_week:.1f} drinks/week) – elevated risk'
+                change = -3.0
+
+            trends['alcohol'] = {
+                'direction': direction,
+                'current_score': component_scores.get('alcohol', {}).get('raw_score', 0),
+                'change': change,
+                'description': description,
+                'has_data': True
+            }
+        else:
+            trends['alcohol'] = {
+                'direction': 'no_data',
+                'current_score': 0,
+                'change': 0,
+                'description': 'Alcohol tracking not started',
+                'has_data': False
+            }
+
+        # --- Food / Diet ---
+        food_data = components.get('food')
+        if food_data and food_data.get('success'):
+            baseline_risk = food_data.get('breakdown', {}).get('baseline_risk', 0) or 0
+            daily_log_risk = food_data.get('breakdown', {}).get('daily_log_risk', 0) or 0
+            days_analyzed = food_data.get('breakdown', {}).get('daily_analysis', {}).get('days_analyzed', 0) or 0
+
+            direction = 'stable'
+            description = 'Dietary pattern is stable'
+            change = 0.0
+
+            if days_analyzed > 0:
+                diff = daily_log_risk - baseline_risk
+                change = round(-diff, 1)  # negative diff = improving
+                if diff < -5:
+                    direction = 'improving'
+                    description = f'Recent diet better than baseline (risk ↓{abs(diff):.0f}%)'
+                elif diff > 5:
+                    direction = 'declining'
+                    description = f'Recent diet worse than baseline (risk ↑{diff:.0f}%)'
+                else:
+                    risk_score = food_data.get('comprehensive_risk_score', 50)
+                    if risk_score < 30:
+                        direction = 'stable'
+                        description = 'Diet quality is good and consistent'
+                    elif risk_score > 60:
+                        direction = 'declining'
+                        description = 'High dietary risk – reduce sugars and refined carbs'
+                    else:
+                        direction = 'stable'
+                        description = 'Dietary risk is moderate and stable'
+            else:
+                description = 'Diet tracked only via baseline questionnaire'
+
+            trends['food'] = {
+                'direction': direction,
+                'current_score': component_scores.get('food', {}).get('raw_score', 0),
+                'change': change,
+                'description': description,
+                'has_data': True
+            }
+        else:
+            trends['food'] = {
+                'direction': 'no_data',
+                'current_score': 0,
+                'change': 0,
+                'description': 'Food tracking not started',
+                'has_data': False
+            }
+
+        return trends
+
+    def _compute_trajectory_score(self, component_trends: Dict[str, Any]) -> float:
+        """
+        Aggregate component trends into a single trajectory score.
+        Positive = improving (risk decreasing), Negative = declining.
+        Range: -100 to +100
+        """
+        # Weights aligned with component risk weights (modifiable factors only)
+        component_weights = {
+            'sleep':   0.22,
+            'steps':   0.18,
+            'smoking': 0.28,
+            'alcohol': 0.15,
+            'food':    0.17,
+        }
+        direction_values = {
+            'improving': 1.0,
+            'stable':    0.0,
+            'declining': -1.0,
+            'no_data':   0.0
+        }
+
+        total_weight = 0.0
+        weighted_sum = 0.0
+
+        for component, weight in component_weights.items():
+            trend = component_trends.get(component, {})
+            direction = trend.get('direction', 'no_data')
+            if direction == 'no_data':
+                continue  # Skip absent trackers
+            val = direction_values.get(direction, 0.0)
+            weighted_sum += val * weight
+            total_weight += weight
+
+        if total_weight == 0:
+            return 0.0
+
+        # Normalised score from -100 to +100
+        return round((weighted_sum / total_weight) * 100, 1)
+
+    def _estimate_score_change_per_30d(self, trajectory_score: float, current_score: float) -> float:
+        """
+        Estimate expected risk score change over 30 days.
+        Conservative: max ±8 points per 30 days at full trajectory.
+        Dampened further if already at extreme ends of the scale.
+        """
+        max_change = 8.0  # Maximum absolute change in 30 days
+
+        # Scale trajectory (-100 to +100) to change (-8 to +8)
+        # NOTE: positive trajectory = improving = score DECREASES
+        raw_change = -(trajectory_score / 100) * max_change
+
+        # Dampen change when near extremes (no value below 0 or above 100)
+        if raw_change < 0:  # score will decrease (improving)
+            dampen = max(0.0, current_score / 50)  # less dampening when high
+            return round(raw_change * dampen, 2)
+        else:  # score will increase (declining)
+            headroom = (100 - current_score) / 50
+            return round(raw_change * headroom, 2)
+
+    def _identify_driving_factors(self, component_trends: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Identify key factors driving the overall prediction."""
+        factors = []
+
+        for component, trend in component_trends.items():
+            direction = trend.get('direction', 'no_data')
+            if direction not in ('improving', 'declining'):
+                continue
+            factors.append({
+                'factor': component,
+                'factor_name': self._format_component_name(component),
+                'impact': 'positive' if direction == 'improving' else 'negative',
+                'direction': direction,
+                'description': trend.get('description', '')
+            })
+
+        # Sort: declining first (most urgent), then improving
+        factors.sort(key=lambda x: 0 if x['impact'] == 'negative' else 1)
+        return factors[:5]
+
+    def _prediction_confidence(
+        self, components: Dict[str, Any], component_trends: Dict[str, Any]
+    ) -> str:
+        """Determine prediction confidence based on data availability."""
+        trackers_with_data = sum(
+            1 for k in ('sleep', 'steps', 'smoking', 'alcohol', 'food')
+            if component_trends.get(k, {}).get('has_data', False)
+        )
+        if trackers_with_data >= 4:
+            return 'high'
+        elif trackers_with_data >= 2:
+            return 'moderate'
+        return 'low'
+
+    def _build_trend_message(
+        self,
+        status: str,
+        trajectory_score: float,
+        change_per_30d: float,
+        component_trends: Dict[str, Any]
+    ) -> str:
+        """Generate a human-readable prediction message."""
+        abs_change = abs(change_per_30d)
+
+        if status == 'improving':
+            if abs_change >= 4:
+                return (
+                    "Your health trajectory is strongly improving. "
+                    "Your current lifestyle changes are making a meaningful impact on your diabetes risk."
+                )
+            return (
+                "Your health trajectory is improving. "
+                "Keep up your current habits to continue reducing your diabetes risk."
+            )
+        elif status == 'declining':
+            declining = [
+                v.get('description', '')
+                for v in component_trends.values()
+                if v.get('direction') == 'declining'
+            ]
+            focus = declining[0] if declining else 'your lifestyle habits'
+            if abs_change >= 4:
+                return (
+                    f"Your diabetes risk is significantly increasing. "
+                    f"Urgent attention needed: {focus}."
+                )
+            return (
+                f"Your diabetes risk is trending upward. "
+                f"Addressing key areas – such as {focus} – can reverse this trend."
+            )
+        else:
+            return (
+                "Your diabetes risk is currently stable. "
+                "Small improvements to sleep, activity, or diet can shift the trajectory in your favour."
+            )
+
 
 # Global service instance
 _comprehensive_risk_service = None

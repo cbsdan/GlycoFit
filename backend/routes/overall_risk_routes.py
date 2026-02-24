@@ -16,3 +16,4 @@ overall_risk_bp.route('/overall/history', methods=['GET'])(overall_risk_controll
 overall_risk_bp.route('/overall/components', methods=['GET'])(overall_risk_controller.get_component_scores)
 overall_risk_bp.route('/overall/factors', methods=['GET'])(overall_risk_controller.get_risk_factors)
 overall_risk_bp.route('/overall/check', methods=['GET'])(overall_risk_controller.check_assessment_exists)
+overall_risk_bp.route('/overall/prediction', methods=['GET'])(overall_risk_controller.get_overall_prediction)

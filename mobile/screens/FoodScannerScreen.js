@@ -19,7 +19,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import api from '../services/api';
-import { LifestyleRecommendationsSection } from '../components/recommendations';
+
 
 const FoodScannerScreen = ({ navigation }) => {
   const { colors } = useTheme();

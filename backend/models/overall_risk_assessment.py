@@ -228,28 +228,66 @@ class OverallRiskAssessment:
                 'color': '#10B981',  # Green
                 'icon': 'shield-check',
                 'probability': '<10% chance in next 10 years',
-                'message': 'Your diabetes risk is low. Continue your healthy habits!'
+                'message': 'Your diabetes risk is low. Continue your healthy habits!',
+                'description': 'Low Risk - You have excellent diabetes prevention. Maintain your current healthy lifestyle, including regular physical activity, balanced diet, and periodic health checkups.',
+                'actionRequired': 'Minimal',
+                'recommendations': [
+                    'Maintain your healthy lifestyle habits',
+                    'Continue regular physical activity',
+                    'Keep a balanced diet rich in fruits and vegetables',
+                    'Schedule routine health checkups'
+                ]
             },
             RiskCategory.MODERATE: {
                 'title': 'Moderate Risk',
                 'color': '#F59E0B',  # Yellow/Orange
                 'icon': 'alert-circle',
                 'probability': '10-30% chance in next 10 years',
-                'message': 'Your diabetes risk is moderate. Some lifestyle changes are recommended.'
+                'message': 'Your diabetes risk is moderate. Some lifestyle changes are recommended.',
+                'description': 'Moderate Risk - You have identifiable risk factors that increase your diabetes risk. Making lifestyle modifications such as increasing physical activity, improving diet quality, and managing weight can significantly reduce your risk.',
+                'actionRequired': 'Recommended',
+                'recommendations': [
+                    'Consult with a healthcare provider',
+                    'Increase physical activity to 150 minutes per week',
+                    'Monitor your blood sugar levels regularly',
+                    'Consider dietary modifications to reduce sugar intake',
+                    'Manage stress through relaxation techniques'
+                ]
             },
             RiskCategory.HIGH: {
                 'title': 'High Risk',
                 'color': '#EF4444',  # Orange/Red
                 'icon': 'alert-triangle',
                 'probability': '30-60% chance in next 10 years',
-                'message': 'Your diabetes risk is high. Immediate lifestyle changes are needed.'
+                'message': 'Your diabetes risk is high. Immediate lifestyle changes are needed.',
+                'description': 'High Risk - You have significant risk factors for developing diabetes. Immediate action is required. Consult with your healthcare provider to develop a comprehensive diabetes prevention plan.',
+                'actionRequired': 'Urgent',
+                'recommendations': [
+                    'Schedule an appointment with a healthcare provider immediately',
+                    'Get a comprehensive blood glucose screening',
+                    'Work with a dietitian for a personalized meal plan',
+                    'Start a supervised exercise program',
+                    'Monitor blood pressure and cholesterol levels',
+                    'Consider joining a diabetes prevention program'
+                ]
             },
             RiskCategory.VERY_HIGH: {
                 'title': 'Very High Risk',
                 'color': '#DC2626',  # Red
                 'icon': 'alert-octagon',
                 'probability': '>60% chance in next 10 years',
-                'message': 'Your diabetes risk is very high. Urgent medical consultation is recommended.'
+                'message': 'Your diabetes risk is very high. Urgent medical consultation is recommended.',
+                'description': 'Very High Risk - You have severe risk factors and a high likelihood of developing diabetes. Urgent medical intervention and intensive lifestyle modifications are critical to prevent or delay the onset of the disease.',
+                'actionRequired': 'Critical',
+                'recommendations': [
+                    'Seek immediate medical evaluation from your healthcare provider',
+                    'Complete comprehensive blood glucose and A1C testing',
+                    'Enroll in an intensive diabetes prevention program',
+                    'Work with a multidisciplinary team (physician, dietitian, fitness trainer)',
+                    'Begin medical treatment if recommended by your provider',
+                    'Monitor vital signs and biomarkers frequently',
+                    'Address all modifiable risk factors immediately'
+                ]
             }
         }
         return info.get(category, info[RiskCategory.MODERATE])

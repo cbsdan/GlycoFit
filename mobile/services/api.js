@@ -1357,6 +1357,16 @@ export const getOverallRiskHistory = async (limit = 30) => {
   }
 };
 
+export const getOverallRiskPrediction = async () => {
+  try {
+    const response = await api.get('/risk-assessment/overall/prediction');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching overall risk prediction:', error);
+    throw error;
+  }
+};
+
 export const getComponentScores = async () => {
   try {
     const response = await api.get('/risk-assessment/overall/components');
@@ -2982,6 +2992,7 @@ api.updateAssessmentAnswers = updateAssessmentAnswers;
 api.getOverallRiskAssessment = getOverallRiskAssessment;
 api.refreshOverallRiskAssessment = refreshOverallRiskAssessment;
 api.getOverallRiskHistory = getOverallRiskHistory;
+api.getOverallRiskPrediction = getOverallRiskPrediction;
 api.getComponentScores = getComponentScores;
 api.getRiskFactors = getRiskFactors;
 

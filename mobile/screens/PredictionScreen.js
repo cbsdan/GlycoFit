@@ -16,7 +16,8 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { getMyAssessment, getOverallRiskAssessment, refreshOverallRiskAssessment } from '../services/api';
+import { LinearGradient } from 'expo-linear-gradient';
+import { getMyAssessment, getOverallRiskAssessment, refreshOverallRiskAssessment, getOverallRiskPrediction } from '../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -28,6 +29,8 @@ const PredictionScreen = ({ navigation }) => {
   const [assessment, setAssessment] = useState(null);
   const [overallRisk, setOverallRisk] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [trendPrediction, setTrendPrediction] = useState(null);
+  const [trendLoading, setTrendLoading] = useState(true);
 
   // Check if user is diagnosed with prediabetes or type 2 diabetes
   const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
@@ -37,6 +40,23 @@ const PredictionScreen = ({ navigation }) => {
       loadAssessment();
     }, [])
   );
+
+  useEffect(() => {
+    const fetchTrendPrediction = async () => {
+      try {
+        setTrendLoading(true);
+        const result = await getOverallRiskPrediction();
+        if (result && result.success && result.data) {
+          setTrendPrediction(result.data);
+        }
+      } catch (error) {
+        console.log('Trend prediction not available:', error);
+      } finally {
+        setTrendLoading(false);
+      }
+    };
+    fetchTrendPrediction();
+  }, []);
 
   const loadAssessment = async () => {
     try {
@@ -70,6 +90,46 @@ const PredictionScreen = ({ navigation }) => {
       setOverallRisk(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getTrendConfig = () => {
+    if (!trendPrediction) return null;
+    const { status } = trendPrediction;
+    switch (status) {
+      case 'improving':
+        return {
+          label: 'IMPROVING',
+          icon: 'trending-up',
+          color: '#27AE60',
+          gradient: ['#27AE60', '#2ECC71'],
+          badgeText: 'Status Improving',
+        };
+      case 'declining':
+        return {
+          label: 'DECLINING',
+          icon: 'trending-down',
+          color: '#E74C3C',
+          gradient: ['#E74C3C', '#C0392B'],
+          badgeText: 'Needs Attention',
+        };
+      default:
+        return {
+          label: 'STABLE',
+          icon: 'trending-neutral',
+          color: '#F39C12',
+          gradient: ['#F39C12', '#F1C40F'],
+          badgeText: 'Status Stable',
+        };
+    }
+  };
+
+  const getComponentTrendIcon = (direction) => {
+    switch (direction) {
+      case 'improving': return { icon: 'arrow-up-circle', color: '#27AE60' };
+      case 'declining': return { icon: 'arrow-down-circle', color: '#E74C3C' };
+      case 'stable':    return { icon: 'minus-circle', color: '#F39C12' };
+      default:          return { icon: 'help-circle', color: colors.secondary };
     }
   };
 
@@ -587,6 +647,198 @@ const PredictionScreen = ({ navigation }) => {
       color: colors.secondary,
       lineHeight: 20,
     },
+    // ---- Predictive Trend Card ----
+    predictionSectionTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.text,
+      marginBottom: 12,
+      marginTop: 8,
+    },
+    predictionCard: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      overflow: 'hidden',
+      marginBottom: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+      elevation: 3,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.12,
+      shadowRadius: 4,
+    },
+    predictionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 16,
+      gap: 12,
+    },
+    predictionIconCircle: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    predictionHeaderText: {
+      flex: 1,
+    },
+    predictionLabel: {
+      fontSize: 12,
+      color: colors.secondary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+      marginBottom: 2,
+    },
+    predictionStatus: {
+      fontSize: 20,
+      fontWeight: '700',
+    },
+    predictionBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 12,
+    },
+    predictionBadgeText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: '#FFFFFF',
+    },
+    predictionDivider: {
+      height: 1,
+      backgroundColor: colors.border,
+      marginHorizontal: 16,
+    },
+    predictionMessage: {
+      fontSize: 14,
+      color: colors.secondary,
+      lineHeight: 20,
+      padding: 16,
+    },
+    forecastRow: {
+      flexDirection: 'row',
+      paddingHorizontal: 16,
+      paddingBottom: 16,
+      gap: 10,
+    },
+    forecastItem: {
+      flex: 1,
+      borderRadius: 12,
+      padding: 12,
+      alignItems: 'center',
+    },
+    forecastPeriod: {
+      fontSize: 11,
+      color: '#FFFFFF',
+      opacity: 0.85,
+      marginBottom: 4,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    forecastScore: {
+      fontSize: 26,
+      fontWeight: '800',
+      color: '#FFFFFF',
+      marginBottom: 2,
+    },
+    forecastCategory: {
+      fontSize: 11,
+      color: '#FFFFFF',
+      opacity: 0.85,
+      textAlign: 'center',
+    },
+    forecastChange: {
+      fontSize: 12,
+      fontWeight: '600',
+      marginTop: 4,
+      color: '#FFFFFF',
+      opacity: 0.9,
+    },
+    componentTrendsTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.secondary,
+      paddingHorizontal: 16,
+      paddingBottom: 8,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    componentTrendItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      gap: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    componentTrendName: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+      width: 80,
+    },
+    componentTrendDesc: {
+      flex: 1,
+      fontSize: 12,
+      color: colors.secondary,
+      lineHeight: 16,
+    },
+    drivingFactorsTitle: {
+      fontSize: 13,
+      color: colors.secondary,
+      paddingHorizontal: 16,
+      paddingBottom: 8,
+      paddingTop: 12,
+      fontWeight: '600',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    drivingFactorItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      paddingHorizontal: 16,
+      paddingBottom: 10,
+      gap: 8,
+    },
+    drivingFactorDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      marginTop: 5,
+    },
+    drivingFactorText: {
+      flex: 1,
+      fontSize: 13,
+      color: colors.secondary,
+      lineHeight: 18,
+    },
+    confidenceBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 16,
+      paddingBottom: 14,
+    },
+    confidenceBadgeText: {
+      fontSize: 11,
+      color: colors.secondary,
+    },
+    trendLoadingBox: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      padding: 24,
+      alignItems: 'center',
+      marginBottom: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: 10,
+    },
+    trendLoadingText: {
+      fontSize: 13,
+      color: colors.secondary,
+    },
   });
 
   return (
@@ -704,6 +956,147 @@ const PredictionScreen = ({ navigation }) => {
                         <Text style={styles.dataQualityTitle}>Data Quality Notes</Text>
                       </View>
                       <Text style={styles.dataQualityText}>{overallRisk.data_quality_notes}</Text>
+                    </View>
+                  )}
+
+                  {/* ===== Health Trajectory Prediction ===== */}
+                  <Text style={styles.predictionSectionTitle}>Health Trajectory Prediction</Text>
+
+                  {trendLoading ? (
+                    <View style={styles.trendLoadingBox}>
+                      <ActivityIndicator size="small" color={colors.primary} />
+                      <Text style={styles.trendLoadingText}>Analysing your lifestyle trends…</Text>
+                    </View>
+                  ) : trendPrediction ? (() => {
+                    const tc = getTrendConfig();
+                    const forecast30 = trendPrediction.forecast?.days_30;
+                    const forecast90 = trendPrediction.forecast?.days_90;
+                    const componentTrends = trendPrediction.component_trends || {};
+                    const drivingFactors = trendPrediction.driving_factors || [];
+                    const componentKeys = ['sleep', 'steps', 'smoking', 'alcohol', 'food'];
+                    const componentLabels = {
+                      sleep: 'Sleep', steps: 'Activity', smoking: 'Smoking',
+                      alcohol: 'Alcohol', food: 'Diet',
+                    };
+
+                    return (
+                      <View style={[styles.predictionCard, { marginBottom: 16 }]}>
+                        {/* Header */}
+                        <View style={styles.predictionHeader}>
+                          <View style={[styles.predictionIconCircle, { backgroundColor: `${tc.color}20` }]}>
+                            <Icon name={tc.icon} size={26} color={tc.color} />
+                          </View>
+                          <View style={styles.predictionHeaderText}>
+                            <Text style={styles.predictionLabel}>Status Outlook</Text>
+                            <Text style={[styles.predictionStatus, { color: tc.color }]}>{tc.label}</Text>
+                          <View style={[styles.predictionBadge, { backgroundColor: tc.color }]}>
+                            <Text style={styles.predictionBadgeText}>{tc.badgeText}</Text>
+                          </View>
+                          </View>
+                        </View>
+
+                        <View style={styles.predictionDivider} />
+
+                        {/* Trend message */}
+                        <Text style={styles.predictionMessage}>{trendPrediction.trend_message}</Text>
+
+                        {/* Forecast cards */}
+                        {(forecast30 || forecast90) && (
+                          <View style={styles.forecastRow}>
+                            {forecast30 && (
+                              <LinearGradient
+                                colors={tc.gradient}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                                style={styles.forecastItem}
+                              >
+                                <Text style={styles.forecastPeriod}>30 Days</Text>
+                                <Text style={styles.forecastScore}>{forecast30.predicted_score}</Text>
+                                <Text style={styles.forecastCategory}>
+                                  {forecast30.predicted_category?.replace('_', ' ').toUpperCase()}
+                                </Text>
+                                {forecast30.predicted_change !== 0 && (
+                                  <Text style={styles.forecastChange}>
+                                    {forecast30.predicted_change > 0 ? '+' : ''}{forecast30.predicted_change} pts
+                                  </Text>
+                                )}
+                              </LinearGradient>
+                            )}
+                            {forecast90 && (
+                              <LinearGradient
+                                colors={[tc.gradient[1], tc.gradient[0]]}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                                style={styles.forecastItem}
+                              >
+                                <Text style={styles.forecastPeriod}>90 Days</Text>
+                                <Text style={styles.forecastScore}>{forecast90.predicted_score}</Text>
+                                <Text style={styles.forecastCategory}>
+                                  {forecast90.predicted_category?.replace('_', ' ').toUpperCase()}
+                                </Text>
+                                {forecast90.predicted_change !== 0 && (
+                                  <Text style={styles.forecastChange}>
+                                    {forecast90.predicted_change > 0 ? '+' : ''}{forecast90.predicted_change} pts
+                                  </Text>
+                                )}
+                              </LinearGradient>
+                            )}
+                          </View>
+                        )}
+
+                        {/* Component trends */}
+                        <View style={styles.predictionDivider} />
+                        <Text style={styles.componentTrendsTitle}>Lifestyle Factors</Text>
+                        {componentKeys.map((key) => {
+                          const t = componentTrends[key];
+                          if (!t || t.direction === 'no_data') return null;
+                          const tIcon = getComponentTrendIcon(t.direction);
+                          return (
+                            <View key={key} style={styles.componentTrendItem}>
+                              <Icon name={tIcon.icon} size={18} color={tIcon.color} />
+                              <Text style={styles.componentTrendName}>{componentLabels[key]}</Text>
+                              <Text style={styles.componentTrendDesc}>{t.description}</Text>
+                            </View>
+                          );
+                        })}
+
+                        {/* Driving factors */}
+                        {drivingFactors.length > 0 && (
+                          <>
+                            <View style={[styles.predictionDivider, { marginTop: 8 }]} />
+                            <Text style={styles.drivingFactorsTitle}>Key Drivers</Text>
+                            {drivingFactors.map((f, idx) => (
+                              <View key={idx} style={styles.drivingFactorItem}>
+                                <View style={[
+                                  styles.drivingFactorDot,
+                                  { backgroundColor: f.impact === 'positive' ? '#27AE60' : '#E74C3C' }
+                                ]} />
+                                <Text style={styles.drivingFactorText}>
+                                  <Text style={{ fontWeight: '600' }}>{f.factor_name}: </Text>
+                                  {f.description}
+                                </Text>
+                              </View>
+                            ))}
+                          </>
+                        )}
+
+                        {/* Confidence footer */}
+                        <View style={[styles.predictionDivider, { marginTop: 4 }]} />
+                        <View style={styles.confidenceBadge}>
+                          <Icon name="information-outline" size={14} color={colors.secondary} />
+                          <Text style={styles.confidenceBadgeText}>
+                            Prediction confidence: {trendPrediction.confidence?.toUpperCase()} •
+                            Based on lifetime tracker data
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })() : (
+                    <View style={styles.trendLoadingBox}>
+                      <Icon name="chart-line" size={32} color={colors.secondary} />
+                      <Text style={[styles.trendLoadingText, { textAlign: 'center' }]}>
+                        Complete your initial assessment to unlock health trajectory predictions.
+                      </Text>
                     </View>
                   )}
 

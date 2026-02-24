@@ -311,6 +311,47 @@ def get_risk_factors():
 
 
 @firebase_auth_required
+def get_overall_prediction():
+    """
+    Get predictive trend analysis for the user's overall risk status.
+    Determines if the user's status is likely to improve or decline based on
+    current lifestyle tracker data and component trajectories.
+
+    Response:
+    {
+        "success": true,
+        "data": {
+            "status": "improving",
+            "trajectory_score": 24.5,
+            "current_risk_score": 45.2,
+            "current_risk_category": "moderate",
+            "forecast": {
+                "days_30": { "predicted_score": 42.1, "predicted_change": -3.1, ... },
+                "days_90": { "predicted_score": 38.5, "predicted_change": -6.7, ... }
+            },
+            "component_trends": { ... },
+            "driving_factors": [ ... ],
+            "trend_message": "...",
+            "confidence": "moderate"
+        }
+    }
+    """
+    try:
+        user_id = get_current_user_id()
+        if not user_id:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+
+        service = get_comprehensive_risk_service()
+        prediction = service.compute_trend_prediction(user_id)
+
+        return jsonify({'success': True, 'data': prediction}), 200
+
+    except Exception as e:
+        logger.error(f"Error computing trend prediction: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@firebase_auth_required
 def check_assessment_exists():
     """
     Check if user has completed overall risk assessment.
