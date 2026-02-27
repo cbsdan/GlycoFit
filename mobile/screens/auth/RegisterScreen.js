@@ -1,14 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   ActivityIndicator,
   Image,
-  Modal
+  Modal,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../context/AuthContext';
@@ -16,15 +20,101 @@ import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
 import { FontAwesome } from '@expo/vector-icons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { GOOGLE_SIGNIN_CONFIG } from '../../config/google-auth-config';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { authService } from '../../services/api';
 
 GoogleSignin.configure(GOOGLE_SIGNIN_CONFIG);
 
+const { width, height } = Dimensions.get('window');
+
+// ─── Brand Colors ─────────────────────────────────────────────────────────────
+const ACCENT       = '#4D9FFF';
+const ACCENT2      = '#1E6FFF';
+const ACCENT_DIM   = 'rgba(77,159,255,0.12)';
+const ACCENT_GLOW  = 'rgba(77,159,255,0.35)';
+const BG_DARK      = '#060d1f';
+
+// ─── Animated Glow Input ──────────────────────────────────────────────────────
+function GlowInput({
+  icon, placeholder, value, onChangeText,
+  secureTextEntry, keyboardType, autoCapitalize,
+  rightIcon, onRightIconPress,
+}) {
+  const [focused, setFocused] = useState(false);
+  const glowAnim   = useRef(new Animated.Value(0)).current;
+  const borderAnim = useRef(new Animated.Value(0)).current;
+
+  const animate = (toValue) => {
+    Animated.parallel([
+      Animated.timing(glowAnim,   { toValue, duration: 280, useNativeDriver: false }),
+      Animated.timing(borderAnim, { toValue, duration: 280, useNativeDriver: false }),
+    ]).start();
+  };
+
+  const borderColor = borderAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['rgba(255,255,255,0.07)', ACCENT],
+  });
+  const bgColor = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['rgba(255,255,255,0.04)', 'rgba(77,159,255,0.07)'],
+  });
+
+  return (
+    <Animated.View style={[inputStyles.wrapper, { borderColor, backgroundColor: bgColor }]}>
+      <FontAwesome
+        name={icon} size={16}
+        color={focused ? ACCENT : 'rgba(255,255,255,0.22)'}
+        style={inputStyles.icon}
+      />
+      <TextInput
+        style={inputStyles.input}
+        placeholder={placeholder}
+        placeholderTextColor="rgba(255,255,255,0.18)"
+        value={value}
+        onChangeText={onChangeText}
+        onFocus={() => { setFocused(true);  animate(1); }}
+        onBlur= {() => { setFocused(false); animate(0); }}
+        secureTextEntry={secureTextEntry}
+        keyboardType={keyboardType || 'default'}
+        autoCapitalize={autoCapitalize || 'none'}
+        selectionColor={ACCENT}
+      />
+      {rightIcon && (
+        <TouchableOpacity onPress={onRightIconPress} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <FontAwesome name={rightIcon} size={16} color="rgba(255,255,255,0.28)" />
+        </TouchableOpacity>
+      )}
+    </Animated.View>
+  );
+}
+
+const inputStyles = StyleSheet.create({
+  wrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 14,
+    height: 54,
+    paddingHorizontal: 16,
+    marginBottom: 14,
+  },
+  icon: { marginRight: 12, width: 18 },
+  input: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+    height: 54,
+  },
+});
+
+// ─── RegisterScreen ───────────────────────────────────────────────────────────
 const RegisterScreen = ({ navigation }) => {
   const { googleSignIn, setIsLoading } = useAuth();
-  const { colors } = useTheme();
+  const { colors, toggleTheme, isDarkMode } = useTheme();
   const toast = useToast();
   
   const [firstName, setFirstName] = useState('');
@@ -33,15 +123,28 @@ const RegisterScreen = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [avatar, setAvatar] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [registrationInProgress, setRegistrationInProgress] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  
-  const textInputStyle = {
-    backgroundColor: colors.surface,
-    color: colors.text,
-    borderColor: colors.border,
-  };
+
+  // Entry animations
+  const logoOpacity  = useRef(new Animated.Value(0)).current;
+  const logoScale    = useRef(new Animated.Value(0.7)).current;
+  const cardOpacity  = useRef(new Animated.Value(0)).current;
+  const cardTranslate = useRef(new Animated.Value(36)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.parallel([
+        Animated.spring(logoScale,   { toValue: 1, tension: 55, friction: 8, useNativeDriver: true }),
+        Animated.timing(logoOpacity, { toValue: 1, duration: 480, useNativeDriver: true }),
+      ]),
+      Animated.parallel([
+        Animated.timing(cardOpacity,   { toValue: 1, duration: 380, useNativeDriver: true }),
+        Animated.timing(cardTranslate, { toValue: 0, duration: 380, useNativeDriver: true }),
+      ]),
+    ]).start();
+  }, []);
 
   const handlePickAvatar = () => {
     setIsModalVisible(true);
@@ -68,7 +171,6 @@ const RegisterScreen = ({ navigation }) => {
       if (!result.canceled) {
         if (result.assets && result.assets.length > 0) {
           setAvatar(result.assets[0].uri);
-          console.log("Image selected:", result.assets[0].uri);
         }
       }
     } catch (error) {
@@ -97,7 +199,6 @@ const RegisterScreen = ({ navigation }) => {
       if (!result.canceled) {
         if (result.assets && result.assets.length > 0) {
           setAvatar(result.assets[0].uri);
-          console.log("Image captured:", result.assets[0].uri);
         }
       }
     } catch (error) {
@@ -119,7 +220,6 @@ const RegisterScreen = ({ navigation }) => {
       return;
     }
     
-    // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       toast.warning('Please enter a valid email address');
@@ -129,11 +229,9 @@ const RegisterScreen = ({ navigation }) => {
     try {
       setRegistrationInProgress(true);
       
-      // Generate OTP for email verification
       const otpResult = await authService.generateOTP(email.trim());
       
       if (otpResult.success) {
-        // Prepare registration data to pass to OTP screen
         const registrationData = {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
@@ -144,7 +242,6 @@ const RegisterScreen = ({ navigation }) => {
         
         toast.success('Verification code sent to your email');
         
-        // Navigate to OTP screen with registration data
         navigation.navigate('OTPVerification', {
           email: email.trim(),
           registrationData: registrationData
@@ -163,30 +260,20 @@ const RegisterScreen = ({ navigation }) => {
   const handleGoogleSignIn = async () => {
     try {
       setRegistrationInProgress(true);
-      console.log('Starting Google Sign-in process...');
+      setGoogleLoading(true);
       
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-      console.log('Google Play Services check passed');
       
-      // Sign in with Google
       const signInResult = await GoogleSignin.signIn();
-      console.log('Google sign-in result structure:', JSON.stringify(signInResult));
-      
-      // Extract token directly - we need this for Firebase authentication
       const idToken = signInResult.idToken || signInResult.data?.idToken;
-      
-      console.log('Successfully extracted token');
       
       setIsLoading(true);
 
-      // Use our auth context's googleSignIn method
       const result = await googleSignIn(idToken);
       
       if (result && result.success) {
         const displayName = result.user?.first_name || 'User';
         toast.success(`Welcome ${displayName}!`);
-        
-        // Navigation will be handled by auth state change in App.js
       } else {
         throw new Error(result?.error || 'Authentication failed');
       }
@@ -202,366 +289,216 @@ const RegisterScreen = ({ navigation }) => {
       toast.error(errorMessage);
     } finally {
       setRegistrationInProgress(false);
+      setGoogleLoading(false);
       setIsLoading(false);
     }
   };
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: '#fff',
-    },
-    scrollContainer: {
-      flexGrow: 1,
-      padding: 20,
-      justifyContent: 'center',
-    },
-    header: {
-      alignItems: 'center',
-      marginBottom: 30,
-      marginTop: 20,
-    },
-    title: {
-      fontSize: 28,
-      fontWeight: '600',
-      marginBottom: 8,
-    },
-    subtitle: {
-      fontSize: 16,
-      textAlign: 'center',
-    },
-    avatarContainer: {
-      alignItems: 'center',
-      marginBottom: 30,
-    },
-    avatarPicker: {
-      width: 100,
-      height: 100,
-      borderRadius: 50,
-      borderWidth: 2,
-      borderStyle: 'dashed',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: 8,
-    },
-    avatarImage: {
-      width: 96,
-      height: 96,
-      borderRadius: 48,
-    },
-    avatarText: {
-      fontSize: 14,
-    },
-    formContainer: {
-      marginBottom: 30,
-    },
-    inputContainer: {
-      marginBottom: 15,
-    },
-    inputWrapper: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      borderWidth: 1,
-      borderRadius: 8,
-      paddingHorizontal: 15,
-      height: 50,
-    },
-    inputIcon: {
-      marginRight: 10,
-    },
-    input: {
-      flex: 1,
-      fontSize: 16,
-    },
-    eyeIcon: {
-      padding: 5,
-    },
-    registerButton: {
-      backgroundColor: '#007AFF',
-      height: 50,
-      borderRadius: 8,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: 20,
-    },
-    registerButtonText: {
-      color: '#fff',
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    dividerContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 20,
-    },
-    dividerLine: {
-      flex: 1,
-      height: 1,
-    },
-    dividerText: {
-      marginHorizontal: 15,
-      fontSize: 14,
-    },
-    googleButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: 50,
-      borderRadius: 8,
-      borderWidth: 1,
-      marginBottom: 30,
-    },
-    googleIcon: {
-      marginRight: 10,
-    },
-    googleButtonText: {
-      fontSize: 16,
-      fontWeight: '500',
-    },
-    loginContainer: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    loginText: {
-      fontSize: 14,
-    },
-    loginLink: {
-      fontSize: 14,
-      color: '#007AFF',
-      fontWeight: '600',
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      justifyContent: 'flex-end',
-    },
-    modalContent: {
-      backgroundColor: '#fff',
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      paddingTop: 20,
-      paddingBottom: 40,
-      paddingHorizontal: 20,
-    },
-    modalTitle: {
-      fontSize: 18,
-      fontWeight: '600',
-      textAlign: 'center',
-      marginBottom: 20,
-    },
-    modalOption: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: 15,
-      borderBottomWidth: 1,
-    },
-    modalOptionText: {
-      fontSize: 16,
-      marginLeft: 15,
-    },
-    modalCancelButton: {
-      marginTop: 10,
-      paddingVertical: 15,
-      alignItems: 'center',
-    },
-    modalCancelText: {
-      fontSize: 16,
-      color: '#007AFF',
-      fontWeight: '600',
-    },
-  });
+  const isLoading = registrationInProgress || googleLoading;
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: colors.text }]}>Create Account</Text>
-          <Text style={[styles.subtitle, { color: colors.secondary }]}>
-            Sign up to get started
-          </Text>
-        </View>
+    <View style={styles.root}>
+      {/* ── Background gradient ── */}
+      <LinearGradient
+        colors={['#060d1f', '#080f24', '#050b18']}
+        start={{ x: 0.2, y: 0 }}
+        end={{ x: 0.8, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
 
-        {/* Avatar Selection */}
-        <View style={styles.avatarContainer}>
-          <TouchableOpacity 
-            style={[styles.avatarPicker, { borderColor: colors.border }]}
-            onPress={handlePickAvatar}
-          >
-            {avatar ? (
-              <Image source={{ uri: avatar }} style={styles.avatarImage} />
-            ) : (
-              <MaterialCommunityIcons 
-                name="camera-plus" 
-                size={32} 
-                color={colors.secondary} 
-              />
-            )}
-          </TouchableOpacity>
-          <Text style={[styles.avatarText, { color: colors.secondary }]}>
-            Add Photo
-          </Text>
-        </View>
+      {/* ── Ambient orbs ── */}
+      <View style={styles.orb1} />
+      <View style={styles.orb2} />
+      <View style={styles.orb3} />
 
-        {/* Form Fields */}
-        <View style={styles.formContainer}>
-          {/* First Name */}
-          <View style={styles.inputContainer}>
-            <View style={[styles.inputWrapper, { 
-              borderColor: colors.border,
-              backgroundColor: colors.surface 
-            }]}>
-              <MaterialCommunityIcons 
-                name="account" 
-                size={20} 
-                color={colors.secondary} 
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="First Name"
-                placeholderTextColor={colors.secondary}
-                value={firstName}
-                onChangeText={setFirstName}
-                autoCapitalize="words"
-              />
-            </View>
-          </View>
+      {/* ── Corner accents ── */}
+      <View style={[styles.cornerTL, { borderColor: ACCENT + '40' }]} />
+      <View style={[styles.cornerTR, { borderColor: ACCENT + '30' }]} />
+      <View style={[styles.cornerBL, { borderColor: ACCENT + '20' }]} />
+      <View style={[styles.cornerBR, { borderColor: ACCENT + '20' }]} />
 
-          {/* Last Name */}
-          <View style={styles.inputContainer}>
-            <View style={[styles.inputWrapper, { 
-              borderColor: colors.border,
-              backgroundColor: colors.surface 
-            }]}>
-              <MaterialCommunityIcons 
-                name="account" 
-                size={20} 
-                color={colors.secondary} 
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="Last Name"
-                placeholderTextColor={colors.secondary}
-                value={lastName}
-                onChangeText={setLastName}
-                autoCapitalize="words"
-              />
-            </View>
-          </View>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
 
-          {/* Email */}
-          <View style={styles.inputContainer}>
-            <View style={[styles.inputWrapper, { 
-              borderColor: colors.border,
-              backgroundColor: colors.surface 
-            }]}>
-              <MaterialCommunityIcons 
-                name="email" 
-                size={20} 
-                color={colors.secondary} 
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="Email"
-                placeholderTextColor={colors.secondary}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-            </View>
-          </View>
-
-          {/* Password */}
-          <View style={styles.inputContainer}>
-            <View style={[styles.inputWrapper, { 
-              borderColor: colors.border,
-              backgroundColor: colors.surface 
-            }]}>
-              <MaterialCommunityIcons 
-                name="lock" 
-                size={20} 
-                color={colors.secondary} 
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="Password"
-                placeholderTextColor={colors.secondary}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeIcon}
+          {/* ── Logo Block ── */}
+          <Animated.View style={[styles.logoBlock, { opacity: logoOpacity, transform: [{ scale: logoScale }] }]}>
+            <View style={styles.ringWrapper}>
+              <View style={[styles.dashedRing, { borderColor: ACCENT + '35' }]} />
+              <LinearGradient
+                colors={[ACCENT2, ACCENT]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.logoIconBox}
               >
-                <MaterialCommunityIcons
-                  name={showPassword ? "eye-off" : "eye"}
-                  size={20}
-                  color={colors.secondary}
+                <Image 
+                  source={require('../../assets/splash-icon.png')} 
+                  style={styles.logoImage}
+                  resizeMode="contain"
                 />
+              </LinearGradient>
+            </View>
+          </Animated.View>
+
+          {/* ── Card ── */}
+          <Animated.View style={[
+            styles.card,
+            {
+              opacity: cardOpacity,
+              transform: [{ translateY: cardTranslate }],
+              borderColor: ACCENT + '18',
+            },
+          ]}>
+
+            {/* Card header */}
+            <Text style={styles.cardTitle}>Create Account</Text>
+            <Text style={styles.cardSubtitle}>Sign up to start your health journey</Text>
+
+            {/* Blue accent bar */}
+            <View style={styles.accentBarRow}>
+              <LinearGradient colors={[ACCENT2, ACCENT]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.accentBar} />
+              <View style={[styles.accentDot, { backgroundColor: ACCENT, shadowColor: ACCENT }]} />
+            </View>
+
+            {/* Avatar Selection */}
+            <View style={styles.avatarContainer}>
+              <TouchableOpacity 
+                style={styles.avatarPicker}
+                onPress={handlePickAvatar}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.avatarRing, { borderColor: ACCENT + '35' }]} />
+                {avatar ? (
+                  <Image source={{ uri: avatar }} style={styles.avatarImage} />
+                ) : (
+                  <LinearGradient
+                    colors={[ACCENT2, ACCENT]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.avatarPlaceholder}
+                  >
+                    <MaterialCommunityIcons 
+                      name="camera-plus" 
+                      size={28} 
+                      color="#fff" 
+                    />
+                  </LinearGradient>
+                )}
+              </TouchableOpacity>
+              <Text style={styles.avatarText}>Add Profile Photo</Text>
+            </View>
+
+            {/* First Name */}
+            <Text style={styles.fieldLabel}>FIRST NAME</Text>
+            <GlowInput
+              icon="user"
+              placeholder="John"
+              value={firstName}
+              onChangeText={setFirstName}
+              autoCapitalize="words"
+            />
+
+            {/* Last Name */}
+            <Text style={styles.fieldLabel}>LAST NAME</Text>
+            <GlowInput
+              icon="user"
+              placeholder="Doe"
+              value={lastName}
+              onChangeText={setLastName}
+              autoCapitalize="words"
+            />
+
+            {/* Email */}
+            <Text style={styles.fieldLabel}>EMAIL ADDRESS</Text>
+            <GlowInput
+              icon="envelope"
+              placeholder="you@example.com"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+
+            {/* Password */}
+            <Text style={styles.fieldLabel}>PASSWORD</Text>
+            <GlowInput
+              icon="lock"
+              placeholder="Create a strong password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              rightIcon={showPassword ? 'eye-slash' : 'eye'}
+              onRightIconPress={() => setShowPassword(!showPassword)}
+            />
+
+            {/* Register CTA */}
+            <TouchableOpacity
+              onPress={handleRegister}
+              disabled={isLoading}
+              activeOpacity={0.85}
+              style={[styles.registerBtnWrapper, { shadowColor: ACCENT2 }]}
+            >
+              <LinearGradient
+                colors={[ACCENT2, ACCENT]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.registerBtn}
+              >
+                {registrationInProgress ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.registerBtnText}>CREATE ACCOUNT  →</Text>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+
+            {/* OR divider */}
+            <View style={styles.orRow}>
+              <View style={styles.orLine} />
+              <Text style={styles.orText}>OR</Text>
+              <View style={styles.orLine} />
+            </View>
+
+            {/* Google button */}
+            <TouchableOpacity
+              style={styles.googleBtn}
+              onPress={handleGoogleSignIn}
+              disabled={isLoading}
+              activeOpacity={0.8}
+            >
+              {googleLoading ? (
+                <ActivityIndicator color="rgba(255,255,255,0.5)" size="small" />
+              ) : (
+                <>
+                  <View style={styles.googleIconBox}>
+                    <FontAwesome name="google" size={15} color="#DB4437" />
+                  </View>
+                  <Text style={styles.googleBtnText}>Sign up with Google</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            {/* Login link */}
+            <View style={styles.loginRow}>
+              <Text style={styles.loginText}>Already have an account? </Text>
+              <TouchableOpacity onPress={() => navigation.navigate('Login')} activeOpacity={0.7}>
+                <Text style={[styles.loginLink, { color: ACCENT }]}>Sign In →</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+          </Animated.View>
 
-        {/* Register Button */}
-        <TouchableOpacity
-          style={[styles.registerButton, { opacity: registrationInProgress ? 0.7 : 1 }]}
-          onPress={handleRegister}
-          disabled={registrationInProgress}
-        >
-          {registrationInProgress ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Text style={styles.registerButtonText}>Create Account</Text>
-          )}
-        </TouchableOpacity>
-
-        {/* Divider */}
-        <View style={styles.dividerContainer}>
-          <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-          <Text style={[styles.dividerText, { color: colors.secondary }]}>or</Text>
-          <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-        </View>
-
-        {/* Google Sign Up Button */}
-        <TouchableOpacity
-          style={[styles.googleButton, { 
-            borderColor: colors.border,
-            backgroundColor: colors.surface,
-            opacity: registrationInProgress ? 0.7 : 1 
-          }]}
-          onPress={handleGoogleSignIn}
-          disabled={registrationInProgress}
-        >
-          {registrationInProgress ? (
-            <ActivityIndicator color={colors.text} size="small" />
-          ) : (
-            <>
-              <FontAwesome name="google" size={20} color="#DB4437" style={{ marginRight: 10 }} />
-              <Text style={[styles.googleButtonText, { color: colors.text }]}>
-                Sign up with Google
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
-
-        {/* Login Link */}
-        <View style={styles.loginContainer}>
-          <Text style={[styles.loginText, { color: colors.secondary }]}>
-            Already have an account?{' '}
-          </Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-            <Text style={[styles.loginLink, { color: colors.primary }]}>Sign In</Text>
+          {/* Theme toggle */}
+          <TouchableOpacity style={styles.themeToggle} onPress={toggleTheme} activeOpacity={0.7}>
+            <Text style={styles.themeToggleText}>
+              {isDarkMode ? '☀️' : '🌙'}  Switch to {isDarkMode ? 'Light' : 'Dark'} Mode
+            </Text>
           </TouchableOpacity>
-        </View>
-      </ScrollView>
+
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Avatar Selection Modal */}
       <Modal
@@ -571,44 +508,45 @@ const RegisterScreen = ({ navigation }) => {
         onRequestClose={() => setIsModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>
-              Select Avatar
-            </Text>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select Avatar</Text>
             
             <TouchableOpacity
-              style={[styles.modalOption, { borderBottomColor: colors.border }]}
+              style={styles.modalOption}
               onPress={handleTakePhoto}
+              activeOpacity={0.7}
             >
-              <MaterialCommunityIcons 
-                name="camera" 
-                size={24} 
-                color={colors.text} 
-              />
-              <Text style={[styles.modalOptionText, { color: colors.text }]}>
-                Take Photo
-              </Text>
+              <View style={styles.modalIconBox}>
+                <MaterialCommunityIcons 
+                  name="camera" 
+                  size={20} 
+                  color={ACCENT} 
+                />
+              </View>
+              <Text style={styles.modalOptionText}>Take Photo</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
-              style={[styles.modalOption, { borderBottomColor: colors.border }]}
+              style={styles.modalOption}
               onPress={handleChooseFromLibrary}
+              activeOpacity={0.7}
             >
-              <MaterialCommunityIcons 
-                name="image" 
-                size={24} 
-                color={colors.text} 
-              />
-              <Text style={[styles.modalOptionText, { color: colors.text }]}>
-                Choose from Library
-              </Text>
+              <View style={styles.modalIconBox}>
+                <MaterialCommunityIcons 
+                  name="image" 
+                  size={20} 
+                  color={ACCENT} 
+                />
+              </View>
+              <Text style={styles.modalOptionText}>Choose from Library</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
               style={styles.modalCancelButton}
               onPress={() => setIsModalVisible(false)}
+              activeOpacity={0.7}
             >
-              <Text style={[styles.modalCancelText, { color: colors.primary }]}>Cancel</Text>
+              <Text style={styles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -616,5 +554,237 @@ const RegisterScreen = ({ navigation }) => {
     </View>
   );
 };
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: BG_DARK,
+  },
+
+  // Orbs
+  orb1: {
+    position: 'absolute', top: -100, right: -80,
+    width: 300, height: 300, borderRadius: 150,
+    backgroundColor: 'rgba(30,111,255,0.12)',
+  },
+  orb2: {
+    position: 'absolute', top: '30%', left: -120,
+    width: 280, height: 280, borderRadius: 140,
+    backgroundColor: 'rgba(77,159,255,0.07)',
+  },
+  orb3: {
+    position: 'absolute', bottom: -80, right: -60,
+    width: 240, height: 240, borderRadius: 120,
+    backgroundColor: 'rgba(30,111,255,0.09)',
+  },
+
+  // Corner accents
+  cornerTL: { position: 'absolute', top: 0, left: 0, width: 60, height: 60, borderTopWidth: 2, borderLeftWidth: 2, borderRadius: 2 },
+  cornerTR: { position: 'absolute', top: 0, right: 0, width: 60, height: 60, borderTopWidth: 2, borderRightWidth: 2, borderRadius: 2 },
+  cornerBL: { position: 'absolute', bottom: 0, left: 0, width: 60, height: 60, borderBottomWidth: 2, borderLeftWidth: 2, borderRadius: 2 },
+  cornerBR: { position: 'absolute', bottom: 0, right: 0, width: 60, height: 60, borderBottomWidth: 2, borderRightWidth: 2, borderRadius: 2 },
+
+  scroll: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 55,
+    paddingBottom: 40,
+  },
+
+  // Logo
+  logoBlock: {
+    alignItems: 'center',
+    marginBottom: 28,
+  },
+  ringWrapper: {
+    width: 80, height: 80,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 14,
+  },
+  dashedRing: {
+    position: 'absolute',
+    width: 80, height: 80, borderRadius: 40,
+    borderWidth: 1, borderStyle: 'dashed',
+  },
+  logoIconBox: {
+    width: 64, height: 64, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5, shadowRadius: 24, elevation: 14,
+  },
+  logoImage: {
+    width: 200,
+    height: 200,
+  },
+
+  // Card
+  card: {
+    backgroundColor: 'rgba(77,159,255,0.03)',
+    borderWidth: 1, borderRadius: 24, padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.45, shadowRadius: 40, elevation: 12,
+  },
+  cardTitle: {
+    color: '#fff', fontSize: 22, fontWeight: '900',
+    letterSpacing: -0.5, marginBottom: 4,
+  },
+  cardSubtitle: {
+    color: 'rgba(255,255,255,0.28)', fontSize: 13,
+    lineHeight: 19, marginBottom: 16,
+  },
+  accentBarRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 22,
+  },
+  accentBar: {
+    width: 36, height: 2, borderRadius: 1,
+  },
+  accentDot: {
+    width: 6, height: 6, borderRadius: 3,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9, shadowRadius: 6, elevation: 3,
+  },
+
+  // Avatar
+  avatarContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  avatarPicker: {
+    width: 90, height: 90,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 8,
+  },
+  avatarRing: {
+    position: 'absolute',
+    width: 90, height: 90, borderRadius: 45,
+    borderWidth: 1, borderStyle: 'dashed',
+  },
+  avatarPlaceholder: {
+    width: 80, height: 80, borderRadius: 40,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: ACCENT,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4, shadowRadius: 16, elevation: 8,
+  },
+  avatarImage: {
+    width: 80, height: 80, borderRadius: 40,
+  },
+  avatarText: {
+    color: 'rgba(255,255,255,0.28)', fontSize: 11, fontWeight: '600',
+  },
+
+  // Field labels
+  fieldLabel: {
+    color: 'rgba(255,255,255,0.20)', fontSize: 9,
+    fontWeight: '700', letterSpacing: 2.5, fontFamily: 'monospace',
+    marginBottom: 6,
+  },
+
+  // Register button
+  registerBtnWrapper: {
+    borderRadius: 14, overflow: 'hidden', marginBottom: 20, marginTop: 6,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45, shadowRadius: 20, elevation: 8,
+  },
+  registerBtn: {
+    height: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 14,
+  },
+  registerBtnText: {
+    color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 1,
+  },
+
+  // OR
+  orRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  orLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
+  orText: {
+    color: 'rgba(255,255,255,0.18)', fontSize: 10,
+    fontWeight: '700', marginHorizontal: 12, letterSpacing: 1.5, fontFamily: 'monospace',
+  },
+
+  // Google
+  googleBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    height: 54, borderRadius: 14, gap: 12, marginBottom: 24,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+  },
+  googleIconBox: {
+    width: 28, height: 28, borderRadius: 8,
+    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+  },
+  googleBtnText: {
+    color: 'rgba(255,255,255,0.6)', fontSize: 14, fontWeight: '600',
+  },
+
+  // Login link
+  loginRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+  loginText: { color: 'rgba(255,255,255,0.22)', fontSize: 13 },
+  loginLink: { fontSize: 13, fontWeight: '700' },
+
+  // Theme toggle
+  themeToggle: { alignSelf: 'center', marginTop: 20, padding: 10 },
+  themeToggleText: { color: 'rgba(255,255,255,0.18)', fontSize: 12, letterSpacing: 0.3 },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: 'rgba(12,20,40,0.98)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 24,
+    paddingBottom: 40,
+    paddingHorizontal: 24,
+    borderTopWidth: 1,
+    borderColor: ACCENT + '25',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginBottom: 24,
+    color: '#fff',
+    letterSpacing: -0.5,
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(77,159,255,0.05)',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  modalIconBox: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: 'rgba(77,159,255,0.12)',
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 14,
+  },
+  modalOptionText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.75)',
+  },
+  modalCancelButton: {
+    marginTop: 8,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  modalCancelText: {
+    fontSize: 15,
+    color: ACCENT,
+    fontWeight: '700',
+  },
+});
 
 export default RegisterScreen;

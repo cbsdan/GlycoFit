@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,483 +8,949 @@ import {
   ScrollView,
   Animated,
   StatusBar,
+  PanResponder,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useTheme } from '../context/ThemeContext';
+import Svg, { Circle, Line } from 'react-native-svg';
 
 const { width, height } = Dimensions.get('window');
 
+// ─── Page Data ───────────────────────────────────────────────────────────────
+const PAGES = [
+  {
+    id: 1,
+    label: 'FEATURE 01',
+    title: 'Track Your\nHealth Journey',
+    description:
+      'Real-time fitness metrics synced with Health Connect — steps, calories, and vitals in one living dashboard.',
+    icon: '⚡',
+    accent: '#00FF88',
+    accentDim: 'rgba(0,255,136,0.18)',
+    accentGlow: 'rgba(0,255,136,0.38)',
+    bg: ['#0a1a0f', '#0d2015'],
+    features: [
+      { icon: '👟', label: 'Step Counter', val: '12,480' },
+      { icon: '🔥', label: 'Calories', val: '2,140 kcal' },
+      { icon: '📈', label: 'Weekly Streak', val: '7 days' },
+    ],
+    stat: { label: 'STEPS TODAY', value: '12,480', progress: 0.83, unit: '/ 15k goal' },
+  },
+  {
+    id: 2,
+    label: 'FEATURE 02',
+    title: 'Complete\nMeal History',
+    description:
+      'Discover hidden links between what you eat and your glucose — patterns that transform your wellbeing.',
+    icon: '🧬',
+    accent: '#FF6B35',
+    accentDim: 'rgba(255,107,53,0.18)',
+    accentGlow: 'rgba(255,107,53,0.38)',
+    bg: ['#1a0f08', '#200e05'],
+    features: [
+      { icon: '📸', label: 'Photo Log', val: "Today's meals" },
+      { icon: '🥗', label: 'Macros', val: 'Balanced' },
+      { icon: '📊', label: 'Glucose Impact', val: '+12 mg/dL' },
+    ],
+    stat: { label: 'GLUCOSE LEVEL', value: '98', progress: 0.54, unit: 'mg/dL' },
+  },
+  // ── NEW: Sleep Tracking ───────────────────────────────────────────────────
+  {
+    id: 3,
+    label: 'FEATURE 03',
+    title: 'Sleep\nTracking',
+    description:
+      'Quality sleep is the foundation of metabolic health. Monitor your sleep cycles and see how rest directly impacts your glucose levels.',
+    icon: '🌙',
+    accent: '#B06EFF',
+    accentDim: 'rgba(176,110,255,0.18)',
+    accentGlow: 'rgba(176,110,255,0.38)',
+    bg: ['#100a1a', '#150d20'],
+    features: [
+      { icon: '😴', label: 'Sleep Duration', val: '7h 42m' },
+      { icon: '🔄', label: 'Sleep Cycles', val: '5 cycles' },
+      { icon: '📉', label: 'Glucose at Night', val: 'Stable' },
+    ],
+    stat: { label: 'SLEEP QUALITY', value: '82', progress: 0.82, unit: '/ 100' },
+  },
+  // ── NEW: Smoke Intake ─────────────────────────────────────────────────────
+  {
+    id: 4,
+    label: 'FEATURE 04',
+    title: 'Smoke\nIntake Log',
+    description:
+      'Track your smoking habits and understand how nicotine spikes your blood sugar and affects your long-term glycemic control.',
+    icon: '🚭',
+    accent: '#FF8C42',
+    accentDim: 'rgba(255,140,66,0.18)',
+    accentGlow: 'rgba(255,140,66,0.38)',
+    bg: ['#1a0e06', '#200f05'],
+    features: [
+      { icon: '🗓️', label: 'Daily Log', val: '3 today' },
+      { icon: '📊', label: 'Glucose Spike', val: '+18 mg/dL' },
+      { icon: '📉', label: 'Weekly Trend', val: '↓ 12%' },
+    ],
+    stat: { label: 'SMOKE-FREE HOURS', value: '14', progress: 0.58, unit: '/ 24h' },
+  },
+  // ── NEW: Alcohol Intake ───────────────────────────────────────────────────
+  {
+    id: 5,
+    label: 'FEATURE 05',
+    title: 'Alcohol\nIntake Log',
+    description:
+      'Monitor your alcohol consumption and its delayed effect on blood sugar — preventing hidden glucose crashes and spikes.',
+    icon: '🍷',
+    accent: '#E05C8A',
+    accentDim: 'rgba(224,92,138,0.18)',
+    accentGlow: 'rgba(224,92,138,0.38)',
+    bg: ['#180810', '#1e0812'],
+    features: [
+      { icon: '🥃', label: 'Units Logged', val: '2 units' },
+      { icon: '⏱️', label: 'Time Since Last', val: '6 hrs ago' },
+      { icon: '🩸', label: 'Glucose Effect', val: '-22 mg/dL' },
+    ],
+    stat: { label: 'WEEKLY UNITS', value: '4', progress: 0.27, unit: '/ 14 limit' },
+  },
+  // ── Original page 3 (now page 6) ─────────────────────────────────────────
+  {
+    id: 6,
+    label: 'FEATURE 06',
+    title: 'Personalized\nHealth Insights',
+    description:
+      'AI-powered recommendations tailored to your unique biology — your personal wellness intelligence.',
+    icon: '✦',
+    accent: '#B06EFF',
+    accentDim: 'rgba(176,110,255,0.18)',
+    accentGlow: 'rgba(176,110,255,0.38)',
+    bg: ['#100a1a', '#150d20'],
+    features: [
+      { icon: '🧠', label: 'AI Insights', val: '12 new' },
+      { icon: '📋', label: 'Health Score', val: '87 / 100' },
+      { icon: '💡', label: 'Expert Tips', val: 'Personalized' },
+    ],
+    stat: { label: 'HEALTH SCORE', value: '87', progress: 0.87, unit: '/ 100' },
+  },
+];
+
+// ─── Animated SVG Ring ────────────────────────────────────────────────────────
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+function ProgressRing({ accent, accentGlow, targetProgress }) {
+  const r = 54;
+  const circ = 2 * Math.PI * r;
+  const animVal = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    animVal.setValue(0);
+    Animated.timing(animVal, {
+      toValue: targetProgress,
+      duration: 1100,
+      useNativeDriver: false,
+    }).start();
+  }, [targetProgress]);
+
+  const strokeDashoffset = animVal.interpolate({
+    inputRange: [0, 1],
+    outputRange: [circ, 0],
+  });
+
+  return (
+    <View style={{ width: 130, height: 130 }}>
+      <Svg width={130} height={130} style={StyleSheet.absoluteFill}>
+        {/* Track */}
+        <Circle cx={65} cy={65} r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={6} />
+        {/* Progress — we simulate with a plain Circle + dasharray trick via JS */}
+      </Svg>
+      {/* Since Animated SVG strokeDashoffset is tricky on RN, we use a JS-driven approach */}
+      <_AnimatedRing accent={accent} accentGlow={accentGlow} targetProgress={targetProgress} />
+    </View>
+  );
+}
+
+// Helper: drives progress via state to re-render SVG dasharray
+function _AnimatedRing({ accent, accentGlow, targetProgress }) {
+  const [progress, setProgress] = useState(0);
+  const r = 54;
+  const circ = 2 * Math.PI * r;
+  const frameRef = useRef(null);
+  const startRef = useRef(null);
+
+  useEffect(() => {
+    setProgress(0);
+    cancelAnimationFrame(frameRef.current);
+    const duration = 1100;
+    const startProg = 0;
+
+    const animate = (ts) => {
+      if (!startRef.current) startRef.current = ts;
+      const elapsed = ts - startRef.current;
+      const t = Math.min(elapsed / duration, 1);
+      // ease out cubic
+      const eased = 1 - Math.pow(1 - t, 3);
+      setProgress(startProg + (targetProgress - startProg) * eased);
+      if (t < 1) frameRef.current = requestAnimationFrame(animate);
+    };
+
+    startRef.current = null;
+    frameRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frameRef.current);
+  }, [targetProgress]);
+
+  const dash = circ * progress;
+
+  return (
+    <Svg width={130} height={130} style={StyleSheet.absoluteFill}>
+      <Circle cx={65} cy={65} r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={6} />
+      <Circle
+        cx={65} cy={65} r={r}
+        fill="none"
+        stroke={accent}
+        strokeWidth={6}
+        strokeDasharray={`${dash} ${circ}`}
+        strokeLinecap="round"
+        rotation={-90}
+        origin="65, 65"
+      />
+    </Svg>
+  );
+}
+
+// ─── Feature Card ─────────────────────────────────────────────────────────────
+function FeatureCard({ feature, accent, accentDim, delay }) {
+  const pulseAnim = useRef(new Animated.Value(0.6)).current;
+  const translateY = useRef(new Animated.Value(20)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(delay),
+      Animated.parallel([
+        Animated.timing(translateY, { toValue: 0, duration: 400, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+      ]),
+    ]).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0.6, duration: 900, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
+  return (
+    <Animated.View style={[styles.featureCard, { opacity, transform: [{ translateY }] }]}>
+      <View style={[styles.featureIconBox, { backgroundColor: accentDim, borderColor: accent + '50' }]}>
+        <Text style={styles.featureIconEmoji}>{feature.icon}</Text>
+      </View>
+      <View style={styles.featureTextBlock}>
+        <Text style={styles.featureLabel}>{feature.label.toUpperCase()}</Text>
+        <Text style={styles.featureVal}>{feature.val}</Text>
+      </View>
+      <Animated.View
+        style={[
+          styles.pulseDot,
+          { backgroundColor: accent, shadowColor: accent, opacity: pulseAnim },
+        ]}
+      />
+    </Animated.View>
+  );
+}
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 const WelcomeScreen = ({ navigation, onComplete }) => {
-  const { colors, isDarkMode, toggleTheme } = useTheme();
   const [currentPage, setCurrentPage] = useState(0);
-  const scrollViewRef = useRef(null);
+  const [entered, setEntered] = useState(false);
+  const scrollRef = useRef(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
-  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const contentOpacity = useRef(new Animated.Value(1)).current;
+  const contentTranslate = useRef(new Animated.Value(0)).current;
+  const barWidth = useRef(new Animated.Value(0)).current;
 
-  const pages = [
-    {
-      id: 1,
-      title: 'Track Your Health Journey',
-      description: 'Monitor your daily steps, calories, and activity levels with ease',
-      details: 'Stay on top of your fitness goals with real-time tracking and comprehensive health metrics from Health Connect.',
-      icon: 'fitness',
-      gradientColors: ['#4CAF50', '#45A049'],
-      features: ['Daily Step Counter', 'Calorie Tracking', 'Activity History'],
-    },
-    {
-      id: 2,
-      title: 'Complete Meal History',
-      description: 'Keep track of your meals and see how they affect your glucose levels',
-      details: 'Log your meals easily and discover patterns between your diet and blood sugar levels over time.',
-      icon: 'restaurant',
-      gradientColors: ['#FF9800', '#F57C00'],
-      features: ['Photo Logging', 'Nutrition Info', 'Impact Analysis'],
-    },
-    {
-      id: 3,
-      title: 'Personalized Health Insights',
-      description: 'View comprehensive health data and get personalized recommendations',
-      details: 'Access all your health metrics in one place and receive tailored advice to improve your wellness journey.',
-      icon: 'heart',
-      gradientColors: ['#E91E63', '#C2185B'],
-      features: ['Health Dashboard', 'Custom Reports', 'Expert Tips'],
-    },
-  ];
+  const page = PAGES[currentPage];
 
-  React.useEffect(() => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      tension: 50,
-      friction: 7,
-      useNativeDriver: true,
+  // Stat bar animation
+  useEffect(() => {
+    barWidth.setValue(0);
+    Animated.timing(barWidth, {
+      toValue: page.stat.progress,
+      duration: 1200,
+      useNativeDriver: false,
     }).start();
   }, [currentPage]);
 
-  const handleScroll = (event) => {
-    const scrollPosition = event.nativeEvent.contentOffset.x;
-    const page = Math.round(scrollPosition / width);
-    if (page !== currentPage) {
-      setCurrentPage(page);
-      Animated.sequence([
-        Animated.timing(scaleAnim, {
-          toValue: 0.8,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          tension: 50,
-          friction: 7,
-          useNativeDriver: true,
-        }),
+  const animateTo = (newPage) => {
+    if (newPage === currentPage) return;
+    Animated.parallel([
+      Animated.timing(contentOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(contentTranslate, {
+        toValue: newPage > currentPage ? -30 : 30,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setCurrentPage(newPage);
+      contentTranslate.setValue(newPage > currentPage ? 30 : -30);
+      Animated.parallel([
+        Animated.timing(contentOpacity, { toValue: 1, duration: 320, useNativeDriver: true }),
+        Animated.timing(contentTranslate, { toValue: 0, duration: 320, useNativeDriver: true }),
       ]).start();
-    }
-  };
-
-  const goToNextPage = () => {
-    if (currentPage < pages.length - 1) {
-      scrollViewRef.current?.scrollTo({
-        x: width * (currentPage + 1),
-        animated: true,
-      });
-    }
-  };
-
-  const goToPreviousPage = () => {
-    if (currentPage > 0) {
-      scrollViewRef.current?.scrollTo({
-        x: width * (currentPage - 1),
-        animated: true,
-      });
-    }
+    });
   };
 
   const handleGetStarted = () => {
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      if (onComplete) {
-        onComplete();
-      }
+    Animated.timing(fadeAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
+      if (onComplete) onComplete();
       navigation.navigate('Login');
     });
   };
 
-  return (
-    <Animated.View style={[styles.container, { opacity: fadeAnim, backgroundColor: colors.background }]}>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      
-      {/* Modern Header */}
-      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <View style={styles.logoContainer}>
-          <Text style={[styles.logoText, { color: colors.primary }]}>GlycoFit</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity
-            style={[styles.themeToggle, { backgroundColor: colors.card }]}
-            onPress={toggleTheme}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={isDarkMode ? 'sunny' : 'moon'}
-              size={18}
-              color={colors.primary}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.skipButton, { backgroundColor: colors.card }]}
-          onPress={() => {
-            if (onComplete) {
-              onComplete();
-            }
-            navigation.navigate('Login');
-          }}
-          >
-            <Text style={[styles.skipText, { color: colors.text }]}>Skip</Text>
-            <Ionicons name="arrow-forward" size={16} color={colors.text} />
-          </TouchableOpacity>
-        </View>
-      </View>
+  const handleSkip = () => {
+    if (onComplete) onComplete();
+    navigation.navigate('Login');
+  };
 
-      {/* Scrollable Pages */}
-      <ScrollView
-        ref={scrollViewRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-      >
-        {pages.map((page, index) => (
-          <View key={page.id} style={styles.page}>
-            {/* Animated Icon with Gradient */}
-            <Animated.View style={{ transform: [{ scale: currentPage === index ? scaleAnim : 0.8 }] }}>
-              <LinearGradient
-                colors={page.gradientColors}
-                style={styles.iconContainer}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Ionicons name={page.icon} size={50} color="#FFF" />
-              </LinearGradient>
-            </Animated.View>
-
-            {/* Title & Description */}
-            <Text style={[styles.title, { color: colors.text }]}>{page.title}</Text>
-            <Text style={[styles.description, { color: colors.secondary }]}>{page.description}</Text>
-
-            {/* Detailed Explanation */}
-            <View style={[styles.detailsContainer, { backgroundColor: colors.card }]}>
-              <Text style={[styles.detailsText, { color: colors.text }]}>{page.details}</Text>
-            </View>
-
-            {/* Feature Pills */}
-            <View style={styles.featuresContainer}>
-              {page.features.map((feature, idx) => (
-                <View key={idx} style={[styles.featurePill, { backgroundColor: colors.card }]}>
-                  <Ionicons name="checkmark-circle" size={16} color={page.gradientColors[0]} />
-                  <Text style={[styles.featureText, { color: page.gradientColors[0] }]}>
-                    {feature}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-
-      {/* Modern Page Indicators */}
-      <View style={styles.indicatorContainer}>
-        {pages.map((page, index) => (
-          <Animated.View
-            key={index}
-            style={[
-              styles.indicator,
-              currentPage === index && [
-                styles.activeIndicator,
-                { backgroundColor: page.gradientColors[0] }
-              ],
-            ]}
-          />
-        ))}
-      </View>
-
-      {/* Navigation Buttons */}
-      <View style={styles.bottomContainer}>
-        {currentPage > 0 && (
-          <TouchableOpacity
-            style={styles.prevButton}
-            onPress={goToPreviousPage}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="arrow-back" size={24} color="#2196F3" />
-          </TouchableOpacity>
-        )}
-
-        {currentPage < pages.length - 1 ? (
-          <LinearGradient
-            colors={pages[currentPage].gradientColors}
-            style={[styles.nextButton, { marginLeft: currentPage === 0 ? 'auto' : 0 }]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          >
-            <TouchableOpacity
-              onPress={goToNextPage}
-              style={styles.nextButtonInner}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.nextButtonText}>Next</Text>
-              <Ionicons name="arrow-forward" size={20} color="#FFF" />
-            </TouchableOpacity>
-          </LinearGradient>
-        ) : (
-          <LinearGradient
-            colors={['#4CAF50', '#45A049']}
-            style={[styles.getStartedButton, { marginLeft: 'auto' }]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          >
-            <TouchableOpacity
-              onPress={handleGetStarted}
-              style={styles.getStartedButtonInner}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.getStartedButtonText}>Get Started</Text>
-              <Ionicons name="arrow-forward" size={20} color="#FFF" style={{ marginLeft: 8 }} />
-            </TouchableOpacity>
-          </LinearGradient>
-        )}
-      </View>
-
-      {/* Modern Footer */}
-      <View style={styles.footer}>
-        <Text style={[styles.footerText, { color: colors.secondary }]}>
-          Already have an account?{' '}
-        </Text>
-        <TouchableOpacity onPress={() => {
-          if (onComplete) {
-            onComplete();
-          }
-          navigation.navigate('Login');
-        }}>
-          <Text style={[styles.loginLink, { color: colors.primary }]}>Sign In</Text>
+  // ── Entered screen ──
+  if (entered) {
+    return (
+      <View style={styles.enteredScreen}>
+        <Text style={styles.enteredEmoji}>🌿</Text>
+        <Text style={[styles.enteredTitle, { color: '#00FF88' }]}>You're in.</Text>
+        <Text style={styles.enteredSub}>Taking you to Login…</Text>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => setEntered(false)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.backBtnText}>← Back to Onboarding</Text>
         </TouchableOpacity>
       </View>
+    );
+  }
+
+  const barWidthInterpolated = barWidth.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
+
+  return (
+    <Animated.View style={[styles.root, { opacity: fadeAnim }]}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Background gradient */}
+      <LinearGradient colors={page.bg} style={StyleSheet.absoluteFill} />
+
+      {/* Ambient orbs */}
+      <View style={[styles.orb1, { backgroundColor: page.accent + '18' }]} />
+      <View style={[styles.orb2, { backgroundColor: page.accent + '10' }]} />
+
+      {/* Status bar mock */}
+      {/* <View style={styles.statusBar}>
+        <Text style={styles.statusTime}>9:41</Text>
+        <View style={styles.statusRight}>
+          {[3, 2, 1].map((i) => (
+            <View key={i} style={[styles.signalBar, { height: 4 + i * 3 }]} />
+          ))}
+          <View style={styles.battery}>
+            <View style={[styles.batteryFill, { backgroundColor: page.accent }]} />
+          </View>
+        </View>
+      </View> */}
+
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.logoRow}>
+          {/* <LinearGradient
+            colors={[page.accent, page.accent + 'AA']}
+            style={styles.logoIcon}
+          >
+            <Text style={styles.logoIconText}>G</Text>
+          </LinearGradient> */}
+          <Text style={styles.logoText}>GlycoFit</Text>
+        </View>
+        <TouchableOpacity style={styles.skipBtn} onPress={handleSkip} activeOpacity={0.7}>
+          <Text style={styles.skipText}>SKIP →</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Page counter */}
+      <View style={styles.pageCounterRow}>
+        <Text style={[styles.pageCounter, { color: page.accent }]}>
+          0{currentPage + 1} / 0{PAGES.length}
+        </Text>
+      </View>
+
+      {/* Main animated content */}
+      <Animated.View
+        style={[
+          styles.content,
+          { opacity: contentOpacity, transform: [{ translateY: contentTranslate }] },
+        ]}
+      >
+        {/* Hero row: ring + title */}
+        <View style={styles.heroRow}>
+          <View style={styles.ringWrapper}>
+            <_AnimatedRing
+              accent={page.accent}
+              accentGlow={page.accentGlow}
+              targetProgress={page.stat.progress}
+            />
+            <View
+              style={[
+                styles.ringInner,
+                {
+                  backgroundColor: page.accentDim,
+                  borderColor: page.accent + '40',
+                  shadowColor: page.accent,
+                },
+              ]}
+            >
+              <Text style={styles.ringEmoji}>{page.icon}</Text>
+            </View>
+          </View>
+
+          <View style={styles.titleBlock}>
+            <View style={[styles.featureBadge, { backgroundColor: page.accentDim, borderColor: page.accent + '60' }]}>
+              <Text style={[styles.featureBadgeText, { color: page.accent }]}>{page.label}</Text>
+            </View>
+            <Text style={styles.title}>{page.title}</Text>
+          </View>
+        </View>
+
+        {/* Stat bar card */}
+        <View style={styles.statCard}>
+          <View style={styles.statRow}>
+            <Text style={styles.statLabel}>{page.stat.label}</Text>
+            <Text style={[styles.statValue, { color: page.accent }]}>
+              {page.stat.value}{' '}
+              <Text style={styles.statUnit}>{page.stat.unit}</Text>
+            </Text>
+          </View>
+          <View style={styles.statTrack}>
+            <Animated.View
+              style={[
+                styles.statFill,
+                {
+                  width: barWidthInterpolated,
+                  backgroundColor: page.accent,
+                  shadowColor: page.accent,
+                },
+              ]}
+            />
+          </View>
+        </View>
+
+        {/* Description */}
+        <Text style={styles.description}>{page.description}</Text>
+
+        {/* Feature cards */}
+        <View style={styles.featureList}>
+          {page.features.map((f, i) => (
+            <FeatureCard
+              key={`${currentPage}-${i}`}
+              feature={f}
+              accent={page.accent}
+              accentDim={page.accentDim}
+              delay={i * 80}
+            />
+          ))}
+        </View>
+      </Animated.View>
+
+      {/* Bottom nav */}
+      <LinearGradient
+        colors={['transparent', page.bg[1]]}
+        style={styles.bottomNav}
+      >
+        {/* Dot indicators */}
+        <View style={styles.dots}>
+          {PAGES.map((p, i) => (
+            <TouchableOpacity key={i} onPress={() => animateTo(i)} activeOpacity={0.7}>
+              <View
+                style={[
+                  styles.dot,
+                  i === currentPage
+                    ? [styles.dotActive, { backgroundColor: p.accent, shadowColor: p.accent }]
+                    : styles.dotInactive,
+                ]}
+              />
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Buttons */}
+        <View style={styles.btnRow}>
+          {currentPage > 0 && (
+            <TouchableOpacity
+              style={styles.prevBtn}
+              onPress={() => animateTo(currentPage - 1)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.prevBtnText}>←</Text>
+            </TouchableOpacity>
+          )}
+
+          {currentPage < PAGES.length - 1 ? (
+            <LinearGradient
+              colors={[page.accent, page.accent + 'BB']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[styles.ctaBtn, { shadowColor: page.accent }]}
+            >
+              <TouchableOpacity
+                style={styles.ctaBtnInner}
+                onPress={() => animateTo(currentPage + 1)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.ctaBtnText}>NEXT FEATURE  →</Text>
+              </TouchableOpacity>
+            </LinearGradient>
+          ) : (
+            <LinearGradient
+              colors={[page.accent, page.accent + 'BB']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[styles.ctaBtn, { shadowColor: page.accent }]}
+            >
+              <TouchableOpacity
+                style={styles.ctaBtnInner}
+                onPress={handleGetStarted}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.ctaBtnText}>GET STARTED  ✦</Text>
+              </TouchableOpacity>
+            </LinearGradient>
+          )}
+        </View>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Already have an account? </Text>
+          <TouchableOpacity onPress={handleSkip} activeOpacity={0.7}>
+            <Text style={[styles.signInText, { color: page.accent }]}>Sign In →</Text>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
     </Animated.View>
   );
 };
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
+    backgroundColor: '#0a1a0f',
   },
+
+  // Ambient orbs
+  orb1: {
+    position: 'absolute',
+    top: -60,
+    right: -60,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+  },
+  orb2: {
+    position: 'absolute',
+    bottom: 60,
+    left: -80,
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+  },
+
+  // Status bar
+  statusBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 14,
+    paddingBottom: 4,
+  },
+  statusTime: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  statusRight: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  signalBar: {
+    width: 3,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderRadius: 1,
+  },
+  battery: {
+    width: 22,
+    height: 11,
+    borderRadius: 3,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.3)',
+    marginLeft: 4,
+    padding: 1.5,
+    justifyContent: 'center',
+  },
+  batteryFill: {
+    height: '100%',
+    width: '70%',
+    borderRadius: 1,
+  },
+
+  // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 35,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-  },
-  logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  logoText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  themeToggle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  skipButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-  },
-  skipText: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginRight: 4,
-  },
-  page: {
-    width: width,
-    alignItems: 'center',
-    justifyContent: 'center',
     paddingHorizontal: 24,
-    paddingTop: 10,
-    paddingBottom: 40,
-  },
-  iconContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: 8,
-    textAlign: 'center',
-    letterSpacing: 0.3,
-  },
-  description: {
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 12,
-    paddingHorizontal: 4,
-  },
-  detailsContainer: {
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  detailsText: {
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 19,
-  },
-  featuresContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  featurePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  featureText: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginLeft: 5,
-  },
-  indicatorContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
     paddingVertical: 12,
   },
-  indicator: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: '#DDD',
-    marginHorizontal: 4,
-  },
-  activeIndicator: {
-    width: 24,
-    height: 7,
-    borderRadius: 3.5,
-  },
-  bottomContainer: {
+  logoRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 10,
+    gap: 8,
   },
-  prevButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FFF',
+  logoIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
   },
-  nextButton: {
-    borderRadius: 22,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+  logoIconText: {
+    color: '#000',
+    fontWeight: '900',
+    fontSize: 14,
+  },
+  logoText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+  },
+  skipBtn: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+  },
+  skipText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    fontFamily: 'monospace',
+  },
+
+  // Page counter
+  pageCounterRow: {
+    alignItems: 'flex-end',
+    paddingHorizontal: 24,
+    marginBottom: 4,
+  },
+  pageCounter: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 2,
+    opacity: 0.7,
+    fontFamily: 'monospace',
+  },
+
+  // Content
+  content: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 8,
+  },
+
+  // Hero row
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 20,
+    marginBottom: 20,
+  },
+  ringWrapper: {
+    width: 130,
+    height: 130,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringInner: {
+    position: 'absolute',
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  ringEmoji: {
+    fontSize: 30,
+  },
+  titleBlock: {
+    flex: 1,
+  },
+  featureBadge: {
+    alignSelf: 'flex-start',
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  featureBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 2,
+    fontFamily: 'monospace',
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#fff',
+    lineHeight: 30,
+    letterSpacing: -0.8,
+  },
+
+  // Stat card
+  statCard: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+  },
+  statRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  statLabel: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 10,
+    letterSpacing: 1.5,
+    fontFamily: 'monospace',
+  },
+  statValue: {
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  statUnit: {
+    color: 'rgba(255,255,255,0.2)',
+    fontWeight: '400',
+  },
+  statTrack: {
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  statFill: {
+    height: '100%',
+    borderRadius: 2,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
     shadowRadius: 6,
     elevation: 4,
   },
-  nextButtonInner: {
+
+  // Description
+  description: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 13,
+    lineHeight: 21,
+    marginBottom: 14,
+    letterSpacing: 0.1,
+  },
+
+  // Feature list
+  featureList: {
+    gap: 8,
+  },
+  featureCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 11,
-    paddingHorizontal: 24,
+    gap: 14,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 14,
+    padding: 12,
   },
-  nextButtonText: {
-    color: '#FFF',
-    fontSize: 15,
+  featureIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  featureIconEmoji: {
+    fontSize: 18,
+  },
+  featureTextBlock: {
+    flex: 1,
+  },
+  featureLabel: {
+    color: 'rgba(255,255,255,0.25)',
+    fontSize: 9,
+    letterSpacing: 1.5,
+    fontFamily: 'monospace',
+  },
+  featureVal: {
+    color: '#fff',
     fontWeight: '700',
-    marginRight: 6,
+    fontSize: 14,
+    marginTop: 2,
   },
-  getStartedButton: {
-    borderRadius: 22,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
+  pulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
+    elevation: 4,
   },
-  getStartedButtonInner: {
+
+  // Bottom nav
+  bottomNav: {
+    paddingTop: 20,
+    paddingHorizontal: 24,
+    paddingBottom: 36,
+  },
+  dots: {
     flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: 16,
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 28,
   },
-  getStartedButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
+  dot: {
+    height: 4,
+    borderRadius: 2,
   },
+  dotActive: {
+    width: 28,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  dotInactive: {
+    width: 6,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+
+  // Buttons
+  btnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  prevBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  prevBtnText: {
+    color: '#fff',
+    fontSize: 18,
+  },
+  ctaBtn: {
+    flex: 1,
+    borderRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  ctaBtnInner: {
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  ctaBtnText: {
+    color: '#000',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+
+  // Footer
   footer: {
     flexDirection: 'row',
-    paddingVertical: 12,
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 14,
   },
   footerText: {
-    fontSize: 13,
+    color: 'rgba(255,255,255,0.2)',
+    fontSize: 12,
   },
-  loginLink: {
-    fontSize: 13,
+  signInText: {
+    fontSize: 12,
     fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+
+  // Entered screen
+  enteredScreen: {
+    flex: 1,
+    backgroundColor: '#050a08',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  enteredEmoji: {
+    fontSize: 56,
+    marginBottom: 24,
+  },
+  enteredTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: -1,
+  },
+  enteredSub: {
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 14,
+    marginTop: 8,
+  },
+  backBtn: {
+    marginTop: 32,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0,255,136,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,255,136,0.25)',
+  },
+  backBtnText: {
+    color: '#00FF88',
+    fontWeight: '700',
+    fontSize: 14,
+    letterSpacing: 0.5,
   },
 });
 
