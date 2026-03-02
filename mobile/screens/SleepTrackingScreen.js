@@ -1390,6 +1390,9 @@ const SleepTrackingScreen = ({ navigation }) => {
           </TouchableOpacity>
         )}
 
+
+        {/* AI-Powered Timeline Predictions */}
+        <LifestyleRecommendationsSection trackerType="sleep" />
         {/* Education / Explanation */}
         <View style={styles.educationCard}>
           <Text style={styles.educationTitle}>
@@ -1424,9 +1427,6 @@ const SleepTrackingScreen = ({ navigation }) => {
             manual entry.
           </Text>
         </View>
-
-        {/* AI-Powered Timeline Predictions */}
-        <LifestyleRecommendationsSection trackerType="sleep" />
       </ScrollView>
     </SafeAreaView>
   );

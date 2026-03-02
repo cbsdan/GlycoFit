@@ -1,48 +1,48 @@
 from flask import request, jsonify
 from datetime import datetime, timedelta
+import logging
 from models.user_activity import UserActivity
 from config.database import get_db
-import traceback
+
+logger = logging.getLogger(__name__)
 
 def save_daily_activity():
     """Save daily activity data"""
     try:
-        print("=" * 50)
-        print("SAVE ACTIVITY REQUEST RECEIVED")
-        print("=" * 50)
+        logger.debug("save_daily_activity: request received")
         
         # Get database connection here
         db = get_db()
         user_activity_model = UserActivity(db)
         
         data = request.get_json()
-        print(f"📥 Request data: {data}")
+        logger.debug("save_daily_activity: request data=%s", data)
         
         # Get uid from request object (set by firebase_auth_required decorator)
         uid = getattr(request, 'firebase_user', {}).get('uid')
-        print(f"👤 User UID: {uid}")
+        logger.debug("save_daily_activity: user uid=%s", uid)
         
         if not uid:
-            print("❌ No UID found - user not authenticated")
+            logger.warning("save_daily_activity: no UID found")
             return jsonify({'success': False, 'error': 'User not authenticated'}), 401
         
         # Validate required fields
         if not data.get('date'):
-            print("❌ No date provided")
+            logger.warning("save_daily_activity: no date provided")
             return jsonify({'success': False, 'error': 'Date is required'}), 400
         
         # Parse date - handle ISO format with time
         try:
             date_str = data['date']
-            print(f"📅 Parsing date: {date_str}")
+            logger.debug("save_daily_activity: parsing date=%s", date_str)
             # Try ISO format first
             if 'T' in date_str:
                 activity_date = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
             else:
                 activity_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-            print(f"✅ Parsed date: {activity_date}")
+            logger.debug("save_daily_activity: parsed date=%s", activity_date)
         except (ValueError, AttributeError) as e:
-            print(f"❌ Date parsing error: {e}")
+            logger.error("save_daily_activity: date parsing error: %s", e)
             return jsonify({'success': False, 'error': f'Invalid date format: {str(e)}'}), 400
         
         activity_data = {
@@ -56,13 +56,13 @@ def save_daily_activity():
             'streak': data.get('streak', 0),
             'achievements': data.get('achievements', [])
         }
-        print(f"📊 Activity data to save: {activity_data}")
+        logger.debug("save_daily_activity: data=%s", activity_data)
         
         success = user_activity_model.save_daily_activity(uid, activity_date, activity_data)
-        print(f"💾 Save result: {success}")
+        logger.debug("save_daily_activity: save result=%s", success)
         
         if success:
-            print("✅ Activity saved successfully to MongoDB")
+            logger.debug("save_daily_activity: saved successfully")
             # Retrieve the saved document to return for better client-side sync confirmation
             saved = user_activity_model.get_activity_by_date_range(uid, activity_date, activity_date)
             saved_doc = saved[0] if saved and len(saved) > 0 else None
@@ -114,7 +114,7 @@ def save_daily_activity():
                 if previous_day_saved:
                     previous_day_steps = previous_day_saved.get('steps', 0)
             except Exception as e:
-                print(f"⚠️ Warning fetching previous day activity: {e}")
+                logger.warning("save_daily_activity: error fetching prev day: %s", e)
 
             return jsonify({
                 'success': True,
@@ -124,12 +124,11 @@ def save_daily_activity():
                 'previous_day_saved': previous_day_saved
             }), 200
         else:
-            print("❌ Failed to save activity")
+            logger.error("save_daily_activity: failed to save")
             return jsonify({'success': False, 'error': 'Failed to save activity'}), 500
             
     except Exception as e:
-        print(f"❌ Error in save_daily_activity: {e}")
-        traceback.print_exc()
+        logger.error("Error in save_daily_activity: %s", e, exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 def save_exercise_session():
@@ -175,7 +174,7 @@ def save_exercise_session():
             return jsonify({'success': False, 'error': 'Failed to save exercise session'}), 500
             
     except Exception as e:
-        print(f"Error in save_exercise_session: {e}")
+        logger.error("Error in save_exercise_session: %s", e, exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 def get_activities():
@@ -220,7 +219,7 @@ def get_activities():
 
                 return jsonify({'success': True, 'activities': docs}), 200
             except Exception as e:
-                print(f"Error fetching recent activities: {e}")
+                logger.error("Error fetching recent activities: %s", e, exc_info=True)
                 return jsonify({'success': False, 'error': str(e)}), 500
         
         # Default to last 30 days if not provided
@@ -239,7 +238,7 @@ def get_activities():
         return jsonify({'success': True, 'activities': activities}), 200
         
     except Exception as e:
-        print(f"Error in get_activities: {e}")
+        logger.error("Error in get_activities: %s", e, exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 def get_activity_summary():
@@ -271,7 +270,7 @@ def get_activity_summary():
         return jsonify({'success': True, 'summary': summary}), 200
         
     except Exception as e:
-        print(f"Error in get_activity_summary: {e}")
+        logger.error("Error in get_activity_summary: %s", e, exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 def get_exercise_sessions():
@@ -304,5 +303,5 @@ def get_exercise_sessions():
         return jsonify({'success': True, 'sessions': sessions}), 200
         
     except Exception as e:
-        print(f"Error in get_exercise_sessions: {e}")
+        logger.error("Error in get_exercise_sessions: %s", e, exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500

@@ -19,6 +19,7 @@ from services.step_tracking_service import StepTrackingService
 from services.smoking_tracking_service import get_smoking_tracking_service
 from models.alcohol_intake import AlcoholBaseline, AlcoholMetrics
 from models.smoking_tracking import SmokingBaseline, SmokingMetrics
+from models.step_tracking import StepBaseline
 from models.user import User
 
 logger = logging.getLogger(__name__)
@@ -132,16 +133,31 @@ def get_unified_recommendations():
         # 3. Activity Tracker (Steps)
         try:
             step_metrics = StepTrackingService.compute_metrics(user_id)
-            
+            step_baseline_unified = StepBaseline.find_by_user_id(user_id)
+
+            avg_steps_for_pred = None
+            days_goal_met_for_pred = 0
+            duration_for_pred = 0
+
             if step_metrics and step_metrics.get('days_with_data_30d', 0) > 0:
+                avg_steps_for_pred = int(step_metrics.get('avg_steps_30d', 0))
+                days_goal_met_for_pred = step_metrics.get('days_met_goal_30d', 0)
+                duration_for_pred = step_metrics.get('days_with_data_30d', 0)
+            elif step_baseline_unified:
+                avg_steps_for_pred = step_baseline_unified.baseline_avg_daily_steps or 0
+                days_active_pw = step_baseline_unified.baseline_days_active_per_week or 0
+                days_goal_met_for_pred = round((days_active_pw / 7) * 30)
+                duration_for_pred = 30
+
+            if avg_steps_for_pred is not None:
                 step_predictions = service.predict_activity_impact(
-                    avg_daily_steps=int(step_metrics.get('avg_steps_30d', 0)),
-                    days_goal_met=step_metrics.get('days_met_goal_30d', 0),
-                    duration_days=step_metrics.get('days_with_data_30d', 0)
+                    avg_daily_steps=avg_steps_for_pred,
+                    days_goal_met=days_goal_met_for_pred,
+                    duration_days=duration_for_pred
                 )
-                
+
                 # Calculate simple risk score based on steps
-                avg_steps = step_metrics.get('avg_steps_30d', 0)
+                avg_steps = avg_steps_for_pred
                 if avg_steps < 3000:
                     step_risk_score = 80
                 elif avg_steps < 5000:
@@ -152,11 +168,11 @@ def get_unified_recommendations():
                     step_risk_score = 20
                 else:
                     step_risk_score = 10
-                
+
                 trackers_data['activity'] = {
                     'has_data': True,
                     'risk_score': step_risk_score,
-                    'avg_steps': int(avg_steps),
+                    'avg_steps': avg_steps,
                     'predictions': step_predictions
                 }
             else:
@@ -420,27 +436,66 @@ def get_activity_predictions():
         service = get_lifestyle_recommendation_service()
         
         step_metrics = StepTrackingService.compute_metrics(user_id)
-        
+        step_baseline = StepBaseline.find_by_user_id(user_id)
+
         if not step_metrics or step_metrics.get('days_with_data_30d', 0) == 0:
-            return jsonify({
-                'success': True,
-                'status': 'success',
-                'has_data': False,
-                'message': 'No activity data available. Start tracking your steps.',
-                'healthy_defaults': service.get_healthy_defaults()['guidelines']['activity']
-            }), 200
-        
+            # Fall back to baseline data if available (mirrors alcohol predictions pattern)
+            if not step_baseline:
+                return jsonify({
+                    'success': True,
+                    'status': 'success',
+                    'has_data': False,
+                    'message': 'No activity data available. Start tracking your steps.',
+                    'healthy_defaults': service.get_healthy_defaults()['guidelines']['activity']
+                }), 200
+            # Use baseline data for predictions
+            avg_daily_steps = step_baseline.baseline_avg_daily_steps or 0
+            days_active = step_baseline.baseline_days_active_per_week or 0
+            # Estimate days_goal_met from days_active_per_week scaled to 30 days
+            days_goal_met = round((days_active / 7) * 30)
+            duration_days = 30  # treat baseline as representative of ongoing pattern
+        else:
+            avg_daily_steps = int(step_metrics.get('avg_steps_30d', 0))
+            days_goal_met = step_metrics.get('days_met_goal_30d', 0)
+            duration_days = step_metrics.get('days_with_data_30d', 0)
+
         predictions = service.predict_activity_impact(
-            avg_daily_steps=int(step_metrics.get('avg_steps_30d', 0)),
-            days_goal_met=step_metrics.get('days_met_goal_30d', 0),
-            duration_days=step_metrics.get('days_with_data_30d', 0)
+            avg_daily_steps=avg_daily_steps,
+            days_goal_met=days_goal_met,
+            duration_days=duration_days
         )
-        
+
+        # Derive risk info for frontend Risk Overview section
+        risk_category = None
+        current_risk_score = None
+        if step_metrics:
+            risk_category = step_metrics.get('risk_category')
+            current_risk_score = step_metrics.get('risk_score')
+        if not risk_category:
+            # Fallback: infer from avg_daily_steps when using baseline data
+            if avg_daily_steps >= 10000:
+                risk_category = 'low'
+                current_risk_score = 10
+            elif avg_daily_steps >= 7500:
+                risk_category = 'low'
+                current_risk_score = 20
+            elif avg_daily_steps >= 5000:
+                risk_category = 'moderate'
+                current_risk_score = 40
+            elif avg_daily_steps >= 3000:
+                risk_category = 'high'
+                current_risk_score = 60
+            else:
+                risk_category = 'very_high'
+                current_risk_score = 80
+
         return jsonify({
             'success': True,
             'status': 'success',
             'has_data': True,
-            'metrics': step_metrics,
+            'risk_category': risk_category,
+            'current_risk_score': current_risk_score,
+            'avg_steps': avg_daily_steps,
             'predictions': predictions
         }), 200
         
@@ -499,10 +554,16 @@ def get_alcohol_predictions():
             gender=user_gender
         )
         
+        # Map risk multiplier to 0-100 score for frontend Risk Overview section
+        risk_mult = predictions.get('risk_multiplier', 1.0)
+        current_risk_score = min(100, round((risk_mult - 1.0) * 100))
+
         return jsonify({
             'success': True,
             'status': 'success',
             'has_data': True,
+            'risk_category': predictions.get('risk_category'),
+            'current_risk_score': current_risk_score,
             'predictions': predictions
         }), 200
         
@@ -566,15 +627,19 @@ def get_smoking_predictions():
             years_since_quit=years_since_quit
         )
         
+        # Map risk multiplier to 0-100 score for frontend Risk Overview section
+        risk_mult = predictions.get('risk_multiplier', 1.0)
+        current_risk_score = min(100, round((risk_mult - 1.0) * 100))
+
         return jsonify({
             'success': True,
             'status': 'success',
             'has_data': True,
+            'risk_category': predictions.get('risk_category'),
+            'current_risk_score': current_risk_score,
             'current_status': smoking_status,
             'pack_years': pack_years,
             'years_since_quit': years_since_quit,
-            'baseline': baseline,
-            'metrics': metrics,
             'predictions': predictions
         }), 200
         

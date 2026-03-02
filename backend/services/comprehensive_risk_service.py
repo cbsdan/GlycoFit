@@ -28,13 +28,18 @@ class ComprehensiveRiskService:
     """Service for computing comprehensive diabetes risk assessment"""
     
     # Component weights (must sum to 1.0)
+    # Evidence basis:
+    #   Food (0.15): Diet is the primary modifiable T2D risk factor (WHO/ADA; Malik et al., 2010 Diabetes Care)
+    #   Smoking (0.13): 44% increased T2D risk for active smokers (Willi et al., 2007 JAMA)
+    #   Diet outranks smoking because dietary risk is near-universal (everyone eats daily),
+    #   whereas smoking prevalence is ~20-30% of the population.
     WEIGHTS = {
         'initial_assessment': 0.35,
         'sleep': 0.12,
         'steps': 0.10,
-        'smoking': 0.15,
+        'smoking': 0.13,
         'alcohol': 0.08,
-        'food': 0.13,
+        'food': 0.15,
         'bmi': 0.05,
         'age': 0.02,
         'sex': 0.01

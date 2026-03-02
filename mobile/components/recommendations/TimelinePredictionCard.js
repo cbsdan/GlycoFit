@@ -88,7 +88,7 @@ const TimelinePredictionCard = ({
               {description}
             </Text>
           )}
-          {isReversible !== null && (
+          {isReversible != null && (
             <View style={styles.reversibleTag}>
               <Icon 
                 name={isReversible ? "refresh" : "alert-circle"} 

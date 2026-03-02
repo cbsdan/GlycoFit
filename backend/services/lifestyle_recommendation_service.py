@@ -590,14 +590,16 @@ class LifestyleRecommendationService:
                 "projected_risk_change": f"+{risk_modifier * 60:.0f}%" if risk_modifier > 0 else f"{risk_modifier * 60:.0f}%",
                 "impact": "Metabolic dysfunction progressing" if risk_modifier > 0.2 else "Metabolic health maintained",
                 "description": f"Six months of low activity ({avg_daily_steps:,} steps/day) leads to fat accumulation, especially visceral fat, which secretes inflammatory molecules that impair insulin function." if risk_modifier > 0.2 else f"Maintaining {avg_daily_steps:,} steps/day for 6 months builds strong metabolic protection through improved body composition and insulin sensitivity.",
-                "research": "Grøntved & Hu, 2011"
+                "reversible": True,
+                "research": "Grøntved & Hu, 2011; DPP Research Group, 2002"
             },
             "1_year": {
                 "projected_risk_change": f"+{risk_modifier * 100:.0f}%" if risk_modifier > 0 else f"{risk_modifier * 100:.0f}%",
-                "impact": f"{int(risk_modifier * 100)}% T2D risk change",
+                "impact": f"{int(risk_modifier * 100)}% increased T2D risk — but still reversible with activity" if risk_modifier > 0.1 else ("Optimal metabolic protection maintained" if risk_modifier <= 0 else "Low residual risk — easily improved"),
                 "description": f"A full year at {avg_daily_steps:,} steps/day creates cumulative metabolic damage: reduced muscle mass, increased fat mass, chronic low-grade inflammation, and {int(risk_modifier * 100)}% higher diabetes risk." if risk_modifier > 0 else f"One year of consistent activity at {avg_daily_steps:,} steps/day provides lasting metabolic benefits and reduces diabetes risk significantly.",
-                "intervention_potential": f"Increasing activity now could prevent {int(risk_modifier * 70)}% risk increase" if risk_modifier > 0 else "Continue to maintain benefits",
-                "research": "Patterson et al., 2018"
+                "intervention_potential": f"Increasing to 7,000+ steps/day could reverse most of this risk within 8–12 weeks (DPP, 2002)" if risk_modifier > 0 else "Continue to maintain benefits",
+                "reversible": True,
+                "research": "Patterson et al., 2018; DPP Research Group, 2002"
             }
         }
         

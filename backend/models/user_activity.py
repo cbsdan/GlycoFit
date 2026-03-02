@@ -1,5 +1,8 @@
 from datetime import datetime
 from bson import ObjectId
+import logging
+
+logger = logging.getLogger(__name__)
 
 class UserActivity:
     def __init__(self, db):
@@ -141,47 +144,37 @@ class UserActivity:
     def get_activity_by_date_range(self, uid, start_date, end_date):
         """Get activity data for a date range"""
         try:
-            from datetime import timezone
+            from datetime import timezone, date as date_type
             
-            # Convert dates to UTC-aware datetime for MongoDB query (to match DB format)
-            if not isinstance(start_date, datetime):
-                start_date = datetime.combine(
-                    datetime.strptime(start_date, '%Y-%m-%d').date(), 
-                    datetime.min.time()
-                ).replace(tzinfo=timezone.utc)
-            elif start_date.tzinfo is None:
-                # If naive datetime, make it UTC-aware
-                start_date = start_date.replace(tzinfo=timezone.utc)
+            def _to_utc_datetime(d, end_of_day=False):
+                """Accept str, datetime.date, or datetime and return UTC-aware datetime."""
+                if isinstance(d, datetime):
+                    return d if d.tzinfo is not None else d.replace(tzinfo=timezone.utc)
+                if isinstance(d, date_type):
+                    t = datetime.max.time() if end_of_day else datetime.min.time()
+                    return datetime.combine(d, t).replace(tzinfo=timezone.utc)
+                # Assume string
+                parsed = datetime.strptime(d, '%Y-%m-%d').date()
+                t = datetime.max.time() if end_of_day else datetime.min.time()
+                return datetime.combine(parsed, t).replace(tzinfo=timezone.utc)
+
+            start_date = _to_utc_datetime(start_date, end_of_day=False)
+            end_date = _to_utc_datetime(end_date, end_of_day=True)
             
-            if not isinstance(end_date, datetime):
-                end_date = datetime.combine(
-                    datetime.strptime(end_date, '%Y-%m-%d').date(), 
-                    datetime.max.time()
-                ).replace(tzinfo=timezone.utc)
-            elif end_date.tzinfo is None:
-                # If naive datetime, make it UTC-aware
-                end_date = end_date.replace(tzinfo=timezone.utc)
-            
-            print(f"🔍 get_activity_by_date_range called:")
-            print(f"  UID: {uid}")
-            print(f"  Start: {start_date} (UTC-aware)")
-            print(f"  End: {end_date} (UTC-aware)")
+            logger.debug("get_activity_by_date_range: uid=%s start=%s end=%s", uid, start_date, end_date)
             
             query = {
                 "uid": uid,
                 "date": {"$gte": start_date, "$lte": end_date}
             }
-            print(f"  Query: {query}")
             
             activities = list(self.collection.find(query).sort("date", -1))
-            print(f"  Found {len(activities)} activities")
+            logger.debug("get_activity_by_date_range: found %d activities for uid=%s", len(activities), uid)
             
             if len(activities) == 0:
                 # Debug: check if there are ANY records for this user
                 any_records = list(self.collection.find({"uid": uid}).limit(3))
-                print(f"  Debug: Total records for uid={uid}: {len(any_records)}")
-                if any_records:
-                    print(f"  Sample record: {any_records[0]}")
+                logger.debug("get_activity_by_date_range: total records for uid=%s: %d", uid, len(any_records))
             
             # Convert ObjectId to string
             for activity in activities:
@@ -200,9 +193,7 @@ class UserActivity:
             
             return activities
         except Exception as e:
-            print(f"Error getting activities: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("get_activity_by_date_range error for uid=%s: %s", uid, e, exc_info=True)
             return []
     
     def get_exercise_sessions(self, uid, start_time, end_time, limit=50):

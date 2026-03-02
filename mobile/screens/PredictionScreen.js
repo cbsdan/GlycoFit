@@ -9,6 +9,7 @@ import {
   Dimensions,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../context/ThemeContext';
@@ -31,6 +32,8 @@ const PredictionScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [trendPrediction, setTrendPrediction] = useState(null);
   const [trendLoading, setTrendLoading] = useState(true);
+  const [computationVisible, setComputationVisible] = useState(false);
+  const [refsVisible, setRefsVisible] = useState(false);
 
   // Check if user is diagnosed with prediabetes or type 2 diabetes
   const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
@@ -64,12 +67,12 @@ const PredictionScreen = ({ navigation }) => {
       if (!assessment && !overallRisk) {
         setLoading(true);
       }
-      
+
       // Load initial diabetes assessment (uses cache if available)
       const result = await getMyAssessment();
       if (result && result.assessment) {
         setAssessment(result.assessment);
-        
+
         // If initial assessment exists, try to load overall risk assessment
         try {
           const overallResult = await getOverallRiskAssessment();
@@ -128,8 +131,8 @@ const PredictionScreen = ({ navigation }) => {
     switch (direction) {
       case 'improving': return { icon: 'arrow-up-circle', color: '#27AE60' };
       case 'declining': return { icon: 'arrow-down-circle', color: '#E74C3C' };
-      case 'stable':    return { icon: 'minus-circle', color: '#F39C12' };
-      default:          return { icon: 'help-circle', color: colors.secondary };
+      case 'stable': return { icon: 'minus-circle', color: '#F39C12' };
+      default: return { icon: 'help-circle', color: colors.secondary };
     }
   };
 
@@ -241,7 +244,7 @@ const PredictionScreen = ({ navigation }) => {
     },
     scrollContainer: {
       flexGrow: 1,
-      padding: 16,
+      padding: 10,
     },
     header: {
       marginBottom: 24,
@@ -463,7 +466,7 @@ const PredictionScreen = ({ navigation }) => {
     overallRiskCard: {
       backgroundColor: colors.card,
       borderRadius: 16,
-      padding: 20,
+      padding: 10,
       marginBottom: 16,
       borderWidth: 1,
       borderColor: colors.border,
@@ -839,6 +842,205 @@ const PredictionScreen = ({ navigation }) => {
       fontSize: 13,
       color: colors.secondary,
     },
+
+    // ── Pre-Diabetes Risk Computation Table ──
+    computationSection: {
+      marginTop: 20,
+      marginBottom: 8,
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+    },
+    computationHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+    },
+    computationHeaderLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flex: 1,
+    },
+    computationHeaderText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.text,
+      flex: 1,
+    },
+    computationBody: {
+      paddingHorizontal: 14,
+      paddingBottom: 20,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    computationDisclaimer: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8,
+      backgroundColor: `${colors.primary}12`,
+      borderRadius: 10,
+      padding: 12,
+      marginTop: 14,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: `${colors.primary}25`,
+    },
+    computationDisclaimerText: {
+      flex: 1,
+      fontSize: 13,
+      color: colors.text,
+      lineHeight: 19,
+    },
+    computationSectionLabel: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.primary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+      marginTop: 18,
+      marginBottom: 8,
+    },
+    formulaBox: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+    },
+    formulaTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.text,
+      backgroundColor: colors.background,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+    },
+    formulaDivider: {
+      height: 1,
+      backgroundColor: colors.border,
+    },
+    formulaRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      gap: 8,
+    },
+    formulaRowEven: {
+      backgroundColor: `${colors.primary}07`,
+    },
+    formulaRowOdd: {
+      backgroundColor: 'transparent',
+    },
+    formulaComponent: {
+      flex: 2,
+      fontSize: 13,
+      color: colors.text,
+      lineHeight: 18,
+    },
+    formulaWeightBadge: {
+      backgroundColor: colors.primary,
+      borderRadius: 10,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      alignSelf: 'flex-start',
+    },
+    formulaWeightText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    formulaNote: {
+      flex: 2.2,
+      fontSize: 11,
+      color: colors.secondary,
+      lineHeight: 16,
+      alignSelf: 'center',
+    },
+    tableContainer: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+      marginBottom: 6,
+    },
+    tableRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 7,
+      paddingHorizontal: 10,
+    },
+    tableHeaderRow: {
+      backgroundColor: colors.primary,
+    },
+    tableRowEven: {
+      backgroundColor: `${colors.primary}07`,
+    },
+    tableRowOdd: {
+      backgroundColor: 'transparent',
+    },
+    tableCell: {
+      fontSize: 12,
+      color: colors.text,
+      lineHeight: 17,
+      paddingRight: 4,
+    },
+    tableCellHeader: {
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    componentLabel: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+      marginTop: 14,
+      marginBottom: 6,
+    },
+    refsToggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 18,
+      marginBottom: 2,
+    },
+    referencesContainer: {
+      gap: 12,
+      marginTop: 8,
+    },
+    referenceItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 6,
+    },
+    referenceNum: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.primary,
+      minWidth: 26,
+      paddingTop: 1,
+    },
+    referenceTextBlock: {
+      flex: 1,
+      gap: 3,
+    },
+    referenceText: {
+      fontSize: 11,
+      color: colors.text,
+      lineHeight: 16,
+    },
+    referenceJournal: {
+      fontStyle: 'italic',
+      color: colors.secondary,
+    },
+    referenceUrl: {
+      fontSize: 11,
+      color: colors.primary,
+      textDecorationLine: 'underline',
+    },
   });
 
   return (
@@ -864,10 +1066,10 @@ const PredictionScreen = ({ navigation }) => {
                   <View style={styles.overallRiskHeader}>
                     <Icon name="chart-line" size={20} color={colors.primary} />
                     <Text style={styles.overallRiskHeaderText}>
-                      {isDiagnosed ? 'Health Summary' : 'Comprehensive Risk Assessment'}
+                      {isDiagnosed ? 'Health Summary' : 'Risk Assessment'}
                     </Text>
                   </View>
-                  
+
                   {/* Risk Score Section - Only show for non-diagnosed users */}
                   {!isDiagnosed && (
                     <View style={styles.overallRiskScoreSection}>
@@ -899,10 +1101,10 @@ const PredictionScreen = ({ navigation }) => {
                       {overallRisk.primary_risk_factors.map((factor, index) => {
                         const isInitialAssessment = factor.component_name === 'Initial Risk Assessment';
                         const Component = isInitialAssessment ? TouchableOpacity : View;
-                        
+
                         return (
-                          <Component 
-                            key={index} 
+                          <Component
+                            key={index}
                             style={styles.riskFactorItem}
                             onPress={isInitialAssessment ? () => handleRiskFactorTap(factor) : undefined}
                             activeOpacity={isInitialAssessment ? 0.7 : 1}
@@ -989,9 +1191,9 @@ const PredictionScreen = ({ navigation }) => {
                           <View style={styles.predictionHeaderText}>
                             <Text style={styles.predictionLabel}>Status Outlook</Text>
                             <Text style={[styles.predictionStatus, { color: tc.color }]}>{tc.label}</Text>
-                          <View style={[styles.predictionBadge, { backgroundColor: tc.color }]}>
-                            <Text style={styles.predictionBadgeText}>{tc.badgeText}</Text>
-                          </View>
+                            <View style={[styles.predictionBadge, { backgroundColor: tc.color }]}>
+                              <Text style={styles.predictionBadgeText}>{tc.badgeText}</Text>
+                            </View>
                           </View>
                         </View>
 
@@ -1015,11 +1217,15 @@ const PredictionScreen = ({ navigation }) => {
                                 <Text style={styles.forecastCategory}>
                                   {forecast30.predicted_category?.replace('_', ' ').toUpperCase()}
                                 </Text>
-                                {forecast30.predicted_change !== 0 && (
-                                  <Text style={styles.forecastChange}>
-                                    {forecast30.predicted_change > 0 ? '+' : ''}{forecast30.predicted_change} pts
-                                  </Text>
-                                )}
+                                {(() => {
+                                  const liveChange = parseFloat((forecast30.predicted_score - (overallRisk?.overall_risk_score ?? trendPrediction.current_risk_score ?? 0)).toFixed(1));
+                                  return liveChange !== 0 ? (
+                                    <Text style={styles.forecastChange}>
+                                      {liveChange > 0 ? '+' : ''}{liveChange} pts
+                                    </Text>
+                                  ) : null;
+                                })()
+                                }
                               </LinearGradient>
                             )}
                             {forecast90 && (
@@ -1034,11 +1240,15 @@ const PredictionScreen = ({ navigation }) => {
                                 <Text style={styles.forecastCategory}>
                                   {forecast90.predicted_category?.replace('_', ' ').toUpperCase()}
                                 </Text>
-                                {forecast90.predicted_change !== 0 && (
-                                  <Text style={styles.forecastChange}>
-                                    {forecast90.predicted_change > 0 ? '+' : ''}{forecast90.predicted_change} pts
-                                  </Text>
-                                )}
+                                {(() => {
+                                  const liveChange90 = parseFloat((forecast90.predicted_score - (overallRisk?.overall_risk_score ?? trendPrediction.current_risk_score ?? 0)).toFixed(1));
+                                  return liveChange90 !== 0 ? (
+                                    <Text style={styles.forecastChange}>
+                                      {liveChange90 > 0 ? '+' : ''}{liveChange90} pts
+                                    </Text>
+                                  ) : null;
+                                })()
+                                }
                               </LinearGradient>
                             )}
                           </View>
@@ -1111,7 +1321,7 @@ const PredictionScreen = ({ navigation }) => {
                 </View>
               </>
             )}
-            
+
             {!assessment && (
               <TouchableOpacity
                 style={[styles.retakeButton, { borderColor: colors.border }]}
@@ -1149,7 +1359,7 @@ const PredictionScreen = ({ navigation }) => {
                       <Text style={styles.predictionSubtitle}>{prediction.subtitle}</Text>
                     </View>
                   </View>
-                  
+
                   <View style={styles.predictionContent}>
                     <Text style={styles.predictionText}>{prediction.prediction}</Text>
                   </View>
@@ -1163,38 +1373,492 @@ const PredictionScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.infoSection}>
-          <View style={styles.infoCard}>
-            <Icon name="information" size={24} color={colors.primary} />
-            <View style={styles.infoContent}>
-              <Text style={styles.infoTitle}>Why Take This Assessment?</Text>
-              <Text style={styles.infoDescription}>
-                This comprehensive assessment evaluates multiple risk factors including age, family history, lifestyle habits, and health metrics to provide you with personalized insights about your diabetes risk.
-              </Text>
-            </View>
-          </View>
+              <View style={styles.infoCard}>
+                <Icon name="information" size={24} color={colors.primary} />
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoTitle}>Why Take This Assessment?</Text>
+                  <Text style={styles.infoDescription}>
+                    This comprehensive assessment evaluates multiple risk factors including age, family history, lifestyle habits, and health metrics to provide you with personalized insights about your diabetes risk.
+                  </Text>
+                </View>
+              </View>
 
-          <View style={styles.infoCard}>
-            <Icon name="clock-outline" size={24} color={colors.primary} />
-            <View style={styles.infoContent}>
-              <Text style={styles.infoTitle}>Takes 5-10 Minutes</Text>
-              <Text style={styles.infoDescription}>
-                The assessment includes questions about your health history, daily activities, and lifestyle choices to give you the most accurate risk evaluation.
-              </Text>
-            </View>
-          </View>
+              <View style={styles.infoCard}>
+                <Icon name="clock-outline" size={24} color={colors.primary} />
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoTitle}>Takes 5-10 Minutes</Text>
+                  <Text style={styles.infoDescription}>
+                    The assessment includes questions about your health history, daily activities, and lifestyle choices to give you the most accurate risk evaluation.
+                  </Text>
+                </View>
+              </View>
 
-          <View style={styles.infoCard}>
-            <Icon name="shield-check" size={24} color={colors.primary} />
-            <View style={styles.infoContent}>
-              <Text style={styles.infoTitle}>Confidential & Secure</Text>
-              <Text style={styles.infoDescription}>
-                Your health information is kept private and secure. Results are only visible to you and can be shared with your healthcare provider if you choose.
-              </Text>
-            </View>
-          </View>
+              <View style={styles.infoCard}>
+                <Icon name="shield-check" size={24} color={colors.primary} />
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoTitle}>Confidential & Secure</Text>
+                  <Text style={styles.infoDescription}>
+                    Your health information is kept private and secure. Results are only visible to you and can be shared with your healthcare provider if you choose.
+                  </Text>
+                </View>
+              </View>
             </View>
           </>
         )}
+
+        {/* ===== Pre-Diabetes Risk Computation Table ===== */}
+        <View style={styles.computationSection}>
+          <TouchableOpacity
+            style={styles.computationHeader}
+            onPress={() => setComputationVisible(!computationVisible)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.computationHeaderLeft}>
+              <Icon name="calculator-variant" size={20} color={colors.primary} />
+              <Text style={styles.computationHeaderText}>How Is Your Pre-Diabetes Risk Computed?</Text>
+            </View>
+            <Icon
+              name={computationVisible ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={colors.secondary}
+            />
+          </TouchableOpacity>
+
+          {computationVisible && (
+            <View style={styles.computationBody}>
+              {/* Disclaimer */}
+              <View style={styles.computationDisclaimer}>
+                <Icon name="information-outline" size={16} color={colors.primary} />
+                <Text style={styles.computationDisclaimerText}>
+                  This computation estimates the risk of developing{' '}
+                  <Text style={{ fontWeight: '700' }}>pre-diabetes or Type 2 diabetes</Text>.
+                  Scores are derived from validated, peer-reviewed research and a machine learning
+                  model trained on the BRFSS dataset.
+                </Text>
+              </View>
+
+              {/* ── Formula ── */}
+              <Text style={styles.computationSectionLabel}>Weighted Risk Formula</Text>
+              <View style={styles.formulaBox}>
+                <Text style={styles.formulaTitle}>Overall Risk Score (0 – 100)</Text>
+                <View style={styles.formulaDivider} />
+                {[
+                  { label: 'ML Initial Assessment', weight: '35%', note: 'Largest weight — validated clinical model', url: 'https://doi.org/10.1056/NEJMoa012512' },
+                  { label: 'Food Intake Quality', weight: '15%', note: 'Primary modifiable T2D risk factor; diet affects everyone daily', url: 'https://doi.org/10.2337/dc10-1079' },
+                  { label: 'Smoking Status', weight: '13%', note: '44% increased T2D risk for active smokers', url: 'https://doi.org/10.1001/jama.298.22.2654' },
+                  { label: 'Sleep Duration & Quality', weight: '12%', note: 'Insulin resistance & hormonal disruption', url: 'https://doi.org/10.2337/dc09-1124' },
+                  { label: 'Physical Activity (Steps)', weight: '10%', note: 'Modifiable lifestyle factor', url: 'https://doi.org/10.1007/s10654-015-0056-z' },
+                  { label: 'Alcohol Consumption', weight: '8%', note: 'J-shaped relationship with risk', url: 'https://doi.org/10.2337/dc09-0227' },
+                  { label: 'BMI', weight: '5%', note: 'Partial capture beyond ML model', url: 'https://doi.org/10.1016/j.diabres.2010.04.012' },
+                  { label: 'Age', weight: '2%', note: 'Non-modifiable', url: 'https://doi.org/10.1371/journal.pone.0194127' },
+                  { label: 'Biological Sex', weight: '1%', note: 'Hormonal & metabolic differences', url: 'https://doi.org/10.1210/er.2015-1137' },
+                ].map((row, idx) => (
+                  <View
+                    key={row.label}
+                    style={[
+                      styles.formulaRow,
+                      idx % 2 === 0 ? styles.formulaRowEven : styles.formulaRowOdd,
+                    ]}
+                  >
+                    <Text style={styles.formulaComponent}>{row.label}</Text>
+                    <View style={styles.formulaWeightBadge}>
+                      <Text style={styles.formulaWeightText}>{row.weight}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={{ flex: 2.2, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                      onPress={() => Linking.openURL(row.url)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.formulaNote, { flex: 1 }]}>{row.note}</Text>
+                      <Icon name="open-in-new" size={11} color={colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+
+              {/* ── Risk Categories ── */}
+              <Text style={styles.computationSectionLabel}>Risk Categories</Text>
+              <View style={styles.tableContainer}>
+                {/* Header */}
+                <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.2 }]}>Score</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.5 }]}>Category</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2 }]}>10-yr Probability</Text>
+                </View>
+                {[
+                  { score: '0 – 25', category: 'Low', prob: '< 10 %', color: '#27AE60' },
+                  { score: '26 – 50', category: 'Moderate', prob: '10 – 30 %', color: '#F39C12' },
+                  { score: '51 – 75', category: 'High', prob: '30 – 60 %', color: '#E67E22' },
+                  { score: '76 – 100', category: 'Very High', prob: '> 60 %', color: '#E74C3C' },
+                ].map((row, idx) => (
+                  <View
+                    key={row.score}
+                    style={[
+                      styles.tableRow,
+                      idx % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
+                    ]}
+                  >
+                    <Text style={[styles.tableCell, { flex: 1.2 }]}>{row.score}</Text>
+                    <Text style={[styles.tableCell, { flex: 1.5, color: row.color, fontWeight: '700' }]}>
+                      {row.category}
+                    </Text>
+                    <Text style={[styles.tableCell, { flex: 2 }]}>{row.prob}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* ── Component Scoring Detail ── */}
+              <Text style={styles.computationSectionLabel}>Component Scoring Detail</Text>
+
+              {/* Physical Activity */}
+              <Text style={styles.componentLabel}>Physical Activity (Step Count)</Text>
+              <View style={styles.tableContainer}>
+                <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>Condition</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Points</Text>
+                </View>
+                {[
+                  { cond: '< 3,000 steps / day (very sedentary)', pts: '+ 40' },
+                  { cond: '3,000 – 4,999 steps / day (sedentary)', pts: '+ 25' },
+                  { cond: '5,000 – 6,999 steps / day (below target)', pts: '+ 10' },
+                  { cond: '7,000 – 9,999 steps / day (near target)', pts: '0' },
+                  { cond: '≥ 10,000 steps / day (meets goal)', pts: '− 5' },
+                  { cond: 'Inconsistent activity pattern', pts: '+ 10' },
+                ].map((r, i) => (
+                  <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
+                    <Text style={[styles.tableCell, { flex: 2.5 }]}>{r.cond}</Text>
+                    <Text style={[styles.tableCell, { flex: 1, fontWeight: '700',
+                      color: r.pts.startsWith('+') ? '#E74C3C' : r.pts.startsWith('−') ? '#27AE60' : colors.text }]}>
+                      {r.pts}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Sleep */}
+              <Text style={styles.componentLabel}>Sleep</Text>
+              <View style={styles.tableContainer}>
+                <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>Condition</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Points</Text>
+                </View>
+                {[
+                  { cond: '< 6 h / night (short sleep)', pts: '+ 20–30' },
+                  { cond: '7 – 8 h / night (optimal)', pts: '0' },
+                  { cond: '> 9 h / night (long sleep)', pts: '+ 15–25' },
+                  { cond: 'High sleep-duration variability', pts: '+ 10–20' },
+                  { cond: 'Irregular bedtime pattern', pts: '+ 10–15' },
+                ].map((r, i) => (
+                  <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
+                    <Text style={[styles.tableCell, { flex: 2.5 }]}>{r.cond}</Text>
+                    <Text style={[styles.tableCell, { flex: 1, fontWeight: '700',
+                      color: r.pts.startsWith('+') ? '#E74C3C' : r.pts === '0' ? '#27AE60' : colors.text }]}>
+                      {r.pts}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Smoking */}
+              <Text style={styles.componentLabel}>Smoking</Text>
+              <View style={styles.tableContainer}>
+                <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>Condition</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Points</Text>
+                </View>
+                {[
+                  { cond: 'Never smoked', pts: '1' },
+                  { cond: 'Current — light (< 10 cigs / day)', pts: '30' },
+                  { cond: 'Current — moderate (10–19 cigs / day)', pts: '40' },
+                  { cond: 'Current — heavy (≥ 20 cigs / day)', pts: '50' },
+                  { cond: 'Former smoker < 5 yrs since quit', pts: '30–40' },
+                  { cond: 'Former smoker 5–10 yrs since quit', pts: '20' },
+                  { cond: 'Former smoker > 10 yrs since quit', pts: '10–15' },
+                ].map((r, i) => (
+                  <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
+                    <Text style={[styles.tableCell, { flex: 2.5 }]}>{r.cond}</Text>
+                    <Text style={[styles.tableCell, { flex: 1, fontWeight: '700',
+                      color: r.pts === '1' ? '#27AE60' : '#E74C3C' }]}>
+                      {r.pts}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Alcohol */}
+              <Text style={styles.componentLabel}>Alcohol Intake</Text>
+              <View style={styles.tableContainer}>
+                <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>Condition</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Points</Text>
+                </View>
+                {[
+                  { cond: 'No consumption', pts: '0' },
+                  { cond: 'Light ≤ 7 drinks / week', pts: '− 5' },
+                  { cond: 'Moderate 7–14 drinks / week', pts: '+ 5' },
+                  { cond: 'Heavy > 14–21 drinks / week', pts: '+ 15' },
+                  { cond: 'Binge drinking episodes (≥ 4–5 per occasion)', pts: '+ 20' },
+                  { cond: 'Irregular pattern variability', pts: '+ 5 extra' },
+                ].map((r, i) => (
+                  <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
+                    <Text style={[styles.tableCell, { flex: 2.5 }]}>{r.cond}</Text>
+                    <Text style={[styles.tableCell, { flex: 1, fontWeight: '700',
+                      color: r.pts.startsWith('+') ? '#E74C3C' : r.pts.startsWith('−') ? '#27AE60' : colors.text }]}>
+                      {r.pts}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* BMI */}
+              <Text style={styles.componentLabel}>Body Mass Index (BMI)</Text>
+              <View style={styles.tableContainer}>
+                <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>BMI Range</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Points</Text>
+                </View>
+                {[
+                  { cond: 'Underweight  < 18.5', pts: '+ 5' },
+                  { cond: 'Normal  18.5 – 24.9', pts: '0' },
+                  { cond: 'Overweight  25 – 29.9', pts: '+ 10' },
+                  { cond: 'Obese Class I  30 – 34.9', pts: '+ 20' },
+                  { cond: 'Obese Class II  35 – 39.9', pts: '+ 30' },
+                  { cond: 'Obese Class III  ≥ 40', pts: '+ 40' },
+                ].map((r, i) => (
+                  <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
+                    <Text style={[styles.tableCell, { flex: 2.5 }]}>{r.cond}</Text>
+                    <Text style={[styles.tableCell, { flex: 1, fontWeight: '700',
+                      color: r.pts === '0' ? '#27AE60' : r.pts.startsWith('+') ? '#E74C3C' : colors.text }]}>
+                      {r.pts}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Age & Sex */}
+              <Text style={styles.componentLabel}>Age</Text>
+              <View style={styles.tableContainer}>
+                <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2 }]}>Age Range</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Points</Text>
+                </View>
+                {[
+                  { cond: '< 30 years', pts: '0' },
+                  { cond: '30 – 39 years', pts: '+ 2' },
+                  { cond: '40 – 49 years', pts: '+ 5' },
+                  { cond: '50 – 59 years', pts: '+ 8' },
+                  { cond: '60 – 69 years', pts: '+ 12' },
+                  { cond: '≥ 70 years', pts: '+ 15' },
+                ].map((r, i) => (
+                  <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
+                    <Text style={[styles.tableCell, { flex: 2 }]}>{r.cond}</Text>
+                    <Text style={[styles.tableCell, { flex: 1, fontWeight: '700',
+                      color: r.pts === '0' ? '#27AE60' : '#E74C3C' }]}>
+                      {r.pts}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              <Text style={styles.componentLabel}>Biological Sex</Text>
+              <View style={styles.tableContainer}>
+                <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2 }]}>Sex</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Points</Text>
+                </View>
+                {[
+                  { cond: 'Female', pts: '0' },
+                  { cond: 'Male', pts: '+ 3' },
+                ].map((r, i) => (
+                  <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
+                    <Text style={[styles.tableCell, { flex: 2 }]}>{r.cond}</Text>
+                    <Text style={[styles.tableCell, { flex: 1, fontWeight: '700',
+                      color: r.pts === '0' ? '#27AE60' : '#E74C3C' }]}>
+                      {r.pts}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* ── Scientific References ── */}
+              <TouchableOpacity
+                style={styles.refsToggleRow}
+                onPress={() => setRefsVisible(!refsVisible)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.computationSectionLabel, { marginTop: 0, marginBottom: 0 }]}>Scientific References (APA)</Text>
+                <Icon
+                  name={refsVisible ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={colors.primary}
+                />
+              </TouchableOpacity>
+              {refsVisible && <View style={styles.referencesContainer}>
+                {[
+                  {
+                    num: 1,
+                    authors: 'American Diabetes Association.',
+                    year: '2023',
+                    title: 'Standards of medical care in diabetes — 2023',
+                    journal: 'Diabetes Care, 46(Supplement_1)',
+                    url: 'https://doi.org/10.2337/dc23-Sint',
+                  },
+                  {
+                    num: 2,
+                    authors: 'Bellou, V., Belbasis, L., Tzoulaki, I., & Evangelou, E.',
+                    year: '2018',
+                    title: 'Risk factors for type 2 diabetes mellitus: An exposure-wide umbrella review of meta-analyses',
+                    journal: 'PLOS ONE, 13(3), e0194127',
+                    url: 'https://doi.org/10.1371/journal.pone.0194127',
+                  },
+                  {
+                    num: 3,
+                    authors: 'Knutson, K. L., Spiegel, K., Penev, P., & Van Cauter, E.',
+                    year: '2007',
+                    title: 'The metabolic consequences of sleep deprivation',
+                    journal: 'Sleep Medicine Reviews, 11(3), 163–178',
+                    url: 'https://doi.org/10.1016/j.smrv.2007.01.002',
+                  },
+                  {
+                    num: 4,
+                    authors: 'Cappuccio, F. P., D\'Elia, L., Strazzullo, P., & Miller, M. A.',
+                    year: '2010',
+                    title: 'Quantity and quality of sleep and incidence of type 2 diabetes: A systematic review and meta-analysis',
+                    journal: 'Diabetes Care, 33(2), 414–420',
+                    url: 'https://doi.org/10.2337/dc09-1124',
+                  },
+                  {
+                    num: 5,
+                    authors: 'Shan, Z., Ma, H., Xie, M., Yan, P., Guo, Y., Bao, W., Rong, Y., Jackson, C. L., Hu, F. B., & Liu, L.',
+                    year: '2015',
+                    title: 'Sleep duration and risk of type 2 diabetes: A meta-analysis of prospective studies',
+                    journal: 'Diabetes Care, 38(3), 529–537',
+                    url: 'https://doi.org/10.2337/dc14-2073',
+                  },
+                  {
+                    num: 6,
+                    authors: 'Aune, D., Norat, T., Leitzmann, M., Tonstad, S., & Vatten, L. J.',
+                    year: '2015',
+                    title: 'Physical activity and the risk of type 2 diabetes: A systematic review and dose-response meta-analysis',
+                    journal: 'European Journal of Epidemiology, 30(7), 529–542',
+                    url: 'https://doi.org/10.1007/s10654-015-0056-z',
+                  },
+                  {
+                    num: 7,
+                    authors: 'Tudor-Locke, C., Craig, C. L., Brown, W. J., Clemes, S. A., De Cocker, K., Giles-Corti, B., Hatano, Y., Inoue, S., Matsudo, S. M., Mutrie, N., Oppert, J.-M., Rowe, D. A., Schmidt, M. D., Schofield, G. M., Spence, J. C., Teixeira, P. J., Tully, M. A., & Blair, S. N.',
+                    year: '2011',
+                    title: 'How many steps/day are enough? For adults',
+                    journal: 'International Journal of Behavioral Nutrition and Physical Activity, 8, 79',
+                    url: 'https://doi.org/10.1186/1479-5868-8-79',
+                  },
+                  {
+                    num: 8,
+                    authors: 'Colberg, S. R., Sigal, R. J., Yardley, J. E., Riddell, M. C., Dunstan, D. W., Dempsey, P. C., Horton, E. S., Castorino, K., & Tate, D. F.',
+                    year: '2016',
+                    title: 'Physical activity/exercise and diabetes: A position statement of the American Diabetes Association',
+                    journal: 'Diabetes Care, 39(11), 2065–2079',
+                    url: 'https://doi.org/10.2337/dc16-1728',
+                  },
+                  {
+                    num: 9,
+                    authors: 'Willi, C., Bodenmann, P., Ghali, W. A., Faris, P. D., & Cornuz, J.',
+                    year: '2007',
+                    title: 'Active smoking and the risk of type 2 diabetes: A systematic review and meta-analysis',
+                    journal: 'JAMA, 298(22), 2654–2664',
+                    url: 'https://doi.org/10.1001/jama.298.22.2654',
+                  },
+                  {
+                    num: 10,
+                    authors: 'Pan, A., Wang, Y., Talaei, M., Hu, F. B., & Wu, T.',
+                    year: '2015',
+                    title: 'Relation of active, passive, and quitting smoking with incident type 2 diabetes: A systematic review and meta-analysis',
+                    journal: 'The Lancet Diabetes & Endocrinology, 3(12), 958–967',
+                    url: 'https://doi.org/10.1016/S2213-8587(15)00316-2',
+                  },
+                  {
+                    num: 11,
+                    authors: 'Baliunas, D. O., Taylor, B. J., Irving, H., Roerecke, M., Patra, J., Mohapatra, S., & Rehm, J.',
+                    year: '2009',
+                    title: 'Alcohol as a risk factor for type 2 diabetes: A systematic review and meta-analysis',
+                    journal: 'Diabetes Care, 32(11), 2123–2132',
+                    url: 'https://doi.org/10.2337/dc09-0227',
+                  },
+                  {
+                    num: 12,
+                    authors: 'Holst, C., Becker, U., Jørgensen, M. E., Grønbæk, M., & Tolstrup, J. S.',
+                    year: '2017',
+                    title: 'Alcohol drinking patterns and risk of diabetes: A cohort study of 70,551 men and women from the general Danish population',
+                    journal: 'Diabetologia, 60(10), 1941–1950',
+                    url: 'https://doi.org/10.1007/s00125-017-4359-3',
+                  },
+                  {
+                    num: 13,
+                    authors: 'Malik, V. S., Popkin, B. M., Bray, G. A., Després, J.-P., Willett, W. C., & Hu, F. B.',
+                    year: '2010',
+                    title: 'Sugar-sweetened beverages and risk of metabolic syndrome and type 2 diabetes: A meta-analysis',
+                    journal: 'Diabetes Care, 33(11), 2477–2483',
+                    url: 'https://doi.org/10.2337/dc10-1079',
+                  },
+                  {
+                    num: 14,
+                    authors: 'Yao, B., Fang, H., Xu, W., Yan, Y., Xu, H., Liu, Y., Mo, M., Zhang, H., & Zhao, Y.',
+                    year: '2014',
+                    title: 'Dietary fiber intake and risk of type 2 diabetes: A dose-response analysis of prospective studies',
+                    journal: 'European Journal of Nutrition, 53(2), 489–498',
+                    url: 'https://doi.org/10.1007/s00394-013-0567-7',
+                  },
+                  {
+                    num: 15,
+                    authors: 'Abdullah, A., Peeters, A., de Courten, M., & Stoelwinder, J.',
+                    year: '2010',
+                    title: 'The magnitude of association between overweight and obesity and the risk of diabetes: A meta-analysis of prospective cohort studies',
+                    journal: 'Diabetes Research and Clinical Practice, 89(3), 309–319',
+                    url: 'https://doi.org/10.1016/j.diabres.2010.04.012',
+                  },
+                  {
+                    num: 16,
+                    authors: 'Kautzky-Willer, A., Harreiter, J., & Pacini, G.',
+                    year: '2016',
+                    title: 'Sex and gender differences in risk, pathophysiology and complications of type 2 diabetes mellitus',
+                    journal: 'Endocrine Reviews, 37(3), 278–316',
+                    url: 'https://doi.org/10.1210/er.2015-1137',
+                  },
+                  {
+                    num: 17,
+                    authors: 'Knowler, W. C., Barrett-Connor, E., Fowler, S. E., Hamman, R. F., Lachin, J. M., Walker, E. A., & Nathan, D. M.',
+                    year: '2002',
+                    title: 'Reduction in the incidence of type 2 diabetes with lifestyle intervention or metformin',
+                    journal: 'New England Journal of Medicine, 346(6), 393–403',
+                    url: 'https://doi.org/10.1056/NEJMoa012512',
+                  },
+                  {
+                    num: 18,
+                    authors: 'Centers for Disease Control and Prevention.',
+                    year: '2020',
+                    title: 'National Diabetes Statistics Report, 2020',
+                    journal: 'U.S. Department of Health and Human Services',
+                    url: 'https://www.cdc.gov/diabetes/data/statistics-report/index.html',
+                  },
+                ].map((ref) => (
+                  <View key={ref.num} style={styles.referenceItem}>
+                    <Text style={styles.referenceNum}>[{ref.num}]</Text>
+                    <View style={styles.referenceTextBlock}>
+                      <Text style={styles.referenceText}>
+                        {ref.authors} ({ref.year}). {ref.title}. <Text style={styles.referenceJournal}>{ref.journal}.</Text>
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => Linking.openURL(ref.url)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.referenceUrl}>{ref.url}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>}
+            </View>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

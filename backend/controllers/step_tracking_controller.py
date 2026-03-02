@@ -1,8 +1,11 @@
 from flask import request, jsonify
 from datetime import datetime, timedelta
+import logging
 from bson import ObjectId
 from models.step_tracking import StepBaseline, StepMetrics, StepRiskAssessment
 from services.step_tracking_service import StepTrackingService
+
+logger = logging.getLogger(__name__)
 
 class StepTrackingController:
     """Controller for step tracking endpoints - follows sleep_tracking_controller.py pattern"""
@@ -61,9 +64,7 @@ class StepTrackingController:
             }), 201
             
         except Exception as e:
-            import traceback
-            print(f"Error in create_baseline: {str(e)}")
-            print(traceback.format_exc())
+            logger.error("Error in create_baseline: %s", e, exc_info=True)
             return jsonify({
                 'success': False,
                 'error': str(e)
@@ -221,16 +222,14 @@ class StepTrackingController:
             end_date = datetime.utcnow().date()
             start_date = end_date - timedelta(days=days)
             
-            print(f"🔍 Querying recent records")
-            print(f"  MongoDB ObjectId: {user_id}")
-            print(f"  Firebase UID: {firebase_uid}")
-            print(f"  Date range: {start_date} to {end_date}")
+            logger.debug(
+                "get_summary: user_id=%s firebase_uid=%s date_range=%s to %s",
+                user_id, firebase_uid, start_date, end_date
+            )
             
             # Debug: Check what's actually in the DB for this Firebase UID
             all_user_records = list(user_activity.collection.find({'uid': firebase_uid}).limit(5))
-            print(f"  Sample records in DB for Firebase UID: {len(all_user_records)}")
-            if all_user_records:
-                print(f"  First record: {all_user_records[0]}")
+            logger.debug("get_summary: sample records in DB for Firebase UID: %d", len(all_user_records))
             
             # Query using Firebase UID (not MongoDB ObjectId)
             recent_records = user_activity.get_activity_by_date_range(
@@ -238,7 +237,7 @@ class StepTrackingController:
                 start_date.strftime('%Y-%m-%d'),
                 end_date.strftime('%Y-%m-%d')
             )
-            print(f"  ✅ Found {len(recent_records)} recent records")
+            logger.debug("get_summary: found %d recent records", len(recent_records))
             
             return jsonify({
                 'success': True,
@@ -256,9 +255,7 @@ class StepTrackingController:
             }), 200
             
         except Exception as e:
-            import traceback
-            print(f"Error in get_summary: {str(e)}")
-            print(traceback.format_exc())
+            logger.error("Error in get_summary: %s", e, exc_info=True)
             return jsonify({
                 'success': False,
                 'error': str(e)

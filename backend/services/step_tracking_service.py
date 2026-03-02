@@ -3,6 +3,7 @@ from models.step_tracking import StepBaseline, StepMetrics, StepRiskAssessment
 from models.user_activity import UserActivity
 from config.database import get_db
 from statistics import mean, stdev
+from bson import ObjectId
 import logging
 
 class StepTrackingService:
@@ -12,25 +13,53 @@ class StepTrackingService:
     SEDENTARY_THRESHOLD = 5000
     
     @staticmethod
+    def _resolve_firebase_uid(user_id):
+        """
+        user_activities is keyed by Firebase uid, but user_id passed to this
+        service is the MongoDB _id string.  Resolve the Firebase uid so queries
+        against user_activities actually find data.
+        """
+        try:
+            db = get_db()
+            # Try as MongoDB ObjectId first
+            try:
+                oid = ObjectId(user_id)
+                user_doc = db.users.find_one({"_id": oid}, {"uid": 1})
+                if user_doc and user_doc.get("uid"):
+                    return user_doc["uid"]
+            except Exception:
+                pass
+            # Already a Firebase uid? Return as-is
+            return user_id
+        except Exception as e:
+            logging.warning(f"Could not resolve Firebase uid for user_id={user_id}: {e}")
+            return user_id
+
+    @staticmethod
     def compute_metrics(user_id):
         """Compute step metrics from daily activity records"""
         try:
             db = get_db()
             user_activity = UserActivity(db)
-            
+
+            # user_activities stores records by Firebase uid, but user_id here
+            # is the MongoDB _id string – resolve the correct Firebase uid.
+            firebase_uid = StepTrackingService._resolve_firebase_uid(user_id)
+            logging.info(f"compute_metrics: resolved uid {user_id} -> {firebase_uid}")
+
             today = datetime.utcnow().date()
             date_7d = (today - timedelta(days=7)).strftime('%Y-%m-%d')
             date_30d = (today - timedelta(days=30)).strftime('%Y-%m-%d')
             
-            # Get records from user_activity collection
+            # Get records from user_activity collection using Firebase uid
             records_7d = user_activity.get_activity_by_date_range(
-                user_id,
+                firebase_uid,
                 date_7d,
                 today.strftime('%Y-%m-%d')
             )
             
             records_30d = user_activity.get_activity_by_date_range(
-                user_id,
+                firebase_uid,
                 date_30d,
                 today.strftime('%Y-%m-%d')
             )
