@@ -56,7 +56,10 @@ const HomeScreen = ({ navigation }) => {
 
   const loadDashboardData = async (forceRefresh = false) => {
     try {
-      setIsLoading(true);
+      // Only show the full-screen spinner on the very first load.
+      // Pull-to-refresh uses isRefreshing, so we must not replace the whole
+      // screen with the loader or the RefreshControl animation never clears.
+      if (!forceRefresh) setIsLoading(true);
       console.log('🏠 HomeScreen: Loading dashboard data...', forceRefresh ? '(force refresh)' : '');
       console.log('👤 Current user:', user?.uid || 'NO USER');
       
@@ -148,16 +151,23 @@ const HomeScreen = ({ navigation }) => {
         
         if (summaryData?.recent_records && summaryData.recent_records.length > 0) {
           console.log('✅ Found recent_records:', summaryData.recent_records.length, 'records');
-          // Get the most recent day's steps
-          const mostRecent = summaryData.recent_records[0];
-          console.log('📊 Most recent record:', mostRecent);
-          
-          stepsData = {
-            steps: mostRecent.steps || 0,
-            source: 'backend',
-            date: mostRecent.date
-          };
-          console.log('✅ Got steps from backend:', stepsData);
+          // Only use a record if it is actually from today — same date-check as StepCounterScreen
+          const todayStr = new Date().toISOString().split('T')[0];
+          const todayRecord = summaryData.recent_records.find(
+            r => new Date(r.date).toISOString().split('T')[0] === todayStr
+          );
+          console.log('📊 Today record:', todayRecord || 'none');
+
+          if (todayRecord && todayRecord.steps > 0) {
+            stepsData = {
+              steps: todayRecord.steps,
+              source: 'backend',
+              date: todayRecord.date
+            };
+            console.log('✅ Got today\'s steps from backend:', stepsData);
+          } else {
+            console.log('⚠️ No backend record for today — steps will show N/A or from sensor');
+          }
         } else {
           console.log('⚠️ Backend returned empty or no recent_records');
           console.log('   Summary structure:', Object.keys(summaryData || {}));
@@ -440,8 +450,11 @@ const HomeScreen = ({ navigation }) => {
 
   const onRefresh = async () => {
     setIsRefreshing(true);
-    await loadDashboardData(true); // Force refresh to bypass cache
-    setIsRefreshing(false);
+    try {
+      await loadDashboardData(true); // Force refresh to bypass cache
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const quickActions = [

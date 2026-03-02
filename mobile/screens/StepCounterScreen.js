@@ -20,7 +20,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
   initializeHealthConnect,
   getActivityData,
-  requestAllHealthPermissions,
+  requestHealthPermission,
   openHealthConnectSettingsPage,
 } from '../services/healthConnectService';
 import stepDetectionService from '../services/stepDetectionService';
@@ -73,7 +73,9 @@ const StepCounterScreen = ({ navigation }) => {
   const [unlockedAchievements, setUnlockedAchievements] = useState([]);
   const [hasBaseline, setHasBaseline] = useState(false);
   const [baselineData, setBaselineData] = useState(null);
-  const [summary, setSummary] = useState(null); // ADD THIS LINE
+  const [summary, setSummary] = useState(null);
+  // Incremented whenever summary is refreshed — triggers activityData re-calculation
+  const [summaryVersion, setSummaryVersion] = useState(0);
 
   // Check if user is diagnosed with prediabetes or type 2 diabetes
   const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
@@ -84,6 +86,10 @@ const StepCounterScreen = ({ navigation }) => {
   const lastAutoSyncRef = useRef(Date.now());
   const isMountedRef = useRef(true);
   const achievementAnimation = useRef(new Animated.Value(0)).current;
+  // Keeps latest summary accessible inside callbacks without stale closure
+  const summaryRef = useRef(null);
+  // Keeps latest activityData accessible inside callbacks without stale closure
+  const activityDataRef = useRef(activityData);
 
   const periods = useMemo(() => [
     { id: 'today', label: 'Today', icon: 'calendar-today' },
@@ -208,27 +214,33 @@ const StepCounterScreen = ({ navigation }) => {
       if (streak.current > 0) {
         insights.push({ type: 'success', icon: 'fire', message: `🔥 ${streak.current} day streak! Keep it up!`, color: '#E67E22' });
       }
-    } else if (selectedPeriod === 'week' && activityData.dailyData.length > 0) {
-      const thisWeekAvg = activityData.steps / 7;
-      const lastWeekData = activityData.dailyData.slice(7, 14);
-      const lastWeekTotal = lastWeekData.reduce((sum, day) => sum + day.steps, 0);
-      const lastWeekAvg = lastWeekData.length > 0 ? lastWeekTotal / lastWeekData.length : 0;
-
-      if (lastWeekAvg > 0) {
-        const change = ((thisWeekAvg - lastWeekAvg) / lastWeekAvg) * 100;
-        if (change > 0) {
+    } else if ((selectedPeriod === 'week' || selectedPeriod === 'month') && activityData.dailyData.length > 0) {
+      // Compare recent 7-day avg vs 30-day avg from backend metrics (always available regardless of period)
+      const metrics = summary?.metrics;
+      const avg7d = Math.round(metrics?.avg_steps_7d || 0);
+      const avg30d = Math.round(metrics?.avg_steps_30d || 0);
+      if (avg7d > 0 && avg30d > 0) {
+        const change = ((avg7d - avg30d) / avg30d) * 100;
+        if (change > 5) {
           insights.push({
             type: 'success',
             icon: 'trending-up',
-            message: `📈 ${change.toFixed(0)}% increase from last week!`,
+            message: `📈 ${change.toFixed(0)}% above your 30-day average this week`,
             color: '#27AE60'
           });
-        } else if (change < 0) {
+        } else if (change < -5) {
           insights.push({
             type: 'warning',
             icon: 'trending-down',
-            message: `📉 ${Math.abs(change).toFixed(0)}% decrease from last week`,
+            message: `📉 ${Math.abs(change).toFixed(0)}% below your 30-day average this week`,
             color: '#E74C3C'
+          });
+        } else {
+          insights.push({
+            type: 'info',
+            icon: 'check-circle-outline',
+            message: `✅ Consistent with your 30-day average`,
+            color: '#3498DB'
           });
         }
       }
@@ -240,7 +252,7 @@ const StepCounterScreen = ({ navigation }) => {
     }
 
     return insights;
-  }, [activityData, selectedPeriod, predictedSteps, streak]);
+  }, [activityData, selectedPeriod, predictedSteps, streak, summary]);
 
   // Optimized calculation functions
   const calculateTotalSteps = useCallback((stepsData) => {
@@ -314,24 +326,42 @@ const StepCounterScreen = ({ navigation }) => {
       let distance = 0;
       let calories = 0;
 
-
       if (hasPermissions) {
         const { startDate, endDate } = getDateRange('today');
         const healthData = await getActivityData(startDate, endDate);
 
         totalSteps = calculateTotalSteps(healthData.steps);
-        distance = calculateTotalDistance(healthData.distance);
-        // ✅ FIX: Always calculate calories from steps (don't trust Health Connect calorie data)
+        distance = calculateTotalDistance(healthData.distance) || stepDetectionService.calculateDistance(totalSteps);
         calories = stepDetectionService.calculateCalories(totalSteps);
-
 
         console.log(`📊 Health Connect: ${totalSteps} steps`);
       } else {
-        totalSteps = phoneSensorSteps;
-        distance = stepDetectionService.calculateDistance(phoneSensorSteps);
-        calories = stepDetectionService.calculateCalories(phoneSensorSteps);
+        // No HC — always re-fetch summary to get latest synced data (cached by api.js so no extra network cost)
+        try {
+          const resp = await getStepSummary(30);
+          const data = resp?.data || resp;
+          summaryRef.current = data;
+          if (isMountedRef.current) setSummary(data);
+        } catch (e) {
+          console.warn('⚠️ Could not fetch summary in updateTodaySteps:', e.message);
+        }
 
-        console.log(`📱 Phone sensor: ${totalSteps} steps`);
+        const todayStr = new Date().toISOString().split('T')[0];
+        let backendSteps = 0;
+        let backendDistance = 0;
+        const records = summaryRef.current?.recent_records || [];
+        const todayRecord = records.find(
+          r => new Date(r.date).toISOString().split('T')[0] === todayStr
+        );
+        if (todayRecord) {
+          backendSteps = todayRecord.steps || 0;
+          backendDistance = todayRecord.distance || 0;
+        }
+        totalSteps = Math.max(phoneSensorSteps, backendSteps);
+        distance = backendDistance || stepDetectionService.calculateDistance(totalSteps);
+        calories = stepDetectionService.calculateCalories(totalSteps);
+
+        console.log(`📱 Phone: ${phoneSensorSteps} | Backend today: ${backendSteps} | Displaying: ${totalSteps}`);
       }
 
       if (isMountedRef.current) {
@@ -357,14 +387,74 @@ const StepCounterScreen = ({ navigation }) => {
       console.log(`📊 Loading data for: ${selectedPeriod}`);
 
       if (!hasPermissions) {
-        setActivityData({
-          steps: phoneSensorSteps,
-          distance: stepDetectionService.calculateDistance(phoneSensorSteps),
-          activeCalories: stepDetectionService.calculateCalories(phoneSensorSteps) * 0.7,
-          totalCalories: stepDetectionService.calculateCalories(phoneSensorSteps),
-          exerciseSessions: [],
-          dailyData: [],
-        });
+        // No HC — fetch the exact window from the backend per selected period
+        const daysToFetch = selectedPeriod === 'week' ? 7 : 30;
+        try {
+          const resp = await getStepSummary(daysToFetch);
+          const summaryData = resp?.data || resp;
+
+          // Keep summaryRef as the broadest (30-day) window for today-step lookups
+          if (daysToFetch === 30 && isMountedRef.current) {
+            summaryRef.current = summaryData;
+            setSummary(summaryData);
+          }
+
+          const backendRecords = summaryData?.recent_records || [];
+
+          if (backendRecords.length === 0) {
+            // No backend data — fall back to phone sensor only
+            setActivityData({
+              steps: phoneSensorSteps,
+              distance: stepDetectionService.calculateDistance(phoneSensorSteps),
+              activeCalories: stepDetectionService.calculateCalories(phoneSensorSteps) * 0.7,
+              totalCalories: stepDetectionService.calculateCalories(phoneSensorSteps),
+              exerciseSessions: [],
+              dailyData: [],
+            });
+            return;
+          }
+
+          // Backend already scoped records to daysToFetch — use them all, no client-side filter
+          const dailyData = backendRecords
+            .map(r => ({
+              date: r.date,
+              steps: r.steps || 0,
+              distance: r.distance || 0,
+              activeCalories: r.active_calories || r.activeCalories || 0,
+              calories: r.total_calories || r.totalCalories
+                || stepDetectionService.calculateCalories(r.steps || 0),
+            }))
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+          const totalSteps = dailyData.reduce((sum, d) => sum + d.steps, 0);
+          const totalDistance = dailyData.reduce((sum, d) => sum + d.distance, 0);
+          const totalCalories = stepDetectionService.calculateCalories(totalSteps);
+          const streakData = calculateStreak(dailyData);
+          setStreak(streakData);
+
+          if (isMountedRef.current) {
+            setActivityData({
+              steps: totalSteps,
+              distance: totalDistance,
+              activeCalories: totalCalories * 0.7,
+              totalCalories,
+              exerciseSessions: [],
+              dailyData,
+            });
+          }
+          console.log(`📱 No HC — ${selectedPeriod} (${daysToFetch}d): ${dailyData.length} records, ${totalSteps} total steps`);
+        } catch (e) {
+          console.warn(`⚠️ Could not fetch ${daysToFetch}-day summary in loadActivityData:`, e.message);
+          // Fallback to phone sensor only
+          setActivityData({
+            steps: phoneSensorSteps,
+            distance: stepDetectionService.calculateDistance(phoneSensorSteps),
+            activeCalories: stepDetectionService.calculateCalories(phoneSensorSteps) * 0.7,
+            totalCalories: stepDetectionService.calculateCalories(phoneSensorSteps),
+            exerciseSessions: [],
+            dailyData: [],
+          });
+        }
         return;
       }
 
@@ -445,15 +535,18 @@ const StepCounterScreen = ({ navigation }) => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
+      // Use activityDataRef to get the freshest values — activityData state may be stale
+      // if updateTodaySteps was just called (React state updates are async)
+      const latestActivity = activityDataRef.current;
       const dataToSync = {
         date: today.toISOString(),
-        steps: activityData.steps,
-        distance: activityData.distance,
-        activeCalories: activityData.activeCalories,
-        totalCalories: activityData.totalCalories,
+        steps: latestActivity.steps,
+        distance: latestActivity.distance,
+        activeCalories: latestActivity.activeCalories,
+        totalCalories: latestActivity.totalCalories,
         source: hasPermissions ? 'health_connect' : 'phone_sensor',
         phoneSensorSteps: phoneSensorSteps,
-        healthConnectSteps: hasPermissions ? activityData.steps : 0,
+        healthConnectSteps: hasPermissions ? latestActivity.steps : 0,
         streak: streak.current,
         achievements: unlockedAchievements,
       };
@@ -500,9 +593,12 @@ const StepCounterScreen = ({ navigation }) => {
         }
         // Refresh summary/recent records from backend to ensure UI shows synced data and risk
         try {
-          const summaryResp = await getStepSummary(7);
+          const summaryResp = await getStepSummary(30); // 30 days keeps summaryRef broad for today + month lookups
           const summaryData = summaryResp?.data || summaryResp;
-          if (isMountedRef.current) setSummary(summaryData);
+          if (isMountedRef.current) {
+            summaryRef.current = summaryData;
+            setSummary(summaryData);
+          }
         } catch (e) {
           console.warn('Failed to refresh summary after sync', e);
         }
@@ -518,7 +614,7 @@ const StepCounterScreen = ({ navigation }) => {
         setIsSyncing(false);
       }
     }
-  }, [isSyncing, selectedPeriod, phoneSensorSteps, activityData, hasPermissions, streak, unlockedAchievements, toast]);
+  }, [isSyncing, selectedPeriod, phoneSensorSteps, hasPermissions, streak, unlockedAchievements, toast]);
 
   // Perform auto-sync
   const performAutoSync = useCallback(async () => {
@@ -536,59 +632,108 @@ const StepCounterScreen = ({ navigation }) => {
 
   // Initialize services
   const initializeServices = useCallback(async () => {
+    let sensorUnsubscribe;
     try {
       console.log('🔧 Initializing services...');
 
-      // Initialize Health Connect FIRST
-      await initializeHealthConnect();
-      const permissionsGranted = await requestAllHealthPermissions();
+      // ── Step 1: Try Health Connect (scoped: Steps + Calories only) ────────
+      let permissionsGranted = false;
+      try {
+        await initializeHealthConnect();
+
+        // Only request the two permissions we actually need
+        const granted = await requestHealthPermission([
+          { accessType: 'read',  recordType: 'Steps' },
+          { accessType: 'write', recordType: 'Steps' },
+          { accessType: 'read',  recordType: 'ActiveCaloriesBurned' },
+        ]);
+        permissionsGranted = Array.isArray(granted) && granted.length > 0;
+        console.log(
+          permissionsGranted
+            ? '✅ Health Connect: Steps + Calories permission granted'
+            : '⚠️ Health Connect: permission denied by user'
+        );
+      } catch (hcError) {
+        // HC not installed or device not supported — silent fallback, no toast
+        console.log('⚠️ Health Connect unavailable, falling back to phone sensor:', hcError.message);
+        permissionsGranted = false;
+      }
 
       setHasPermissions(permissionsGranted);
 
-      if (permissionsGranted) {
-        console.log('✅ Health Connect permissions granted');
-        console.log('⚠️ Phone sensor will NOT be started (Health Connect is active)');
-        // Don't start phone sensor - Health Connect handles everything
-        // This prevents duplicate counting and saves battery
-
-      } else {
-        console.log('⚠️ Health Connect permissions denied');
-        console.log('📱 Starting phone sensor as fallback');
-
-        // ONLY start phone sensor if Health Connect not available
+      // ── Step 2: Start phone sensor when HC is not available / not permitted ─
+      if (!permissionsGranted) {
+        console.log('📱 Starting phone sensor as data source');
         await stepDetectionService.initialize();
         stepDetectionService.start();
 
-        const unsubscribe = stepDetectionService.addListener((steps) => {
-          if (isMountedRef.current) {
-            setPhoneSensorSteps(steps);
-          }
+        sensorUnsubscribe = stepDetectionService.addListener((steps) => {
+          if (isMountedRef.current) setPhoneSensorSteps(steps);
         });
 
         const currentSteps = stepDetectionService.getStepCount();
         setPhoneSensorSteps(currentSteps);
         setLastSyncedSteps(currentSteps);
-
-        console.log('✅ Phone sensor started:', currentSteps, 'steps');
-
-        await updateTodaySteps();
-        await performAutoSync();
-
-        return unsubscribe;
+        console.log('✅ Phone sensor started:', currentSteps, 'initial steps');
+      } else {
+        console.log('✅ Health Connect active — phone sensor not started (saves battery)');
       }
 
+      // ── Step 3: Pre-load backend summary so display isn't blank ───────────
+      try {
+        const summaryResp = await getStepSummary(30); // 30 days covers today, week, and month views
+        const summaryData = summaryResp?.data || summaryResp;
+        if (isMountedRef.current) {
+          summaryRef.current = summaryData;
+          setSummary(summaryData);
+
+          // Seed today's step count from backend when HC permissions are absent
+          if (!permissionsGranted && summaryData?.recent_records?.length > 0) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const todayRecord = summaryData.recent_records.find(
+              r => new Date(r.date).toISOString().split('T')[0] === todayStr
+            );
+            if (todayRecord) {
+              console.log(`📊 Seeding today display from backend: ${todayRecord.steps} steps`);
+              setActivityData(prev => ({
+                ...prev,
+                steps: todayRecord.steps || 0,
+                distance: todayRecord.distance || 0,
+                activeCalories: todayRecord.active_calories || todayRecord.activeCalories || 0,
+                totalCalories: todayRecord.total_calories || todayRecord.totalCalories || 0,
+              }));
+            }
+          }
+        }
+      } catch (summaryErr) {
+        console.warn('⚠️ Could not pre-load backend summary:', summaryErr.message);
+      }
+
+      // ── Step 4: Final data refresh + sync ─────────────────────────────────
       await updateTodaySteps();
       await performAutoSync();
 
     } catch (error) {
       console.error('❌ Initialization error:', error);
-      toast.error('Failed to initialize step tracking');
-    } finally {
-      if (isMountedRef.current) {
-        setIsLoading(false);
+      // Last-resort: start phone sensor without showing an error toast
+      if (!sensorUnsubscribe) {
+        try {
+          await stepDetectionService.initialize();
+          stepDetectionService.start();
+          sensorUnsubscribe = stepDetectionService.addListener((steps) => {
+            if (isMountedRef.current) setPhoneSensorSteps(steps);
+          });
+          setPhoneSensorSteps(stepDetectionService.getStepCount());
+        } catch (sensorErr) {
+          console.error('❌ Phone sensor also failed:', sensorErr);
+        }
       }
+    } finally {
+      if (isMountedRef.current) setIsLoading(false);
     }
-  }, [toast, updateTodaySteps, performAutoSync]);
+
+    return sensorUnsubscribe;
+  }, [updateTodaySteps, performAutoSync]);
 
   // Handle refresh
   const handleRefresh = useCallback(async () => {
@@ -640,7 +785,9 @@ const StepCounterScreen = ({ navigation }) => {
         // Handle different response structures
         const summaryData = summaryResponse?.data || summaryResponse;
         console.log('📊 Summary data:', summaryData);
+        summaryRef.current = summaryData;
         setSummary(summaryData);
+        setSummaryVersion(v => v + 1);
 
         // Extract previous day steps and last sync time from recent records
         if (summaryData?.recent_records && summaryData.recent_records.length > 0) {
@@ -727,6 +874,11 @@ const StepCounterScreen = ({ navigation }) => {
     }
   };
 
+  // Keep activityDataRef in sync so callbacks always read the latest value
+  useEffect(() => {
+    activityDataRef.current = activityData;
+  }, [activityData]);
+
   // Initialize on mount
   useEffect(() => {
     let unsubscribe;
@@ -765,6 +917,20 @@ const StepCounterScreen = ({ navigation }) => {
       }
     }
   }, [selectedPeriod, isLoading, updateTodaySteps, loadActivityData]);
+
+  // Re-calculate step display whenever summary data refreshes (e.g. after checkBaseline)
+  // This handles the timing race where updateTodaySteps ran before checkBaseline fetched data
+  useEffect(() => {
+    if (!isLoading && summaryVersion > 0) {
+      if (selectedPeriod === 'today') {
+        updateTodaySteps();
+      } else {
+        loadActivityData();
+      }
+    }
+  // Only watch summaryVersion to avoid re-entry loops from other dep changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summaryVersion]);
 
   // Auto-sync based on step milestones
   useEffect(() => {
@@ -835,9 +1001,13 @@ const StepCounterScreen = ({ navigation }) => {
   }, [activityData.steps]);
 
   const averageSteps = useMemo(() => {
-    const days = selectedPeriod === 'week' ? 7 : 30;
-    return Math.round(activityData.steps / days);
-  }, [activityData.steps, selectedPeriod]);
+    if (selectedPeriod === 'today') return activityData.steps;
+    // Divide by active days (days with recorded data), not calendar days,
+    // to match the backend's mean(steps_per_active_day) calculation.
+    const activeDays = activityData.dailyData.filter(d => d.steps > 0).length;
+    if (activeDays === 0) return 0;
+    return Math.round(activityData.steps / activeDays);
+  }, [activityData.steps, activityData.dailyData, selectedPeriod]);
 
   const maxSteps = useMemo(() => {
     if (activityData.dailyData.length === 0) return DAILY_GOAL;

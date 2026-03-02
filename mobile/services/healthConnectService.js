@@ -497,11 +497,7 @@ class HealthConnectManager {
       console.warn('Could not read steps:', error.message);
     }
 
-    try {
-      activityData.distance = await this.readRecords(HealthRecordTypes.DISTANCE, { timeRangeFilter });
-    } catch (error) {
-      console.warn('Could not read distance:', error.message);
-    }
+    // Distance is not requested as a permission — calculate from steps in StepCounterScreen instead.
 
     try {
       activityData.activeCalories = await this.readRecords(HealthRecordTypes.ACTIVE_CALORIES_BURNED, { timeRangeFilter });
@@ -509,17 +505,8 @@ class HealthConnectManager {
       console.warn('Could not read active calories:', error.message);
     }
 
-    try {
-      activityData.totalCalories = await this.readRecords(HealthRecordTypes.TOTAL_CALORIES_BURNED, { timeRangeFilter });
-    } catch (error) {
-      console.warn('Could not read total calories:', error.message);
-    }
-
-    try {
-      activityData.exerciseSessions = await this.readRecords(HealthRecordTypes.EXERCISE_SESSION, { timeRangeFilter });
-    } catch (error) {
-      console.warn('Could not read exercise sessions:', error.message);
-    }
+    // TotalCaloriesBurned and ExerciseSession are not requested — skip to avoid
+    // permission errors. Calories are calculated from steps in StepCounterScreen.
 
     return activityData;
   }
