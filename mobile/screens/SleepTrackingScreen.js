@@ -49,6 +49,9 @@ const SleepTrackingScreen = ({ navigation }) => {
   const { colors, isDarkMode } = useTheme();
   const { user } = useAuth();
 
+  // Check if user is diagnosed with prediabetes or type 2 diabetes
+  const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
+
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -1121,9 +1124,6 @@ const SleepTrackingScreen = ({ navigation }) => {
   const riskColor = getRiskColor(risk.risk_category);
   const sourceInfo = getDataSourceLabel(metrics.dominant_sleep_source);
 
-  // Check if user is diagnosed with prediabetes or type 2 diabetes
-  const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
-
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -1392,41 +1392,77 @@ const SleepTrackingScreen = ({ navigation }) => {
 
 
         {/* AI-Powered Timeline Predictions */}
-        <LifestyleRecommendationsSection trackerType="sleep" />
+        <LifestyleRecommendationsSection trackerType="sleep" isDiagnosed={isDiagnosed} />
         {/* Education / Explanation */}
-        <View style={styles.educationCard}>
-          <Text style={styles.educationTitle}>
-            📊 How Your Data Improves Over Time
-          </Text>
-          <Text style={styles.educationText}>
-            Your sleep risk assessment becomes more accurate as you log more data:
-          </Text>
-          <View style={styles.educationBullet}>
-            <Icon name="numeric-1-circle" size={18} color={colors.primary} />
-            <Text style={styles.educationBulletText}>
-              <Text style={{ fontWeight: '600' }}>First week:</Text> Baseline provides
-              initial estimate based on your typical patterns
+        {isDiagnosed ? (
+          <View style={styles.educationCard}>
+            <Text style={styles.educationTitle}>
+              💤 Sleep & Diabetes Management
+            </Text>
+            <Text style={styles.educationText}>
+              Quality sleep is essential for managing blood sugar levels and insulin sensitivity:
+            </Text>
+            <View style={styles.educationBullet}>
+              <Icon name="check-circle" size={18} color={colors.primary} />
+              <Text style={styles.educationBulletText}>
+                <Text style={{ fontWeight: '600' }}>7–8 hours</Text> of sleep helps maintain
+                stable blood sugar and improved insulin response
+              </Text>
+            </View>
+            <View style={styles.educationBullet}>
+              <Icon name="check-circle" size={18} color={colors.primary} />
+              <Text style={styles.educationBulletText}>
+                <Text style={{ fontWeight: '600' }}>Consistent bedtime</Text> supports
+                the body's glucose regulation cycle
+              </Text>
+            </View>
+            <View style={styles.educationBullet}>
+              <Icon name="check-circle" size={18} color={colors.primary} />
+              <Text style={styles.educationBulletText}>
+                <Text style={{ fontWeight: '600' }}>Poor or short sleep</Text> raises
+                cortisol and blood sugar, making diabetes harder to control
+              </Text>
+            </View>
+            <Text style={[styles.educationText, { marginTop: 12, fontStyle: 'italic' }]}>
+              💡 Tip: Connecting a smartwatch provides automatic, accurate sleep tracking
+              without manual entry.
             </Text>
           </View>
-          <View style={styles.educationBullet}>
-            <Icon name="numeric-2-circle" size={18} color={colors.primary} />
-            <Text style={styles.educationBulletText}>
-              <Text style={{ fontWeight: '600' }}>After 7 days:</Text> Weekly averages
-              start reflecting your actual sleep habits
+        ) : (
+          <View style={styles.educationCard}>
+            <Text style={styles.educationTitle}>
+              📊 How Your Data Improves Over Time
+            </Text>
+            <Text style={styles.educationText}>
+              Your sleep risk assessment becomes more accurate as you log more data:
+            </Text>
+            <View style={styles.educationBullet}>
+              <Icon name="numeric-1-circle" size={18} color={colors.primary} />
+              <Text style={styles.educationBulletText}>
+                <Text style={{ fontWeight: '600' }}>First week:</Text> Baseline provides
+                initial estimate based on your typical patterns
+              </Text>
+            </View>
+            <View style={styles.educationBullet}>
+              <Icon name="numeric-2-circle" size={18} color={colors.primary} />
+              <Text style={styles.educationBulletText}>
+                <Text style={{ fontWeight: '600' }}>After 7 days:</Text> Weekly averages
+                start reflecting your actual sleep habits
+              </Text>
+            </View>
+            <View style={styles.educationBullet}>
+              <Icon name="numeric-3-circle" size={18} color={colors.primary} />
+              <Text style={styles.educationBulletText}>
+                <Text style={{ fontWeight: '600' }}>After 30 days:</Text> Monthly averages and
+                variability provide comprehensive risk picture
+              </Text>
+            </View>
+            <Text style={[styles.educationText, { marginTop: 12, fontStyle: 'italic' }]}>
+              💡 Tip: Connecting a smartwatch provides automatic, accurate tracking without
+              manual entry.
             </Text>
           </View>
-          <View style={styles.educationBullet}>
-            <Icon name="numeric-3-circle" size={18} color={colors.primary} />
-            <Text style={styles.educationBulletText}>
-              <Text style={{ fontWeight: '600' }}>After 30 days:</Text> Monthly averages and
-              variability provide comprehensive risk picture
-            </Text>
-          </View>
-          <Text style={[styles.educationText, { marginTop: 12, fontStyle: 'italic' }]}>
-            💡 Tip: Connecting a smartwatch provides automatic, accurate tracking without
-            manual entry.
-          </Text>
-        </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

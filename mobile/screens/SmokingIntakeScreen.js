@@ -30,6 +30,9 @@ const SmokingTrackingScreen = ({ navigation }) => {
   const { colors, isDarkMode } = useTheme();
   const { user } = useAuth();
 
+  // Check if user is diagnosed with prediabetes or type 2 diabetes
+  const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
+
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasBaseline, setHasBaseline] = useState(false);
@@ -565,9 +568,6 @@ const SmokingTrackingScreen = ({ navigation }) => {
   const metrics = summary?.metrics;
   const risk = summary?.risk_assessment;
 
-  // Check if user is diagnosed with prediabetes or type 2 diabetes
-  const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
-
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView 
@@ -670,8 +670,9 @@ const SmokingTrackingScreen = ({ navigation }) => {
             <Text style={styles.infoBoxTitle}>Smoking & Diabetes</Text>
           </View>
           <Text style={styles.infoBoxText}>
-            Smokers have 44% higher risk of developing type 2 diabetes. 
-            Good news: Risk decreases significantly after quitting, approaching non-smoker levels after 10+ years.
+            {isDiagnosed
+              ? 'Smoking worsens blood sugar control and increases the risk of diabetes complications such as heart disease, kidney problems, and nerve damage. Quitting significantly improves insulin sensitivity and overall disease management.'
+              : 'Smokers have 44% higher risk of developing type 2 diabetes. Good news: Risk decreases significantly after quitting, approaching non-smoker levels after 10+ years.'}
           </Text>
         </View>
 
@@ -686,7 +687,9 @@ const SmokingTrackingScreen = ({ navigation }) => {
             <Icon name="clipboard-text-outline" size={64} color={colors.secondary} style={styles.emptyStateIcon} />
             <Text style={styles.emptyStateTitle}>No Records Yet</Text>
             <Text style={styles.emptyStateDescription}>
-              Start logging your daily smoking to track progress{'\n'}and monitor your diabetes risk.
+              {isDiagnosed
+                ? `Start logging your daily smoking to track your habits${"\n"}and support your diabetes management.`
+                : `Start logging your daily smoking to track progress${"\n"}and monitor your diabetes risk.`}
             </Text>
           </View>
         ) : (
@@ -733,7 +736,7 @@ const SmokingTrackingScreen = ({ navigation }) => {
         )}
 
         {/* AI-Powered Timeline Predictions */}
-        <LifestyleRecommendationsSection trackerType="smoking" />
+        <LifestyleRecommendationsSection trackerType="smoking" isDiagnosed={isDiagnosed} />
       </ScrollView>
     </SafeAreaView>
   );

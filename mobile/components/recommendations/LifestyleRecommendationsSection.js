@@ -29,6 +29,7 @@ const LifestyleRecommendationsSection = ({
   onError,
   containerStyle,
   hideRecommendations = false,
+  isDiagnosed = false,
 }) => {
   const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -349,7 +350,7 @@ const LifestyleRecommendationsSection = ({
       )}
 
       {/* Risk Overview */}
-      {riskLevel && data?.sufficient_data !== false && (
+      {!isDiagnosed && riskLevel && data?.sufficient_data !== false && (
         <View style={styles.riskOverview}>
           <View style={[styles.riskIconContainer, { backgroundColor: `${riskColor}20` }]}>
             <Icon 

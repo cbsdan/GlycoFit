@@ -472,7 +472,7 @@ const RecommendationCard = ({
               : renderRecommendation(recommendations, 0)
           }
           
-          {(research || researchReferences) && (
+          {/* {(research || researchReferences) && (
             <View style={styles.researchSection}>
               <Text style={styles.researchTitle}>📚 Research References</Text>
               {research && (
@@ -484,7 +484,7 @@ const RecommendationCard = ({
                 ))
               }
             </View>
-          )}
+          )} */}
         </View>
       )}
     </View>

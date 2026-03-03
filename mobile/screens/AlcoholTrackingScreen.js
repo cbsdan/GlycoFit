@@ -22,6 +22,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { 
   getAlcoholSummary, 
   checkAlcoholBaseline,
@@ -31,6 +32,10 @@ import { LifestyleRecommendationsSection } from '../components/recommendations';
 
 const AlcoholTrackingScreen = ({ navigation }) => {
   const { colors } = useTheme();
+  const { user } = useAuth();
+
+  // Check if user is diagnosed with prediabetes or type 2 diabetes
+  const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
 
   // Data state
   const [baseline, setBaseline] = useState(null);
@@ -161,8 +166,8 @@ const AlcoholTrackingScreen = ({ navigation }) => {
     );
   }
 
-  // Show baseline prompt if not completed
-  if (!hasBaseline) {
+  // Show baseline prompt only for non-diagnosed users
+  if (!hasBaseline && !isDiagnosed) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={[styles.header, { backgroundColor: colors.card }]}>
@@ -216,8 +221,8 @@ const AlcoholTrackingScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Risk Assessment Card - Prominent style */}
-        {risk && (
+        {/* Risk Assessment Card - Only show for non-diagnosed users */}
+        {risk && !isDiagnosed && (
           <View style={[styles.riskCard, { backgroundColor: getRiskColor(risk.overall_risk_category || risk.risk_category) }]}>
             <View style={styles.riskHeader}>
               <Text style={styles.riskTitle}>ALCOHOL-RELATED DIABETES RISK</Text>
@@ -250,16 +255,18 @@ const AlcoholTrackingScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Retake Baseline Button */}
-        <TouchableOpacity
-          style={styles.retakeBaselineButton}
-          onPress={() => navigation.navigate('AlcoholBaseline', { isRetake: true })}
-        >
-          <Icon name="refresh" size={18} color={colors.secondary} />
-          <Text style={[styles.retakeBaselineText, { color: colors.secondary }]}>
-            Retake Baseline Questionnaire
-          </Text>
-        </TouchableOpacity>
+        {/* Retake Baseline Button - Hide for diagnosed users */}
+        {!isDiagnosed && (
+          <TouchableOpacity
+            style={styles.retakeBaselineButton}
+            onPress={() => navigation.navigate('AlcoholBaseline', { isRetake: true })}
+          >
+            <Icon name="refresh" size={18} color={colors.secondary} />
+            <Text style={[styles.retakeBaselineText, { color: colors.secondary }]}>
+              Retake Baseline Questionnaire
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* Metrics Grid */}
         {(baseline || metrics) && (
@@ -413,38 +420,70 @@ const AlcoholTrackingScreen = ({ navigation }) => {
           )}
 
         {/* Education Card */}
-        <View style={[styles.educationCard, { backgroundColor: `${colors.primary}10`, borderColor: `${colors.primary}30` }]}>
-          <Text style={[styles.educationTitle, { color: colors.text }]}>
-            📊 Understanding Your Alcohol Risk
-          </Text>
-          <Text style={[styles.educationText, { color: colors.secondary }]}>
-            Your risk assessment is based on evidence-based research linking alcohol consumption to diabetes:
-          </Text>
-          <View style={styles.educationBullet}>
-            <Icon name="numeric-1-circle" size={18} color={colors.primary} />
-            <Text style={[styles.educationBulletText, { color: colors.text }]}>
-              <Text style={{ fontWeight: '600' }}>Light drinking</Text> (≤7 drinks/week) may show slight protective effect
+        {isDiagnosed ? (
+          <View style={[styles.educationCard, { backgroundColor: `${colors.primary}10`, borderColor: `${colors.primary}30` }]}>
+            <Text style={[styles.educationTitle, { color: colors.text }]}>
+              🍷 Alcohol & Blood Sugar Management
+            </Text>
+            <Text style={[styles.educationText, { color: colors.secondary }]}>
+              Managing alcohol intake is important for controlling blood sugar with diabetes:
+            </Text>
+            <View style={styles.educationBullet}>
+              <Icon name="check-circle" size={18} color={colors.primary} />
+              <Text style={[styles.educationBulletText, { color: colors.text }]}>
+                <Text style={{ fontWeight: '600' }}>Drink with food</Text> — alcohol with meals slows absorption and reduces blood sugar spikes
+              </Text>
+            </View>
+            <View style={styles.educationBullet}>
+              <Icon name="check-circle" size={18} color={colors.primary} />
+              <Text style={[styles.educationBulletText, { color: colors.text }]}>
+                <Text style={{ fontWeight: '600' }}>Limit to ≤1–2 drinks/day</Text> — recommended upper limit for people with diabetes (ADA)
+              </Text>
+            </View>
+            <View style={styles.educationBullet}>
+              <Icon name="check-circle" size={18} color={colors.primary} />
+              <Text style={[styles.educationBulletText, { color: colors.text }]}>
+                <Text style={{ fontWeight: '600' }}>Avoid binge drinking</Text> — causes unpredictable blood sugar swings and can mask hypoglycemia symptoms
+              </Text>
+            </View>
+            <Text style={[styles.educationText, { color: colors.secondary, marginTop: 12, fontStyle: 'italic' }]}>
+              💡 Tip: Check your blood sugar before and after drinking to understand the effect on your glucose levels.
             </Text>
           </View>
-          <View style={styles.educationBullet}>
-            <Icon name="numeric-2-circle" size={18} color={colors.primary} />
-            <Text style={[styles.educationBulletText, { color: colors.text }]}>
-              <Text style={{ fontWeight: '600' }}>Heavy drinking</Text> <Text style={{ fontWeight: '600' }}>(14 drinks/week) increases diabetes risk by 40-50% </Text>
+        ) : (
+          <View style={[styles.educationCard, { backgroundColor: `${colors.primary}10`, borderColor: `${colors.primary}30` }]}>
+            <Text style={[styles.educationTitle, { color: colors.text }]}>
+              📊 Understanding Your Alcohol Risk
+            </Text>
+            <Text style={[styles.educationText, { color: colors.secondary }]}>
+              Your risk assessment is based on evidence-based research linking alcohol consumption to diabetes:
+            </Text>
+            <View style={styles.educationBullet}>
+              <Icon name="numeric-1-circle" size={18} color={colors.primary} />
+              <Text style={[styles.educationBulletText, { color: colors.text }]}>
+                <Text style={{ fontWeight: '600' }}>Light drinking</Text> (≤7 drinks/week) may show slight protective effect
+              </Text>
+            </View>
+            <View style={styles.educationBullet}>
+              <Icon name="numeric-2-circle" size={18} color={colors.primary} />
+              <Text style={[styles.educationBulletText, { color: colors.text }]}>
+                <Text style={{ fontWeight: '600' }}>Heavy drinking</Text> <Text style={{ fontWeight: '600' }}>(14 drinks/week) increases diabetes risk by 40-50% </Text>
+              </Text>
+            </View>
+            <View style={styles.educationBullet}>
+              <Icon name="numeric-3-circle" size={18} color={colors.primary} />
+              <Text style={[styles.educationBulletText, { color: colors.text }]}>
+                <Text style={{ fontWeight: '600' }}>Binge drinking</Text> significantly increases metabolic dysregulation
+              </Text>
+            </View>
+            <Text style={[styles.educationText, { color: colors.secondary, marginTop: 12, fontStyle: 'italic' }]}>
+              💡 Tip: Drinking with meals and maintaining consistency helps minimize diabetes risk.
             </Text>
           </View>
-          <View style={styles.educationBullet}>
-            <Icon name="numeric-3-circle" size={18} color={colors.primary} />
-            <Text style={[styles.educationBulletText, { color: colors.text }]}>
-              <Text style={{ fontWeight: '600' }}>Binge drinking</Text> significantly increases metabolic dysregulation
-            </Text>
-          </View>
-          <Text style={[styles.educationText, { color: colors.secondary, marginTop: 12, fontStyle: 'italic' }]}>
-            💡 Tip: Drinking with meals and maintaining consistency helps minimize diabetes risk.
-          </Text>
-        </View>
+        )}
 
         {/* AI-Powered Timeline Predictions */}
-        <LifestyleRecommendationsSection trackerType="alcohol" />
+        <LifestyleRecommendationsSection trackerType="alcohol" isDiagnosed={isDiagnosed} />
       </ScrollView>
     </View>
   );

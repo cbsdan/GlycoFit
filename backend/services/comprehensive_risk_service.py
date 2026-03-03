@@ -827,8 +827,8 @@ class ComprehensiveRiskService:
             recommendations.append("🏥 Consult with a healthcare provider immediately to discuss diabetes prevention strategies.")
             recommendations.append("📊 Schedule regular blood glucose monitoring and HbA1c tests.")
         
-        # Component-specific recommendations (top 3 risks)
-        for risk in primary_risks[:3]:
+        # Component-specific recommendations (all primary risks, prioritised by score)
+        for risk in primary_risks:
             component = risk['component']
             
             if component == 'sleep' and risk['weighted_score'] > 1:

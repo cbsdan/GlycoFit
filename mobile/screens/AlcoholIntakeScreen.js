@@ -21,6 +21,7 @@ import {
   deleteAlcoholIntake 
 } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { LifestyleRecommendationsSection } from '../components/recommendations';
 
 /**
  * Alcohol Intake Tracker Screen
@@ -345,6 +346,10 @@ const AlcoholIntakeScreen = ({ navigation }) => {
       flex: 1,
       backgroundColor: colors.background,
     },
+    scrollContainer: {
+      padding: 16,
+      paddingBottom: 32,
+    },
     loadingContainer: {
       flex: 1,
       justifyContent: 'center',
@@ -376,6 +381,64 @@ const AlcoholIntakeScreen = ({ navigation }) => {
       textAlign: 'center',
       lineHeight: 24,
       marginBottom: 32,
+    },
+    diagnosedBanner: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      padding: 14,
+      borderRadius: 12,
+      borderWidth: 1,
+      marginBottom: 16,
+    },
+    diagnosedBannerText: {
+      flex: 1,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    guidelinesCard: {
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 16,
+      borderWidth: 1,
+    },
+    guidelinesHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginBottom: 14,
+    },
+    guidelinesTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    guidelineItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      marginBottom: 10,
+    },
+    guidelineText: {
+      flex: 1,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    actionButtonsContainer: {
+      gap: 12,
+      marginBottom: 16,
+    },
+    secondaryButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      padding: 14,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    secondaryButtonText: {
+      fontSize: 16,
+      fontWeight: '600',
     },
     header: {
       flexDirection: 'row',
@@ -781,6 +844,19 @@ const AlcoholIntakeScreen = ({ navigation }) => {
       fontSize: 16,
       fontWeight: '600',
     },
+    primaryButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      padding: 16,
+      borderRadius: 12,
+    },
+    primaryButtonText: {
+      color: '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '600',
+    },
     historySection: {
       marginBottom: 24,
     },
@@ -1101,25 +1177,80 @@ const AlcoholIntakeScreen = ({ navigation }) => {
           <Text style={styles.headerTitle}>Alcohol Intake</Text>
           <View style={styles.headerActions} />
         </View>
-        
+
         <ScrollView contentContainerStyle={styles.scrollContainer}>
-          <View style={styles.diagnosedMessageContainer}>
-            <Icon name="information-outline" size={64} color={colors.primary} />
-            <Text style={styles.diagnosedTitle}>Questionnaire Not Required</Text>
-            <Text style={styles.diagnosedMessage}>
-              Since you have been diagnosed with {user?.diagnosis_status === 'prediabetes' ? 'prediabetes' : 'type 2 diabetes'}, 
-              you don't need to complete this risk assessment questionnaire.
-              {'\n\n'}
-              You can still track your overall health and receive personalized recommendations through other features.
+          {/* Diagnosis Status Banner */}
+          <View style={[styles.diagnosedBanner, { backgroundColor: `${colors.primary}15`, borderColor: `${colors.primary}40` }]}>
+            <Icon name="information" size={20} color={colors.primary} />
+            <Text style={[styles.diagnosedBannerText, { color: colors.text }]}>
+              Managing alcohol intake is an important part of controlling your{' '}
+              <Text style={{ fontWeight: '700' }}>
+                {user?.diagnosis_status === 'prediabetes' ? 'prediabetes' : 'type 2 diabetes'}
+              </Text>.
             </Text>
+          </View>
+
+          {/* ADA Guidelines Card */}
+          <View style={[styles.guidelinesCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.guidelinesHeader}>
+              <Icon name="shield-check" size={22} color={colors.primary} />
+              <Text style={[styles.guidelinesTitle, { color: colors.text }]}>ADA Alcohol Guidelines</Text>
+            </View>
+            <View style={styles.guidelineItem}>
+              <Icon name="check-circle" size={18} color="#27AE60" />
+              <Text style={[styles.guidelineText, { color: colors.text }]}>
+                <Text style={{ fontWeight: '600' }}>Women:</Text> No more than 1 drink per day
+              </Text>
+            </View>
+            <View style={styles.guidelineItem}>
+              <Icon name="check-circle" size={18} color="#27AE60" />
+              <Text style={[styles.guidelineText, { color: colors.text }]}>
+                <Text style={{ fontWeight: '600' }}>Men:</Text> No more than 2 drinks per day
+              </Text>
+            </View>
+            <View style={styles.guidelineItem}>
+              <Icon name="check-circle" size={18} color="#27AE60" />
+              <Text style={[styles.guidelineText, { color: colors.text }]}>
+                Always drink with food to slow glucose absorption
+              </Text>
+            </View>
+            <View style={styles.guidelineItem}>
+              <Icon name="alert" size={18} color="#E74C3C" />
+              <Text style={[styles.guidelineText, { color: colors.text }]}>
+                Never drink on an empty stomach — risk of dangerous hypoglycemia
+              </Text>
+            </View>
+            <View style={styles.guidelineItem}>
+              <Icon name="alert" size={18} color="#E74C3C" />
+              <Text style={[styles.guidelineText, { color: colors.text }]}>
+                Avoid sugary mixers (juice, soda) — spike blood sugar significantly
+              </Text>
+            </View>
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.actionButtonsContainer}>
             <TouchableOpacity
               style={[styles.primaryButton, { backgroundColor: colors.primary }]}
-              onPress={() => navigation.goBack()}
+              onPress={() => navigation.navigate('AlcoholTracking')}
+              accessibilityLabel="Go to alcohol tracking dashboard"
             >
-              <Icon name="arrow-left" size={20} color="#FFFFFF" />
-              <Text style={styles.primaryButtonText}>Go Back</Text>
+              <Icon name="chart-line" size={20} color="#FFFFFF" />
+              <Text style={styles.primaryButtonText}>View Tracking Dashboard</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.secondaryButton, { borderColor: colors.border, backgroundColor: colors.card }]}
+              onPress={() => navigation.navigate('AlcoholDailyLog')}
+              accessibilityLabel="Log today's alcohol consumption"
+            >
+              <Icon name="plus" size={20} color={colors.primary} />
+              <Text style={[styles.secondaryButtonText, { color: colors.text }]}>Log Today's Consumption</Text>
             </TouchableOpacity>
           </View>
+
+          {/* AI Recommendations */}
+          <LifestyleRecommendationsSection trackerType="alcohol" isDiagnosed={isDiagnosed} />
         </ScrollView>
       </SafeAreaView>
     );

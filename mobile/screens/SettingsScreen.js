@@ -180,14 +180,6 @@ const SettingsScreen = ({ navigation }) => {
       title: 'Support',
       items: [
         {
-          id: 'help',
-          title: 'Help & Support',
-          subtitle: 'Get help and contact support',
-          icon: 'help-circle',
-          action: () => handleSettingPress('Help'),
-          showArrow: true,
-        },
-        {
           id: 'terms-disclaimer',
           title: 'Terms & Disclaimer',
           subtitle: 'Review app terms and disclaimer',

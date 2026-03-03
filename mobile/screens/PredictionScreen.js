@@ -497,8 +497,8 @@ const PredictionScreen = ({ navigation }) => {
       gap: 20,
     },
     overallRiskScoreCircle: {
-      width: 100,
-      height: 100,
+      width: 120,
+      height: 120,
       borderRadius: 50,
       borderWidth: 4,
       justifyContent: 'center',
@@ -1047,9 +1047,13 @@ const PredictionScreen = ({ navigation }) => {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.header}>
-          <Text style={styles.title}>Diabetes Risk Assessment</Text>
+          <Text style={styles.title}>
+            {isDiagnosed ? 'Diabetes Management' : 'Diabetes Risk Assessment'}
+          </Text>
           <Text style={styles.subtitle}>
-            Understand your diabetes risk and get personalized recommendations.
+            {isDiagnosed
+              ? 'Monitor your health trends and lifestyle habits to manage your diabetes effectively.'
+              : 'Understand your diabetes risk and get personalized recommendations.'}
           </Text>
         </View>
 
@@ -1142,7 +1146,7 @@ const PredictionScreen = ({ navigation }) => {
                   {overallRisk.recommendations && overallRisk.recommendations.length > 0 && (
                     <View style={styles.recommendationsSection}>
                       <Text style={styles.recommendationsTitle}>Recommendations</Text>
-                      {overallRisk.recommendations.slice(0, 3).map((rec, index) => (
+                      {overallRisk.recommendations.map((rec, index) => (
                         <View key={index} style={styles.recommendationItem}>
                           <Icon name="lightbulb-outline" size={14} color={colors.primary} />
                           <Text style={styles.recommendationText}>{rec}</Text>
@@ -1202,8 +1206,8 @@ const PredictionScreen = ({ navigation }) => {
                         {/* Trend message */}
                         <Text style={styles.predictionMessage}>{trendPrediction.trend_message}</Text>
 
-                        {/* Forecast cards */}
-                        {(forecast30 || forecast90) && (
+                        {/* Forecast cards — hide raw risk scores for diagnosed users */}
+                        {!isDiagnosed && (forecast30 || forecast90) && (
                           <View style={styles.forecastRow}>
                             {forecast30 && (
                               <LinearGradient
@@ -1310,19 +1314,21 @@ const PredictionScreen = ({ navigation }) => {
                     </View>
                   )}
 
-                  <TouchableOpacity
-                    style={styles.refreshOverallButton}
-                    onPress={handleRefreshOverallRisk}
-                    activeOpacity={0.7}
-                  >
-                    <Icon name="refresh" size={18} color={colors.primary} />
-                    <Text style={styles.refreshOverallButtonText}>Refresh Comprehensive Assessment</Text>
-                  </TouchableOpacity>
+                  {!isDiagnosed && (
+                    <TouchableOpacity
+                      style={styles.refreshOverallButton}
+                      onPress={handleRefreshOverallRisk}
+                      activeOpacity={0.7}
+                    >
+                      <Icon name="refresh" size={18} color={colors.primary} />
+                      <Text style={styles.refreshOverallButtonText}>Refresh Comprehensive Assessment</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </>
             )}
 
-            {!assessment && (
+            {!assessment && !isDiagnosed && (
               <TouchableOpacity
                 style={[styles.retakeButton, { borderColor: colors.border }]}
                 onPress={async () => {
@@ -1339,6 +1345,30 @@ const PredictionScreen = ({ navigation }) => {
                 <Text style={[styles.retakeButtonText, { color: colors.primary }]}>Take Initial Assessment</Text>
               </TouchableOpacity>
             )}
+          </View>
+        ) : isDiagnosed ? (
+          <View style={styles.infoSection}>
+            <View style={styles.infoCard}>
+              <Icon name="check-decagram" size={24} color={colors.primary} />
+              <View style={styles.infoContent}>
+                <Text style={styles.infoTitle}>Managing Your Diabetes</Text>
+                <Text style={styles.infoDescription}>
+                  As someone diagnosed with {user?.diagnosis_status === 'type2_diabetes' ? 'Type 2 Diabetes' : 'Prediabetes'}, focus on tracking your
+                  daily lifestyle habits — steps, sleep, diet, smoking, and alcohol — to keep your blood sugar in a healthy range.
+                  Visit each tracker to see your personalized management recommendations.
+                </Text>
+              </View>
+            </View>
+            <View style={styles.infoCard}>
+              <Icon name="heart-pulse" size={24} color={colors.primary} />
+              <View style={styles.infoContent}>
+                <Text style={styles.infoTitle}>Health Trajectory</Text>
+                <Text style={styles.infoDescription}>
+                  Keep logging your lifestyle data. Once enough data is collected, your health trend
+                  analysis will appear above, showing whether your habits are improving, stable, or need attention.
+                </Text>
+              </View>
+            </View>
           </View>
         ) : (
           <>
@@ -1406,7 +1436,8 @@ const PredictionScreen = ({ navigation }) => {
           </>
         )}
 
-        {/* ===== Pre-Diabetes Risk Computation Table ===== */}
+        {/* ===== Pre-Diabetes Risk Computation Table — only for non-diagnosed users ===== */}
+        {!isDiagnosed && (
         <View style={styles.computationSection}>
           <TouchableOpacity
             style={styles.computationHeader}
@@ -1859,6 +1890,7 @@ const PredictionScreen = ({ navigation }) => {
             </View>
           )}
         </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

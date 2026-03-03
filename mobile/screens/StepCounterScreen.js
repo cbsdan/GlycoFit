@@ -1040,33 +1040,45 @@ const StepCounterScreen = ({ navigation }) => {
       day: 'numeric'
     });
 
-    // Calculate risk level
+    // Calculate activity / risk level
+    let activityLevel = '';
+    let activityMessage = '';
     let riskLevel = '';
     let riskColor = '';
     let riskMessage = '';
     let motivation = '';
 
     if (day.steps >= 10000) {
+      activityLevel = '✅ Excellent Activity';
+      activityMessage = 'Outstanding! This level supports blood sugar control and insulin sensitivity.';
       riskLevel = '✅ Excellent';
       riskColor = 'success';
       riskMessage = 'You\'re significantly reducing your diabetes risk!';
       motivation = '🎉 Amazing work! You\'re in the optimal activity zone for metabolic health. Keep this up!';
     } else if (day.steps >= 7000) {
+      activityLevel = '✓ Good Activity';
+      activityMessage = 'Good job! Regular activity at this level helps maintain healthy blood sugar levels.';
       riskLevel = '✓ Good';
       riskColor = 'info';
       riskMessage = 'You\'re on track for good metabolic health.';
       motivation = '💪 Great job! You\'re meeting the threshold for diabetes risk reduction. Try to reach 10,000 for maximum benefits!';
     } else if (day.steps >= 5000) {
+      activityLevel = '⚡ Moderate Activity';
+      activityMessage = 'Building healthy habits! Aim for 7,000+ steps for better blood sugar management.';
       riskLevel = '⚠️ Moderate Risk';
       riskColor = 'warning';
       riskMessage = 'Your activity level could be better for metabolic health.';
       motivation = '👟 You\'re halfway there! Adding just 2,000 more steps (about 20 minutes of walking) would put you in the protective zone.';
     } else if (day.steps >= 2500) {
+      activityLevel = '🚶 Low Activity';
+      activityMessage = 'Try to move more. Short walks after meals are especially effective at lowering blood sugar.';
       riskLevel = '⚠️ High Risk';
       riskColor = 'warning';
       riskMessage = 'Low activity increases diabetes and metabolic syndrome risk.';
       motivation = '🚶 Every step counts! Try breaking up long sitting periods. Even 10-minute walks after meals help control blood sugar.';
     } else {
+      activityLevel = '⚠️ Very Low Activity';
+      activityMessage = 'Increasing daily movement helps with blood sugar control and insulin sensitivity.';
       riskLevel = '❌ Very High Risk';
       riskColor = 'danger';
       riskMessage = 'Sedentary lifestyle significantly increases diabetes risk.';
@@ -1081,9 +1093,15 @@ const StepCounterScreen = ({ navigation }) => {
     message += `Distance: ${formatDistance(day.distance)}\n`;
     message += `Calories: ${Math.round(day.activeCalories || day.calories || 0)} kcal\n`;
     message += `Goal Progress: ${goalProgress}%\n\n`;
-    message += `🎯 Risk Assessment\n`;
-    message += `${riskLevel}\n\n`;
-    message += `${riskMessage}\n\n`;
+    if (isDiagnosed) {
+      message += `🎯 Activity Level\n`;
+      message += `${activityLevel}\n\n`;
+      message += `${activityMessage}\n\n`;
+    } else {
+      message += `🎯 Risk Assessment\n`;
+      message += `${riskLevel}\n\n`;
+      message += `${riskMessage}\n\n`;
+    }
     message += `💡 Motivation\n`;
     message += `${motivation}`;
 
@@ -1092,7 +1110,7 @@ const StepCounterScreen = ({ navigation }) => {
       message,
       [{ text: 'Got it!', style: 'default' }]
     );
-  }, [formatDistance]);
+  }, [formatDistance, isDiagnosed]);
 
   // ADD THIS NEW FUNCTION
   const getDataSourceLabel = (source) => {
@@ -1213,7 +1231,9 @@ const StepCounterScreen = ({ navigation }) => {
             message += '💪 You\'re building a foundation.';
             recommendation = 'Gradually increase by 500-1,000 steps per week to reach 7,000+.';
           } else {
-            message += '⚠️ Low activity may increase diabetes risk.';
+            message += isDiagnosed
+              ? '⚠️ Low activity level. Increasing steps helps with blood sugar management.'
+              : '⚠️ Low activity may increase diabetes risk.';
             recommendation = 'Start with small goals: Add 1,000 steps daily this week. Try walking during phone calls or taking stairs.';
           }
           break;
@@ -1301,7 +1321,7 @@ const StepCounterScreen = ({ navigation }) => {
         </View>
       </View>
     );
-  }, [summary, colors]);
+  }, [summary, colors, isDiagnosed]);
 
   // Render risk assessment card
   const renderRiskAssessment = useCallback(() => {
@@ -2084,7 +2104,7 @@ const StepCounterScreen = ({ navigation }) => {
         )}
 
         {/* AI-Powered Timeline Predictions */}
-        <LifestyleRecommendationsSection trackerType="activity" />
+        <LifestyleRecommendationsSection trackerType="activity" isDiagnosed={isDiagnosed} />
         {renderEducationCard()}
       </ScrollView>
     </SafeAreaView>
