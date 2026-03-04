@@ -2,7 +2,6 @@ import React from 'react';
 import { Drawer, List, ListItem, ListItemIcon, ListItemText, Box, Divider, Typography, Tooltip } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
-import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -46,16 +45,6 @@ function Sidebar({ open = true }) {
     >
       <Box sx={{ p: 2, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
         <LocalHospitalIcon sx={{ fontSize: 40, color: '#64b5f6' }} />
-        {open && (
-          <>
-            <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: 1 }}>
-              GlycoFit
-            </Typography>
-            <Typography variant="caption" sx={{ color: '#90caf9', textTransform: 'uppercase', letterSpacing: 2 }}>
-              Admin Panel
-            </Typography>
-          </>
-        )}
       </Box>
       <Divider sx={{ bgcolor: 'rgba(255,255,255,0.08)', my: 1 }} />
       <List sx={{ px: 1 }}>

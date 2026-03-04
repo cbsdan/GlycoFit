@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import { Box } from '@mui/material';
+import { Box, CircularProgress } from '@mui/material';
 import Sidebar from '../components/layout/Sidebar';
 import Header from '../components/layout/Header';
-import Dashboard from './Dashboard';
-import UsersPage from './UsersPage';
-import NotFound from './NotFound';
-import CreatePhysicianPage from './CreatePhysicianPage';
+
+const Dashboard = lazy(() => import('./Dashboard'));
+const UsersPage = lazy(() => import('./UsersPage'));
+const NotFound = lazy(() => import('./NotFound'));
+const CreatePhysicianPage = lazy(() => import('./CreatePhysicianPage'));
 
 function AdminDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -21,12 +22,14 @@ function AdminDashboard() {
       <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
         <Header onMenuClick={toggleSidebar} />
         <Box component="main" sx={{ flexGrow: 1, p: 3, bgcolor: '#f8fafc', mt: 8, minHeight: '100vh' }}>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/users" element={<UsersPage />} />
-            <Route path="/create-physician" element={<CreatePhysicianPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/users" element={<UsersPage />} />
+              <Route path="/create-physician" element={<CreatePhysicianPage />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
         </Box>
       </Box>
     </Box>

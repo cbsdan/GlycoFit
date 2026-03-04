@@ -38,18 +38,7 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Paper from '@mui/material/Paper';
 import { Pie } from 'react-chartjs-2';
-import {
-  Chart,
-  ArcElement,
-  Tooltip as ChartTooltip,
-  Legend,
-} from 'chart.js';
-
-Chart.register(
-  ArcElement,
-  ChartTooltip,
-  Legend,
-);
+import '../config/chartSetup';
 
 const Transition = forwardRef(function Transition(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />;
@@ -72,7 +61,7 @@ export default function ActiveUsersModal({ open, onClose, apiBase, getAuthHeader
     setLoading(true);
     try {
       const headers = getAuthHeaders ? await getAuthHeaders() : { 'Content-Type': 'application/json' };
-      const res = await fetch(`${apiBase}/admin/users?limit=10000`, { headers, method: 'GET' });
+      const res = await fetch(`${apiBase}/admin/users?limit=200`, { headers, method: 'GET' });
       if (!res.ok) throw new Error('Failed to fetch users');
       const data = await res.json();
       const list = (data.users || [])
@@ -86,6 +75,7 @@ export default function ActiveUsersModal({ open, onClose, apiBase, getAuthHeader
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (open) fetchUsers();
   }, [open]);

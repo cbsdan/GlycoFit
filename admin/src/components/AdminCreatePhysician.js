@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   Button,
   TextField,
-  Paper,
   Alert,
   CircularProgress,
 } from '@mui/material';

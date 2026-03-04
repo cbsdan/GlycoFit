@@ -39,7 +39,7 @@ export default function PhysiciansModal({ open, onClose, apiBase, getAuthHeaders
     setLoading(true);
     try {
       const headers = getAuthHeaders ? await getAuthHeaders() : { 'Content-Type': 'application/json' };
-      const res = await fetch(`${apiBase}/admin/users?limit=10000`, { headers, method: 'GET' });
+      const res = await fetch(`${apiBase}/admin/users?limit=200`, { headers, method: 'GET' });
       if (!res.ok) throw new Error('Failed to fetch users');
       const data = await res.json();
       const list = (data.users || []).filter(u => (u.role || '').toLowerCase() === 'physician');
@@ -51,6 +51,7 @@ export default function PhysiciansModal({ open, onClose, apiBase, getAuthHeaders
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (open) fetchPhysicians();
   }, [open]);

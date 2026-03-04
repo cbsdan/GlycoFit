@@ -27,7 +27,6 @@ import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
 import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import PeopleIcon from '@mui/icons-material/People';
-import { motion } from 'framer-motion';
 
 const TIMEFRAMES = [
   { label: 'Last 7 Days', days: 7 },
@@ -135,11 +134,6 @@ export default function MealAveragesCard({ apiBase, getAuthHeaders }) {
 
         <Grid container spacing={2}>
           <Grid item xs={12}>
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.3 }}
-            >
               <Box
                 sx={{
                   p: 2.5,
@@ -162,15 +156,9 @@ export default function MealAveragesCard({ apiBase, getAuthHeaders }) {
                   {overall.total_meals || 0} total meals in {data?.timeframe?.days || 0} days
                 </Typography>
               </Box>
-            </motion.div>
           </Grid>
 
           <Grid item xs={12}>
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.3, delay: 0.1 }}
-            >
               <Box
                 sx={{
                   p: 2.5,
@@ -192,7 +180,6 @@ export default function MealAveragesCard({ apiBase, getAuthHeaders }) {
                   {overall.total_calories?.toLocaleString() || 0} total calories
                 </Typography>
               </Box>
-            </motion.div>
           </Grid>
         </Grid>
 

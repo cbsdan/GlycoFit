@@ -1,9 +1,9 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useRef, useCallback } from 'react';
 import { auth } from '../config/firebase';
-import { 
-  signInWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged 
+import {
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
 } from 'firebase/auth';
 import axios from 'axios';
 
@@ -22,8 +22,21 @@ export const AuthProvider = ({ children }) => {
   const [userDetails, setUserDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const tokenCacheRef = useRef({ token: null, expiry: 0 });
 
   const API_URL = process.env.REACT_APP_API_URL;
+
+  // Returns a cached Firebase ID token, refreshing only when close to expiry.
+  const getCachedToken = useCallback(async () => {
+    if (!currentUser) return null;
+    const now = Date.now();
+    if (tokenCacheRef.current.token && tokenCacheRef.current.expiry > now + 60_000) {
+      return tokenCacheRef.current.token;
+    }
+    const token = await currentUser.getIdToken();
+    tokenCacheRef.current = { token, expiry: now + 55 * 60 * 1000 };
+    return token;
+  }, [currentUser]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -117,7 +130,8 @@ export const AuthProvider = ({ children }) => {
     logout,
     loading,
     error,
-    isAdmin: userDetails?.role === 'admin'
+    isAdmin: userDetails?.role === 'admin',
+    getCachedToken,
   };
 
   return (

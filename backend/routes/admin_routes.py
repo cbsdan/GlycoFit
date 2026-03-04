@@ -16,30 +16,37 @@ def health_check():
 def get_all_users():
     try:
         logging.info("=== [ADMIN] Fetching all users ===")
-        
+
         skip = request.args.get('skip', 0, type=int)
         limit = request.args.get('limit', 50, type=int)
-        
-        users = User.get_all_users(skip=skip, limit=limit)
-        logging.info(f"[ADMIN] Found {len(users)} users in database")
-        
+
+        from config.database import get_db
+        db = get_db()
+        raw_users = list(db.users.find().skip(skip).limit(limit))
+        logging.info(f"[ADMIN] Found {len(raw_users)} documents in database")
+
         users_data = []
-        for idx, u in enumerate(users):
+        for idx, doc in enumerate(raw_users):
             try:
-                user_dict = u.to_safe_dict()
+                # Skip documents that are missing required fields
+                if not doc.get('uid') or not doc.get('email'):
+                    logging.warning(f"[ADMIN] Skipping malformed user doc _id={doc.get('_id')}: missing uid or email")
+                    continue
+                user = User.from_dict(doc)
+                user._id = doc['_id']
+                user_dict = user.to_safe_dict()
                 users_data.append(user_dict)
                 if idx == 0:
                     logging.info(f"[ADMIN] Sample user 0: {user_dict}")
             except Exception as e:
-                logging.error(f"[ADMIN] Error converting user {idx}: {str(e)}", exc_info=True)
+                logging.error(f"[ADMIN] Error converting user doc _id={doc.get('_id')}: {str(e)}", exc_info=True)
                 continue
-        
+
         logging.info(f"[ADMIN] Successfully returning {len(users_data)} users")
         return jsonify(users=users_data, total=len(users_data))
-        
+
     except Exception as e:
         logging.error(f"[ADMIN] Error in get_all_users: {str(e)}", exc_info=True)
-        print(f"[ERROR] {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify(error=f"Failed to fetch users: {str(e)}", details=traceback.format_exc()), 500
@@ -48,17 +55,32 @@ def get_all_users():
 def get_users_stats():
     """Get user statistics"""
     try:
-        users = User.get_all_users()
+        from config.database import get_db
+        db = get_db()
+        raw_users = list(db.users.find())
+
+        users = []
+        for doc in raw_users:
+            try:
+                if not doc.get('uid') or not doc.get('email'):
+                    continue
+                u = User.from_dict(doc)
+                u._id = doc['_id']
+                users.append(u)
+            except Exception as e:
+                logging.warning(f"[ADMIN] Skipping malformed doc in stats _id={doc.get('_id')}: {e}")
+                continue
+
         total_users = len(users)
         physicians = sum(1 for u in users if (u.role or '').lower() == 'physician')
         disabled_users = sum(1 for u in users if u.is_currently_disabled())
 
-        # Active users should include only roles 'user' and 'admin', excluding disabled and physicians
+        # Active users: roles 'user' and 'admin', not disabled
         active_users = sum(
             1 for u in users
             if (u.role or '').lower() in ['user', 'admin'] and not u.is_currently_disabled()
         )
-        
+
         return jsonify({
             'total_users': total_users,
             'physicians': physicians,

@@ -14,11 +14,8 @@ import {
   CircularProgress,
   Alert,
   IconButton,
-  Drawer,
   TextField,
-  Stack,
   Divider,
-  Paper,
   Avatar,
 } from '@mui/material';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
@@ -106,7 +103,7 @@ function MealModal({ open, onClose, userId, userName }) {
     const t = { calories: 0, carbs: 0, protein: 0, fat: 0 };
     const parseVal = (v) => {
       if (v === null || v === undefined) return 0;
-      const s = String(v).replace(/[^0-9.\-]/g, '');
+      const s = String(v).replace(/[^0-9.-]/g, '');
       const n = parseFloat(s);
       return Number.isFinite(n) ? n : 0;
     };

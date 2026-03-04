@@ -31,33 +31,7 @@ import TableRow from '@mui/material/TableRow';
 import Paper from '@mui/material/Paper';
 
 import { Pie, Line } from 'react-chartjs-2';
-  import Avatar from '@mui/material/Avatar';
-  import Stack from '@mui/material/Stack';
-  import Chip from '@mui/material/Chip';
-  import Divider from '@mui/material/Divider';
-import {
-  Chart,
-  ArcElement,
-  Tooltip,
-  Legend,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  TimeScale,
-} from 'chart.js';
-import 'chartjs-adapter-date-fns';
-
-Chart.register(
-  ArcElement,
-  Tooltip,
-  Legend,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  TimeScale
-);
+import '../config/chartSetup';
 
 const timeframeOptions = [7, 30, 90, 365];
 
@@ -145,7 +119,7 @@ export default function UsersStatsModal({ open, onClose, apiBase, getAuthHeaders
     try {
       const headers = getAuthHeaders ? await getAuthHeaders() : { 'Content-Type': 'application/json' };
       // use a large limit to attempt to fetch all users; backend supports `limit`
-      const res = await fetch(`${apiBase}/admin/users?limit=10000`, { headers, method: 'GET' });
+      const res = await fetch(`${apiBase}/admin/users?limit=200`, { headers, method: 'GET' });
       if (!res.ok) throw new Error('Failed to fetch users');
       const data = await res.json();
       // backend returns { users: [...], total: N }
@@ -157,6 +131,7 @@ export default function UsersStatsModal({ open, onClose, apiBase, getAuthHeaders
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (open) {
       fetchAnalytics(days);
@@ -210,16 +185,9 @@ export default function UsersStatsModal({ open, onClose, apiBase, getAuthHeaders
       const headers = getAuthHeaders ? await getAuthHeaders() : { 'Content-Type': 'application/json' };
       const id = user.id || user.uid;
       const url = `${apiBase}/admin/users/${id}/sleep?days=${days}`;
-      console.log('[Sleep] Fetching from:', url);
       const res = await fetch(url, { headers, method: 'GET' });
-      console.log('[Sleep] Response status:', res.status);
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error('[Sleep] Error response:', errorText);
-        throw new Error(`Failed to fetch sleep data: ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`Failed to fetch sleep data: ${res.status}`);
       const data = await res.json();
-      console.log('[Sleep] Data received:', data);
       setSleepData(data);
     } catch (err) {
       console.error('[Sleep] Error fetching sleep data:', err);

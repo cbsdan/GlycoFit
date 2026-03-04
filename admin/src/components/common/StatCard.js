@@ -1,14 +1,9 @@
 import React from 'react';
 import { Card, CardContent, Box, Typography } from '@mui/material';
-import { motion } from 'framer-motion';
 
 function StatCard({ title, value, icon, color, subtitle, onClick }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      whileHover={{ y: -8, transition: { duration: 0.2 } }}
+    <div
       onClick={onClick}
       style={{ cursor: onClick ? 'pointer' : 'default' }}
     >
@@ -20,10 +15,11 @@ function StatCard({ title, value, icon, color, subtitle, onClick }) {
           borderRadius: 3,
           position: 'relative',
           overflow: 'hidden',
-          transition: 'all 0.3s ease',
+          transition: 'box-shadow 0.25s ease, border-color 0.25s ease, transform 0.25s ease',
           '&:hover': onClick ? {
             boxShadow: `0 12px 24px ${color}30`,
             border: `1px solid ${color}60`,
+            transform: 'translateY(-8px)',
           } : {},
           '&::before': {
             content: '""',
@@ -86,7 +82,7 @@ function StatCard({ title, value, icon, color, subtitle, onClick }) {
           </Box>
         </CardContent>
       </Card>
-    </motion.div>
+    </div>
   );
 }
 

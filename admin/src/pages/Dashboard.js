@@ -12,23 +12,22 @@ import DisabledUsersModal from '../components/DisabledUsersModal';
 import TopFoodsChart from '../components/TopFoodsChart';
 import MealAveragesCard from '../components/MealAveragesCard';
 import { useAuth } from '../contexts/AuthContext';
-import { motion } from 'framer-motion';
 
-const API_BASE_URL = 'http://192.168.68.112:4000/api/v1';
+const API_BASE_URL = process.env.REACT_APP_API_URL
 
 function Dashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const { currentUser } = useAuth();
+  const { getCachedToken } = useAuth();
   const [openUsersModal, setOpenUsersModal] = useState(false);
   const [openActiveUsersModal, setOpenActiveUsersModal] = useState(false);
   const [openPhysiciansModal, setOpenPhysiciansModal] = useState(false);
   const [openDisabledUsersModal, setOpenDisabledUsersModal] = useState(false);
 
   const getAuthHeaders = useCallback(async () => {
-    if (!currentUser) return {};
     try {
-      const token = await currentUser.getIdToken();
+      const token = await getCachedToken();
+      if (!token) return { 'Content-Type': 'application/json' };
       return {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
@@ -36,7 +35,7 @@ function Dashboard() {
     } catch (err) {
       return { 'Content-Type': 'application/json' };
     }
-  }, [currentUser]);
+  }, [getCachedToken]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -71,11 +70,7 @@ function Dashboard() {
 
   return (
     <Box>
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
+      <div>
         <Typography 
           variant="h4" 
           gutterBottom 
@@ -93,7 +88,7 @@ function Dashboard() {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
           Monitor and manage your GlycoFit platform
         </Typography>
-      </motion.div>
+      </div>
       
       <Grid container spacing={3}>
         <Grid item xs={12} sm={6} lg={3}>
@@ -117,13 +112,15 @@ function Dashboard() {
           />
         </Grid>
 
-          <UsersStatsModal
-            open={openUsersModal}
-            onClose={() => setOpenUsersModal(false)}
-            apiBase={API_BASE_URL}
-            getAuthHeaders={getAuthHeaders}
-            initialStats={stats || {}}
-          />
+          {openUsersModal && (
+            <UsersStatsModal
+              open={openUsersModal}
+              onClose={() => setOpenUsersModal(false)}
+              apiBase={API_BASE_URL}
+              getAuthHeaders={getAuthHeaders}
+              initialStats={stats || {}}
+            />
+          )}
           {openActiveUsersModal && (
             <ActiveUsersModal
               open={openActiveUsersModal}
@@ -172,33 +169,16 @@ function Dashboard() {
 
       <Grid container spacing={3} sx={{ mt: 2 }}>
         <Grid item xs={12} md={6} lg={4}>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-          >
-            <MealAveragesCard apiBase={API_BASE_URL} getAuthHeaders={getAuthHeaders} />
-          </motion.div>
+          <MealAveragesCard apiBase={API_BASE_URL} getAuthHeaders={getAuthHeaders} />
         </Grid>
 
         <Grid item xs={12} md={6} lg={8}>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.25 }}
-          >
-            <TopFoodsChart apiBase={API_BASE_URL} getAuthHeaders={getAuthHeaders} />
-          </motion.div>
+          <TopFoodsChart apiBase={API_BASE_URL} getAuthHeaders={getAuthHeaders} />
         </Grid>
       </Grid>
 
       <Grid container spacing={3} sx={{ mt: 2 }}>
         <Grid item xs={12}>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-          >
             <Paper 
               elevation={0}
               sx={{
@@ -220,7 +200,6 @@ function Dashboard() {
                 <Chip label="Account Control" color="success" variant="outlined" />
               </Box>
             </Paper>
-          </motion.div>
         </Grid>
       </Grid>
     </Box>
