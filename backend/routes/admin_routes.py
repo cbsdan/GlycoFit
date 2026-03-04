@@ -4,6 +4,59 @@ from models.user_meal import UserMeal
 from datetime import datetime, timedelta
 from bson import ObjectId
 import logging
+from controllers.admin_controller import (
+    # Dashboard
+    get_risk_distribution,
+    get_tracker_adoption,
+    get_consultations_summary,
+    get_recent_activity,
+    # User extended
+    get_user_risk_overview,
+    get_user_trackers,
+    get_user_assessment,
+    get_user_activity,
+    delete_user,
+    # Physician management
+    get_physicians_list,
+    get_physician_details,
+    get_physician_patients,
+    get_physician_consultations,
+    get_physician_availability,
+    # Risk & Assessments
+    get_risk_component_averages,
+    get_risk_trend,
+    get_high_risk_patients,
+    get_assessment_stats,
+    get_assessments_list,
+    # Trackers
+    get_food_tracker_stats,
+    get_step_tracker_stats,
+    get_sleep_tracker_stats,
+    get_smoking_tracker_stats,
+    get_alcohol_tracker_stats,
+    # Meals extended
+    get_meals_stats,
+    get_meals_nutrient_trends,
+    browse_meals,
+    # Consultations
+    get_consultations_list,
+    get_consultation_detail,
+    get_appointments_list,
+    get_prescriptions_list,
+    # Chat
+    get_chat_stats,
+    get_chat_conversations,
+    get_conversation_messages,
+    # AI & Chatbot
+    get_chatbot_stats,
+    get_chatbot_conversations,
+    get_ai_food_analysis_stats,
+    # System
+    get_system_health,
+    get_database_stats,
+    get_platform_config,
+    get_system_logs,
+)
 
 admin_bp = Blueprint('admin_blueprint', __name__)
 
@@ -666,3 +719,69 @@ def delete_meal(meal_id):
     except Exception as e:
         logging.error(f"Error deleting meal: {str(e)}")
         return jsonify(status='error', error=str(e)), 500
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NEW ADMIN ENDPOINTS — Dashboard, Risk, Trackers, Physicians, etc.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ─── Dashboard ────────────────────────────────────────────────────────────
+admin_bp.add_url_rule("/risk/distribution", view_func=get_risk_distribution, methods=["GET"])
+admin_bp.add_url_rule("/tracker/adoption", view_func=get_tracker_adoption, methods=["GET"])
+admin_bp.add_url_rule("/consultations/summary", view_func=get_consultations_summary, methods=["GET"])
+admin_bp.add_url_rule("/recent-activity", view_func=get_recent_activity, methods=["GET"])
+
+# ─── User Extended ────────────────────────────────────────────────────────
+admin_bp.add_url_rule("/users/<uid>/risk-overview", view_func=get_user_risk_overview, methods=["GET"])
+admin_bp.add_url_rule("/users/<uid>/trackers", view_func=get_user_trackers, methods=["GET"])
+admin_bp.add_url_rule("/users/<uid>/assessment", view_func=get_user_assessment, methods=["GET"])
+admin_bp.add_url_rule("/users/<uid>/activity", view_func=get_user_activity, methods=["GET"])
+admin_bp.add_url_rule("/users/<uid>/delete", view_func=delete_user, methods=["DELETE"])
+
+# ─── Physician Management ─────────────────────────────────────────────────
+admin_bp.add_url_rule("/physicians", view_func=get_physicians_list, methods=["GET"])
+admin_bp.add_url_rule("/physicians/<physician_id>/details", view_func=get_physician_details, methods=["GET"])
+admin_bp.add_url_rule("/physicians/<physician_id>/patients", view_func=get_physician_patients, methods=["GET"])
+admin_bp.add_url_rule("/physicians/<physician_id>/consultations", view_func=get_physician_consultations, methods=["GET"])
+admin_bp.add_url_rule("/physicians/<physician_id>/availability", view_func=get_physician_availability, methods=["GET"])
+
+# ─── Risk & Assessments ──────────────────────────────────────────────────
+admin_bp.add_url_rule("/risk/component-averages", view_func=get_risk_component_averages, methods=["GET"])
+admin_bp.add_url_rule("/risk/trend", view_func=get_risk_trend, methods=["GET"])
+admin_bp.add_url_rule("/risk/high-risk-patients", view_func=get_high_risk_patients, methods=["GET"])
+admin_bp.add_url_rule("/assessments/stats", view_func=get_assessment_stats, methods=["GET"])
+admin_bp.add_url_rule("/assessments/list", view_func=get_assessments_list, methods=["GET"])
+
+# ─── Health Trackers ──────────────────────────────────────────────────────
+admin_bp.add_url_rule("/trackers/food/stats", view_func=get_food_tracker_stats, methods=["GET"])
+admin_bp.add_url_rule("/trackers/steps/stats", view_func=get_step_tracker_stats, methods=["GET"])
+admin_bp.add_url_rule("/trackers/sleep/stats", view_func=get_sleep_tracker_stats, methods=["GET"])
+admin_bp.add_url_rule("/trackers/smoking/stats", view_func=get_smoking_tracker_stats, methods=["GET"])
+admin_bp.add_url_rule("/trackers/alcohol/stats", view_func=get_alcohol_tracker_stats, methods=["GET"])
+
+# ─── Meals Extended ───────────────────────────────────────────────────────
+admin_bp.add_url_rule("/meals/stats", view_func=get_meals_stats, methods=["GET"])
+admin_bp.add_url_rule("/meals/nutrient-trends", view_func=get_meals_nutrient_trends, methods=["GET"])
+admin_bp.add_url_rule("/meals/browse", view_func=browse_meals, methods=["GET"])
+
+# ─── Consultations & Telehealth ──────────────────────────────────────────
+admin_bp.add_url_rule("/consultations", view_func=get_consultations_list, methods=["GET"])
+admin_bp.add_url_rule("/consultations/<consultation_id>", view_func=get_consultation_detail, methods=["GET"])
+admin_bp.add_url_rule("/appointments", view_func=get_appointments_list, methods=["GET"])
+admin_bp.add_url_rule("/prescriptions", view_func=get_prescriptions_list, methods=["GET"])
+
+# ─── Chat & Communication ────────────────────────────────────────────────
+admin_bp.add_url_rule("/chat/stats", view_func=get_chat_stats, methods=["GET"])
+admin_bp.add_url_rule("/chat/conversations", view_func=get_chat_conversations, methods=["GET"])
+admin_bp.add_url_rule("/chat/conversations/<conversation_id>/messages", view_func=get_conversation_messages, methods=["GET"])
+
+# ─── AI & Chatbot ─────────────────────────────────────────────────────────
+admin_bp.add_url_rule("/chatbot/stats", view_func=get_chatbot_stats, methods=["GET"])
+admin_bp.add_url_rule("/chatbot/conversations", view_func=get_chatbot_conversations, methods=["GET"])
+admin_bp.add_url_rule("/ai/food-analysis-stats", view_func=get_ai_food_analysis_stats, methods=["GET"])
+
+# ─── System & Services ───────────────────────────────────────────────────
+admin_bp.add_url_rule("/system/health", view_func=get_system_health, methods=["GET"])
+admin_bp.add_url_rule("/system/database-stats", view_func=get_database_stats, methods=["GET"])
+admin_bp.add_url_rule("/system/config", view_func=get_platform_config, methods=["GET"])
+admin_bp.add_url_rule("/system/logs", view_func=get_system_logs, methods=["GET"])

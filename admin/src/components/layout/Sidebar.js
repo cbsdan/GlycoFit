@@ -3,6 +3,14 @@ import { Drawer, List, ListItem, ListItemIcon, ListItemText, Box, Divider, Typog
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
+import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
+import RestaurantIcon from '@mui/icons-material/Restaurant';
+import VideoCallIcon from '@mui/icons-material/VideoCall';
+import ChatIcon from '@mui/icons-material/Chat';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const drawerWidth = 260;
@@ -15,6 +23,14 @@ function Sidebar({ open = true }) {
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
     { text: 'Users', icon: <PeopleIcon />, path: '/dashboard/users' },
+    { text: 'Physicians', icon: <MedicalServicesIcon />, path: '/dashboard/physicians' },
+    { text: 'Risk & Assessments', icon: <WarningAmberIcon />, path: '/dashboard/risk' },
+    { text: 'Health Trackers', icon: <MonitorHeartIcon />, path: '/dashboard/trackers' },
+    { text: 'Nutrition & Meals', icon: <RestaurantIcon />, path: '/dashboard/meals' },
+    { text: 'Consultations', icon: <VideoCallIcon />, path: '/dashboard/consultations' },
+    { text: 'Chat', icon: <ChatIcon />, path: '/dashboard/chat' },
+    { text: 'AI & Chatbot', icon: <SmartToyIcon />, path: '/dashboard/ai' },
+    { text: 'System', icon: <SettingsIcon />, path: '/dashboard/system' },
   ];
 
   const isActive = (path) => {

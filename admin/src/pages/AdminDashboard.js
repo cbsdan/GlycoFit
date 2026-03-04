@@ -8,6 +8,14 @@ const Dashboard = lazy(() => import('./Dashboard'));
 const UsersPage = lazy(() => import('./UsersPage'));
 const NotFound = lazy(() => import('./NotFound'));
 const CreatePhysicianPage = lazy(() => import('./CreatePhysicianPage'));
+const PhysicianManagementPage = lazy(() => import('./PhysicianManagementPage'));
+const RiskAssessmentsPage = lazy(() => import('./RiskAssessmentsPage'));
+const HealthTrackersPage = lazy(() => import('./HealthTrackersPage'));
+const NutritionMealsPage = lazy(() => import('./NutritionMealsPage'));
+const ConsultationsPage = lazy(() => import('./ConsultationsPage'));
+const ChatCommunicationPage = lazy(() => import('./ChatCommunicationPage'));
+const AIChatbotPage = lazy(() => import('./AIChatbotPage'));
+const SystemServicesPage = lazy(() => import('./SystemServicesPage'));
 
 function AdminDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -27,6 +35,14 @@ function AdminDashboard() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/create-physician" element={<CreatePhysicianPage />} />
+              <Route path="/physicians" element={<PhysicianManagementPage />} />
+              <Route path="/risk" element={<RiskAssessmentsPage />} />
+              <Route path="/trackers" element={<HealthTrackersPage />} />
+              <Route path="/meals" element={<NutritionMealsPage />} />
+              <Route path="/consultations" element={<ConsultationsPage />} />
+              <Route path="/chat" element={<ChatCommunicationPage />} />
+              <Route path="/ai" element={<AIChatbotPage />} />
+              <Route path="/system" element={<SystemServicesPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
