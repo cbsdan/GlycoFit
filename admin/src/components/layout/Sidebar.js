@@ -49,6 +49,8 @@ function Sidebar({ open = true }) {
         width,
         flexShrink: 0,
         '& .MuiDrawer-paper': {
+          marginTop: '64px',
+          paddingTop: '25px',
           width,
           boxSizing: 'border-box',
           background: 'linear-gradient(180deg, #1a237e 0%, #0d47a1 100%)',
@@ -59,10 +61,6 @@ function Sidebar({ open = true }) {
         },
       }}
     >
-      <Box sx={{ p: 2, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-        <LocalHospitalIcon sx={{ fontSize: 40, color: '#64b5f6' }} />
-      </Box>
-      <Divider sx={{ bgcolor: 'rgba(255,255,255,0.08)', my: 1 }} />
       <List sx={{ px: 1 }}>
         {menuItems.map((item) => (
           <Tooltip key={item.text} title={open ? '' : item.text} placement="right">
