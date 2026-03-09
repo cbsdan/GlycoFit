@@ -257,7 +257,7 @@ class OverallRiskAssessment:
             RiskCategory.HIGH: {
                 'title': 'High Risk',
                 'color': '#EF4444',  # Orange/Red
-                'icon': 'alert-triangle',
+                'icon': 'alert',
                 'probability': '30-60% chance in next 10 years',
                 'message': 'Your diabetes risk is high. Immediate lifestyle changes are needed.',
                 'description': 'High Risk - You have significant risk factors for developing diabetes. Immediate action is required. Consult with your healthcare provider to develop a comprehensive diabetes prevention plan.',
@@ -274,7 +274,7 @@ class OverallRiskAssessment:
             RiskCategory.VERY_HIGH: {
                 'title': 'Very High Risk',
                 'color': '#DC2626',  # Red
-                'icon': 'alert-octagon',
+                'icon': 'alert-decagram',
                 'probability': '>60% chance in next 10 years',
                 'message': 'Your diabetes risk is very high. Urgent medical consultation is recommended.',
                 'description': 'Very High Risk - You have severe risk factors and a high likelihood of developing diabetes. Urgent medical intervention and intensive lifestyle modifications are critical to prevent or delay the onset of the disease.',

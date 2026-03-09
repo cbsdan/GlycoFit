@@ -17,7 +17,7 @@ from models.user import User
 from models.sleep_tracking import SleepMetrics, SleepRiskAssessment
 from models.step_tracking import StepMetrics, StepRiskAssessment
 from models.smoking_tracking import SmokingMetrics, SmokingRiskAssessment
-from models.alcohol_intake import AlcoholMetrics
+from models.alcohol_intake import AlcoholMetrics, AlcoholBaseline, AlcoholRiskAssessment, AlcoholRiskCategory
 from services.food_tracking_service import FoodTrackingService
 from bson import ObjectId
 
@@ -28,20 +28,28 @@ class ComprehensiveRiskService:
     """Service for computing comprehensive diabetes risk assessment"""
     
     # Component weights (must sum to 1.0)
-    # Evidence basis:
-    #   Food (0.15): Diet is the primary modifiable T2D risk factor (WHO/ADA; Malik et al., 2010 Diabetes Care)
-    #   Smoking (0.13): 44% increased T2D risk for active smokers (Willi et al., 2007 JAMA)
-    #   Diet outranks smoking because dietary risk is near-universal (everyone eats daily),
-    #   whereas smoking prevalence is ~20-30% of the population.
+    # Evidence basis (calibrated for Filipino/Asian populations):
+    #   BMI (0.25):              Strongest single T2D predictor; obesity risk near-universal and measurable;
+    #                            Yoon et al. (2006) Lancet — epidemic obesity/T2D in Asia.
+    #                            Uses WHO Asian cutoffs: overweight ≥23, obese ≥27.5 (WHO Consultation, 2004).
+    #   Initial Assessment (0.20): Validated ML model (BRFSS); captures clinical/family-history risk.
+    #   Age (0.15):              Risk rises sharply after 45; one of the strongest non-modifiable predictors
+    #                            (Bellou et al., 2018 PLOS ONE; IDF Atlas, 2021).
+    #   Food (0.12):             Primary modifiable T2D risk factor (Malik et al., 2010 Diabetes Care).
+    #   Steps (0.10):            Physical inactivity is a major modifiable risk (Aune et al., 2015).
+    #   Smoking (0.07):          44% increased T2D risk for active smokers (Willi et al., 2007 JAMA).
+    #   Sleep (0.06):            Disrupts insulin sensitivity and glucose metabolism.
+    #   Alcohol (0.04):          J-shaped relationship with risk.
+    #   Sex (0.01):              Small hormonal/metabolic contribution.
     WEIGHTS = {
-        'initial_assessment': 0.35,
-        'sleep': 0.12,
+        'bmi': 0.25,
+        'initial_assessment': 0.20,
+        'age': 0.15,
+        'food': 0.12,
         'steps': 0.10,
-        'smoking': 0.13,
-        'alcohol': 0.08,
-        'food': 0.15,
-        'bmi': 0.05,
-        'age': 0.02,
+        'smoking': 0.07,
+        'sleep': 0.06,
+        'alcohol': 0.04,
         'sex': 0.01
     }
     
@@ -213,7 +221,9 @@ class ComprehensiveRiskService:
         )
         
         # 5. Alcohol Score (-5 to 100, can be negative for protective effect)
-        scores['alcohol'] = self._score_alcohol(components.get('alcohol'))
+        user = components.get('user')
+        alcohol_user_id = str(user._id) if user and hasattr(user, '_id') else None
+        scores['alcohol'] = self._score_alcohol(components.get('alcohol'), alcohol_user_id)
         
         # 6. Food Score (0-100)
         scores['food'] = self._score_food(components.get('food'))
@@ -290,9 +300,15 @@ class ComprehensiveRiskService:
             
             details = f"Average sleep: {avg_sleep:.1f}h/night" if avg_sleep else "Sleep data available"
             
+            # Normalize: sleep service scores are confidence-weighted and cap at ~64
+            # (very-short sleep + high variability + bad baseline at 30+ days).
+            # Dividing by this ceiling rescales to 0-100 so it is comparable to
+            # other components (BMI, smoking, etc.) which already use 0-100.
+            _SLEEP_SVC_MAX = 64.0
+            normalized = round(min(100.0, risk_score * 100.0 / _SLEEP_SVC_MAX), 2)
             return {
-                'raw_score': round(risk_score, 2),
-                'weighted_score': round(risk_score * self.WEIGHTS['sleep'], 2),
+                'raw_score': normalized,
+                'weighted_score': round(normalized * self.WEIGHTS['sleep'], 2),
                 'weight': self.WEIGHTS['sleep'],
                 'risk_category': risk_category,
                 'avg_sleep_hours': round(avg_sleep, 2) if avg_sleep else None,
@@ -308,9 +324,11 @@ class ComprehensiveRiskService:
         
         details = f"Average sleep: {avg_sleep:.1f}h/night" if avg_sleep else "Sleep data available"
         
+        _SLEEP_SVC_MAX = 64.0
+        normalized = round(min(100.0, risk_score * 100.0 / _SLEEP_SVC_MAX), 2)
         return {
-            'raw_score': round(risk_score, 2),
-            'weighted_score': round(risk_score * self.WEIGHTS['sleep'], 2),
+            'raw_score': normalized,
+            'weighted_score': round(normalized * self.WEIGHTS['sleep'], 2),
             'weight': self.WEIGHTS['sleep'],
             'risk_category': risk_category,
             'avg_sleep_hours': round(avg_sleep, 2) if avg_sleep else None,
@@ -343,9 +361,14 @@ class ComprehensiveRiskService:
             
             details = f"Average steps: {int(avg_steps)} steps/day" if avg_steps else "Step data available"
             
+            # Normalize: step service scores cap at ~46
+            # (very-low penalty 40 × data_weight 0.9 + inconsistency bonus 10).
+            # Divide by this ceiling to rescale to 0-100.
+            _STEPS_SVC_MAX = 46.0
+            normalized = round(min(100.0, risk_score * 100.0 / _STEPS_SVC_MAX), 2)
             return {
-                'raw_score': round(risk_score, 2),
-                'weighted_score': round(risk_score * self.WEIGHTS['steps'], 2),
+                'raw_score': normalized,
+                'weighted_score': round(normalized * self.WEIGHTS['steps'], 2),
                 'weight': self.WEIGHTS['steps'],
                 'risk_category': risk_category,
                 'avg_steps_daily': int(avg_steps) if avg_steps else None,
@@ -361,9 +384,11 @@ class ComprehensiveRiskService:
         
         details = f"Average steps: {int(avg_steps)} steps/day" if avg_steps else "Step data available"
         
+        _STEPS_SVC_MAX = 46.0
+        normalized = round(min(100.0, risk_score * 100.0 / _STEPS_SVC_MAX), 2)
         return {
-            'raw_score': round(risk_score, 2),
-            'weighted_score': round(risk_score * self.WEIGHTS['steps'], 2),
+            'raw_score': normalized,
+            'weighted_score': round(normalized * self.WEIGHTS['steps'], 2),
             'weight': self.WEIGHTS['steps'],
             'risk_category': risk_category,
             'avg_steps_daily': int(avg_steps) if avg_steps else None,
@@ -386,8 +411,12 @@ class ComprehensiveRiskService:
         
         # Use existing risk assessment if available
         if risk_assessment:
-            risk_score = getattr(risk_assessment, 'risk_score', 0)
+            risk_score_raw = getattr(risk_assessment, 'risk_score', 0)
             risk_category = getattr(risk_assessment, 'risk_category', 'unknown')
+            
+            # Normalize from 1-5 scale to 0-100 scale
+            # (1=never/low risk → 0, 5=heavy current smoker → 100)
+            raw_score = round(max(0.0, (risk_score_raw - 1) / 4 * 100), 2)
             
             # Get metrics for details
             current_status = None
@@ -403,8 +432,8 @@ class ComprehensiveRiskService:
             details = status_descriptions.get(current_status, 'Smoking status tracked')
             
             return {
-                'raw_score': round(risk_score, 2),
-                'weighted_score': round(risk_score * self.WEIGHTS['smoking'], 2),
+                'raw_score': raw_score,
+                'weighted_score': round(raw_score * self.WEIGHTS['smoking'], 2),
                 'weight': self.WEIGHTS['smoking'],
                 'risk_category': risk_category,
                 'smoking_status': current_status,
@@ -414,9 +443,12 @@ class ComprehensiveRiskService:
             }
         
         # Fallback to metrics if no risk assessment
-        risk_score = getattr(metrics, 'risk_score', 1)
+        risk_score_raw = getattr(metrics, 'risk_score', 1)
         risk_category = getattr(metrics, 'risk_category', 'unknown')
         current_status = getattr(metrics, 'current_status', 'unknown')
+        
+        # Normalize from 1-5 scale to 0-100 scale
+        raw_score = round(max(0.0, (risk_score_raw - 1) / 4 * 100), 2)
         
         status_descriptions = {
             'never': 'Never smoker - excellent!',
@@ -427,8 +459,8 @@ class ComprehensiveRiskService:
         details = status_descriptions.get(current_status, 'Smoking status unknown')
         
         return {
-            'raw_score': round(risk_score, 2),
-            'weighted_score': round(risk_score * self.WEIGHTS['smoking'], 2),
+            'raw_score': raw_score,
+            'weighted_score': round(raw_score * self.WEIGHTS['smoking'], 2),
             'weight': self.WEIGHTS['smoking'],
             'risk_category': risk_category,
             'smoking_status': current_status,
@@ -437,9 +469,48 @@ class ComprehensiveRiskService:
             'has_data': True
         }
     
-    def _score_alcohol(self, metrics: Optional[Any]) -> Dict[str, Any]:
-        """Score alcohol intake data"""
-        if not metrics:
+    def _score_alcohol(self, metrics: Optional[Any], user_id: Optional[str] = None) -> Dict[str, Any]:
+        """Score alcohol intake data, falling back to baseline if no daily metrics"""
+        # Scores normalized to 0-100 scale so the 8% weight gives a max weighted
+        # contribution of 8.0 pts to the overall 0-100 risk score.
+        # low (light drinking) is protective: −25 → −2.0 pts to overall
+        category_scores = {
+            'none': 0,
+            'low': -25,   # Protective effect → max −2.0 pts to overall
+            'moderate': 25,
+            'high': 75,
+            'very_high': 100  # Binge drinking → max +8.0 pts to overall
+        }
+        category_descriptions = {
+            'none': 'No alcohol consumption',
+            'low': 'Light drinking - may have protective effect',
+            'moderate': 'Moderate drinking - slightly elevated risk',
+            'high': 'Heavy drinking - significant risk factor',
+            'very_high': 'Binge drinking - very high risk'
+        }
+
+        # Use daily metrics when enough data is available (>= 7 days logged)
+        if metrics and getattr(metrics, 'days_with_data_30d', 0) >= 7:
+            risk_category = getattr(metrics, 'risk_category', 'none')
+            avg_drinks_week = getattr(metrics, 'avg_drinks_per_week_30d', 0)
+            raw_score = category_scores.get(risk_category, 0)
+            details = f"{category_descriptions.get(risk_category, 'Unknown')} ({avg_drinks_week:.1f} drinks/week — daily logs)"
+            return {
+                'raw_score': round(raw_score, 2),
+                'weighted_score': round(raw_score * self.WEIGHTS['alcohol'], 2),
+                'weight': self.WEIGHTS['alcohol'],
+                'risk_category': risk_category,
+                'avg_drinks_per_week': round(avg_drinks_week, 2),
+                'status': risk_category,
+                'details': details,
+                'has_data': True
+            }
+
+        # Fall back to baseline questionnaire data when daily metrics are absent/insufficient
+        user_id = user_id or (getattr(metrics, 'user_id', None) if metrics else None)
+        baseline = AlcoholBaseline.find_by_user_id(user_id) if user_id else None
+
+        if not baseline and metrics is None:
             return {
                 'raw_score': 0,
                 'weighted_score': 0,
@@ -448,31 +519,32 @@ class ComprehensiveRiskService:
                 'details': 'Alcohol tracking not started',
                 'has_data': False
             }
-        
+
+        if baseline:
+            drinks_per_week = baseline.baseline_drinking_days_per_week * baseline.baseline_drinks_per_occasion
+            binge_episodes = baseline.baseline_binge_frequency_per_month
+            risk_category, _ = AlcoholMetrics._calculate_risk(
+                drinks_per_week, binge_episodes, 0.0,
+                baseline.baseline_drinking_days_per_week, None
+            )
+            raw_score = category_scores.get(risk_category, 0)
+            details = f"{category_descriptions.get(risk_category, 'Unknown')} ({drinks_per_week:.1f} drinks/week — baseline)"
+            return {
+                'raw_score': round(raw_score, 2),
+                'weighted_score': round(raw_score * self.WEIGHTS['alcohol'], 2),
+                'weight': self.WEIGHTS['alcohol'],
+                'risk_category': risk_category,
+                'avg_drinks_per_week': round(drinks_per_week, 2),
+                'status': risk_category,
+                'details': details,
+                'has_data': True
+            }
+
+        # metrics present but < 7 days — use whatever daily data we have
         risk_category = getattr(metrics, 'risk_category', 'none')
         avg_drinks_week = getattr(metrics, 'avg_drinks_per_week_30d', 0)
-        
-        # Map alcohol risk category to numeric score
-        category_scores = {
-            'none': 0,
-            'low': -5,  # Protective effect
-            'moderate': 5,
-            'high': 15,
-            'very_high': 20
-        }
-        
         raw_score = category_scores.get(risk_category, 0)
-        
-        category_descriptions = {
-            'none': 'No alcohol consumption',
-            'low': 'Light drinking - may have protective effect',
-            'moderate': 'Moderate drinking - slightly elevated risk',
-            'high': 'Heavy drinking - significant risk factor',
-            'very_high': 'Binge drinking - very high risk'
-        }
-        
-        details = f"{category_descriptions.get(risk_category, 'Unknown')} ({avg_drinks_week:.1f} drinks/week)"
-        
+        details = f"{category_descriptions.get(risk_category, 'Unknown')} ({avg_drinks_week:.1f} drinks/week — partial data)"
         return {
             'raw_score': round(raw_score, 2),
             'weighted_score': round(raw_score * self.WEIGHTS['alcohol'], 2),
@@ -542,31 +614,32 @@ class ComprehensiveRiskService:
         height_m = user.height / 100  # Convert cm to m
         bmi = user.weight / (height_m ** 2)
         
-        # Score based on BMI categories
+        # Score based on WHO-recommended Asian/Filipino BMI cutoffs (WHO Expert Consultation, 2004):
+        #   Normal:              18.5 – 22.9
+        #   At Risk (overweight): 23.0 – 27.4
+        #   Obese Class I:       27.5 – 32.4
+        #   Obese Class II:      ≥ 32.5
+        # Normalized to 0-100 so the 25% weight gives max +25.0 pts to overall.
         if bmi < 18.5:
-            raw_score = 5
+            raw_score = 12
             category = 'underweight'
             details = f"BMI {bmi:.1f} - Underweight"
-        elif 18.5 <= bmi < 25:
+        elif 18.5 <= bmi < 23.0:
             raw_score = 0
             category = 'normal'
-            details = f"BMI {bmi:.1f} - Normal weight"
-        elif 25 <= bmi < 30:
-            raw_score = 10
+            details = f"BMI {bmi:.1f} - Normal weight (Asian standard)"
+        elif 23.0 <= bmi < 27.5:
+            raw_score = 25
             category = 'overweight'
-            details = f"BMI {bmi:.1f} - Overweight (2x risk)"
-        elif 30 <= bmi < 35:
-            raw_score = 20
+            details = f"BMI {bmi:.1f} - Overweight (Asian standard: ≥23)"
+        elif 27.5 <= bmi < 32.5:
+            raw_score = 60
             category = 'obese_class_1'
-            details = f"BMI {bmi:.1f} - Obese Class I (7-8x risk)"
-        elif 35 <= bmi < 40:
-            raw_score = 30
-            category = 'obese_class_2'
-            details = f"BMI {bmi:.1f} - Obese Class II (12-14x risk)"
+            details = f"BMI {bmi:.1f} - Obese Class I (Asian standard: ≥27.5)"
         else:
-            raw_score = 40
-            category = 'obese_class_3'
-            details = f"BMI {bmi:.1f} - Obese Class III (20x+ risk)"
+            raw_score = 100
+            category = 'obese_class_2'
+            details = f"BMI {bmi:.1f} - Obese Class II (Asian standard: ≥32.5)"
         
         return {
             'raw_score': round(raw_score, 2),
@@ -594,23 +667,24 @@ class ComprehensiveRiskService:
         age = user.age
         
         # Score based on age ranges
+        # Normalized to 0-100 so the 2% weight gives max +2.0 pts to overall.
         if age < 30:
             raw_score = 0
             details = f"Age {age} - Low baseline risk"
         elif 30 <= age < 40:
-            raw_score = 2
+            raw_score = 13
             details = f"Age {age} - Slightly elevated risk"
         elif 40 <= age < 50:
-            raw_score = 5
+            raw_score = 33
             details = f"Age {age} - Moderate risk increase"
         elif 50 <= age < 60:
-            raw_score = 8
+            raw_score = 53
             details = f"Age {age} - Higher risk"
         elif 60 <= age < 70:
-            raw_score = 12
+            raw_score = 80
             details = f"Age {age} - High risk"
         else:
-            raw_score = 15
+            raw_score = 100
             details = f"Age {age} - Very high risk"
         
         return {
@@ -638,8 +712,9 @@ class ComprehensiveRiskService:
         sex = user.sex.lower()
         
         # Males have slightly higher baseline risk
+        # Normalized to 0-100 so the 1% weight gives +1.0 pt max to overall.
         if sex == 'male':
-            raw_score = 3
+            raw_score = 100
             details = "Male - slightly higher baseline risk"
         else:
             raw_score = 0
@@ -718,11 +793,11 @@ class ComprehensiveRiskService:
         return component_names.get(component, component.replace('_', ' ').title())
     
     def _identify_primary_risks(self, component_scores: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Identify top risk contributors"""
+        """Return ALL tracked components sorted by weighted contribution (highest risk first)."""
         risks = []
         
         for component, score_info in component_scores.items():
-            if score_info['has_data'] and score_info['weighted_score'] > 0:
+            if score_info['has_data']:  # include all tracked components, even 0-score ones
                 risks.append({
                     'component': component,
                     'component_name': self._format_component_name(component),
@@ -733,14 +808,15 @@ class ComprehensiveRiskService:
                     'status': score_info['status']
                 })
         
-        # Sort by weighted score (descending)
+        # Sort by weighted score descending (positive/risk first, neutral 0 next, protective negative last)
         risks.sort(key=lambda x: x['weighted_score'], reverse=True)
         
-        # Return top 5
-        return risks[:5]
+        return risks  # no cap — all tracked components are shown
     
     def _identify_protective_factors(self, component_scores: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Identify protective factors (negative risk scores)"""
+        """Identify protective factors (genuinely negative-score components only).
+        Zero-score neutral components are included in primary_risk_factors sorted to the end.
+        """
         protective = []
         
         for component, score_info in component_scores.items():
@@ -751,23 +827,6 @@ class ComprehensiveRiskService:
                     'weighted_score': abs(score_info['weighted_score']),
                     'details': score_info['details']
                 })
-        
-        # Also check for optimal ranges
-        if component_scores['bmi']['has_data'] and component_scores['bmi']['raw_score'] == 0:
-            protective.append({
-                'component': 'bmi',
-                'component_name': self._format_component_name('bmi'),
-                'weighted_score': 0,
-                'details': 'Normal weight - optimal BMI range'
-            })
-        
-        if component_scores['smoking']['has_data'] and component_scores['smoking']['status'] == 'never':
-            protective.append({
-                'component': 'smoking',
-                'component_name': self._format_component_name('smoking'),
-                'weighted_score': 0,
-                'details': 'Never smoker - excellent!'
-            })
         
         return protective
     
@@ -1023,6 +1082,14 @@ class ComprehensiveRiskService:
             forecast_30d_cat = OverallRiskAssessment.classify_risk_category(forecast_30d_score)
             forecast_90d_cat = OverallRiskAssessment.classify_risk_category(forecast_90d_score)
 
+            # Build per-horizon explanations
+            forecast_30d_explanation = self._build_forecast_explanation(
+                change_per_30d, component_trends, 30
+            )
+            forecast_90d_explanation = self._build_forecast_explanation(
+                change_per_90d, component_trends, 90
+            )
+
             # Identify driving factors
             driving_factors = self._identify_driving_factors(component_trends)
 
@@ -1042,13 +1109,15 @@ class ComprehensiveRiskService:
                         'predicted_score': forecast_30d_score,
                         'predicted_change': round(change_per_30d, 1),
                         'predicted_category': forecast_30d_cat,
-                        'category_info': OverallRiskAssessment.get_risk_category_info(forecast_30d_cat)
+                        'category_info': OverallRiskAssessment.get_risk_category_info(forecast_30d_cat),
+                        'explanation': forecast_30d_explanation,
                     },
                     'days_90': {
                         'predicted_score': forecast_90d_score,
                         'predicted_change': round(change_per_90d, 1),
                         'predicted_category': forecast_90d_cat,
-                        'category_info': OverallRiskAssessment.get_risk_category_info(forecast_90d_cat)
+                        'category_info': OverallRiskAssessment.get_risk_category_info(forecast_90d_cat),
+                        'explanation': forecast_90d_explanation,
                     }
                 },
                 'component_trends': component_trends,
@@ -1312,13 +1381,15 @@ class ComprehensiveRiskService:
         Positive = improving (risk decreasing), Negative = declining.
         Range: -100 to +100
         """
-        # Weights aligned with component risk weights (modifiable factors only)
+        # Weights proportional to the modifiable-factor slice of WEIGHTS:
+        #   food=0.12, steps=0.10, smoking=0.07, sleep=0.06, alcohol=0.04 → total 0.39
+        #   Normalised: food=0.31, steps=0.26, smoking=0.18, sleep=0.15, alcohol=0.10
         component_weights = {
-            'sleep':   0.22,
-            'steps':   0.18,
-            'smoking': 0.28,
-            'alcohol': 0.15,
-            'food':    0.17,
+            'food':    0.31,
+            'steps':   0.26,
+            'smoking': 0.18,
+            'sleep':   0.15,
+            'alcohol': 0.10,
         }
         direction_values = {
             'improving': 1.0,
@@ -1357,12 +1428,13 @@ class ComprehensiveRiskService:
         # NOTE: positive trajectory = improving = score DECREASES
         raw_change = -(trajectory_score / 100) * max_change
 
-        # Dampen change when near extremes (no value below 0 or above 100)
-        if raw_change < 0:  # score will decrease (improving)
-            dampen = max(0.0, current_score / 50)  # less dampening when high
+        # Dampen change when score is near the boundary it would cross.
+        # Dividing by 100 keeps the factor in [0, 1] so we never amplify.
+        if raw_change < 0:  # score will decrease (improving → towards 0)
+            dampen = min(1.0, current_score / 100)  # approaches 0 as score → 0
             return round(raw_change * dampen, 2)
-        else:  # score will increase (declining)
-            headroom = (100 - current_score) / 50
+        else:  # score will increase (declining → towards 100)
+            headroom = min(1.0, (100 - current_score) / 100)  # approaches 0 as score → 100
             return round(raw_change * headroom, 2)
 
     def _identify_driving_factors(self, component_trends: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1398,6 +1470,53 @@ class ComprehensiveRiskService:
         elif trackers_with_data >= 2:
             return 'moderate'
         return 'low'
+
+    def _build_forecast_explanation(
+        self, change: float, component_trends: Dict[str, Any], days: int
+    ) -> str:
+        """
+        One-sentence explanation of what is driving the forecast score for a given horizon.
+        Tells the user WHY the predicted value is higher or lower than their current score.
+        """
+        label_map = {
+            'sleep': 'Sleep', 'steps': 'Activity',
+            'smoking': 'Smoking', 'alcohol': 'Alcohol', 'food': 'Diet',
+        }
+        improving = [
+            label_map.get(k, k) for k, v in component_trends.items()
+            if v.get('direction') == 'improving' and v.get('has_data')
+        ]
+        declining = [
+            label_map.get(k, k) for k, v in component_trends.items()
+            if v.get('direction') == 'declining' and v.get('has_data')
+        ]
+
+        abs_change = abs(round(change, 1))
+        uncertainty = ' (estimate)' if days >= 90 else ''
+
+        if not improving and not declining:
+            return (
+                f"All tracked lifestyle factors are stable — "
+                f"no significant score change expected over {days} days."
+            )
+
+        direction_word = 'decrease' if change < 0 else 'increase'
+        parts = []
+        if improving:
+            names = ', '.join(improving[:2])
+            verb = 'are' if len(improving) > 1 else 'is'
+            parts.append(f"{names} {verb} improving")
+        if declining:
+            names = ', '.join(declining[:2])
+            verb = 'are' if len(declining) > 1 else 'is'
+            parts.append(f"{names} {verb} declining")
+
+        basis = ' while '.join(parts)
+        return (
+            f"{basis.capitalize()} — "
+            f"risk score projected to {direction_word} by ~{abs_change} pts "
+            f"in {days} days{uncertainty}."
+        )
 
     def _build_trend_message(
         self,

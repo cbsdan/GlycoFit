@@ -156,7 +156,7 @@ const PredictionScreen = ({ navigation }) => {
         return {
           title: 'High Risk',
           color: '#E74C3C',
-          icon: 'alert-octagon',
+          icon: 'alert',
           message: 'Your diabetes risk is high',
         };
       case 'very_high':
@@ -600,7 +600,7 @@ const PredictionScreen = ({ navigation }) => {
       paddingHorizontal: 16,
       borderRadius: 10,
       gap: 8,
-      marginTop: 8,
+      marginVertical: 8,
     },
     refreshOverallButtonText: {
       fontSize: 14,
@@ -757,6 +757,16 @@ const PredictionScreen = ({ navigation }) => {
       marginTop: 4,
       color: '#FFFFFF',
       opacity: 0.9,
+    },
+    forecastExplanation: {
+      fontSize: 9,
+      color: '#FFFFFF',
+      opacity: 0.82,
+      textAlign: 'center',
+      fontStyle: 'italic',
+      marginTop: 5,
+      lineHeight: 13,
+      paddingHorizontal: 4,
     },
     componentTrendsTitle: {
       fontSize: 13,
@@ -1073,7 +1083,6 @@ const PredictionScreen = ({ navigation }) => {
                       {isDiagnosed ? 'Health Summary' : 'Risk Assessment'}
                     </Text>
                   </View>
-
                   {/* Risk Score Section - Only show for non-diagnosed users */}
                   {!isDiagnosed && (
                     <View style={styles.overallRiskScoreSection}>
@@ -1097,12 +1106,27 @@ const PredictionScreen = ({ navigation }) => {
                       </View>
                     </View>
                   )}
-
-                  {/* Risk Factors - Hide for diagnosed users */}
+                  {!isDiagnosed && (
+                    <TouchableOpacity
+                      style={styles.refreshOverallButton}
+                      onPress={handleRefreshOverallRisk}
+                      activeOpacity={0.7}
+                    >
+                      <Icon name="refresh" size={18} color={colors.primary} />
+                      <Text style={styles.refreshOverallButtonText}>Refresh Assessment</Text>
+                    </TouchableOpacity>
+                  )}
+                  {/* Risk Factor Breakdown - all tracked components, color-coded */}
                   {!isDiagnosed && overallRisk.primary_risk_factors && overallRisk.primary_risk_factors.length > 0 && (
                     <View style={styles.riskFactorsSection}>
-                      <Text style={styles.riskFactorsTitle}>Primary Risk Factors</Text>
+                      <Text style={styles.riskFactorsTitle}>Risk Factor Breakdown</Text>
                       {overallRisk.primary_risk_factors.map((factor, index) => {
+                        const ws = factor.weighted_score;
+                        const isPositive = ws > 0;
+                        const isNegative = ws < 0;
+                        const isNeutral = ws === 0;
+                        const iconName = isNegative ? 'check-circle' : isNeutral ? 'minus-circle-outline' : 'alert-circle';
+                        const dotColor = isNegative ? '#27AE60' : isNeutral ? colors.secondary : '#E74C3C';
                         const isInitialAssessment = factor.component_name === 'Initial Risk Assessment';
                         const Component = isInitialAssessment ? TouchableOpacity : View;
 
@@ -1113,33 +1137,17 @@ const PredictionScreen = ({ navigation }) => {
                             onPress={isInitialAssessment ? () => handleRiskFactorTap(factor) : undefined}
                             activeOpacity={isInitialAssessment ? 0.7 : 1}
                           >
-                            <Icon name="alert-circle" size={16} color="#E74C3C" />
-                            <Text style={styles.riskFactorName}>{factor.component_name}</Text>
+                            <Icon name={iconName} size={16} color={dotColor} />
+                            <Text style={[styles.riskFactorName, isNeutral && { color: colors.secondary }]}>{factor.component_name}</Text>
                             {isInitialAssessment && (
                               <Icon name="chevron-right" size={18} color={colors.primary} style={{ marginLeft: 'auto', marginRight: 4 }} />
                             )}
-                            <Text style={[styles.riskFactorScore, { color: '#E74C3C' }]}>
-                              {factor.weighted_score.toFixed(1)}
+                            <Text style={[styles.riskFactorScore, { color: dotColor }]}>
+                              {isNeutral ? '±0.00' : (isNegative ? '−' : '+') + Math.abs(ws).toFixed(2)}
                             </Text>
                           </Component>
                         );
                       })}
-                    </View>
-                  )}
-
-                  {/* Protective Factors - Hide for diagnosed users */}
-                  {!isDiagnosed && overallRisk.protective_factors && overallRisk.protective_factors.length > 0 && (
-                    <View style={styles.riskFactorsSection}>
-                      <Text style={[styles.riskFactorsTitle, { color: '#27AE60' }]}>Protective Factors</Text>
-                      {overallRisk.protective_factors.map((factor, index) => (
-                        <View key={index} style={styles.riskFactorItem}>
-                          <Icon name="check-circle" size={16} color="#27AE60" />
-                          <Text style={styles.riskFactorName}>{factor.component_name}</Text>
-                          <Text style={[styles.riskFactorScore, { color: '#27AE60' }]}>
-                            {factor.weighted_score.toFixed(1)}
-                          </Text>
-                        </View>
-                      ))}
                     </View>
                   )}
 
@@ -1217,19 +1225,20 @@ const PredictionScreen = ({ navigation }) => {
                                 style={styles.forecastItem}
                               >
                                 <Text style={styles.forecastPeriod}>30 Days</Text>
-                                <Text style={styles.forecastScore}>{forecast30.predicted_score}</Text>
+                                <Text style={styles.forecastScore}>
+                                  {parseFloat(Math.max(0, Math.min(100, (overallRisk?.overall_risk_score ?? trendPrediction.current_risk_score ?? 0) + (forecast30.predicted_change ?? 0))).toFixed(1))}
+                                </Text>
                                 <Text style={styles.forecastCategory}>
                                   {forecast30.predicted_category?.replace('_', ' ').toUpperCase()}
                                 </Text>
-                                {(() => {
-                                  const liveChange = parseFloat((forecast30.predicted_score - (overallRisk?.overall_risk_score ?? trendPrediction.current_risk_score ?? 0)).toFixed(1));
-                                  return liveChange !== 0 ? (
-                                    <Text style={styles.forecastChange}>
-                                      {liveChange > 0 ? '+' : ''}{liveChange} pts
-                                    </Text>
-                                  ) : null;
-                                })()
-                                }
+                                {forecast30.predicted_change != null && forecast30.predicted_change !== 0 ? (
+                                  <Text style={styles.forecastChange}>
+                                    {forecast30.predicted_change > 0 ? '+' : ''}{parseFloat(forecast30.predicted_change.toFixed(1))} pts
+                                  </Text>
+                                ) : null}
+                                {forecast30.explanation ? (
+                                  <Text style={styles.forecastExplanation}>{forecast30.explanation}</Text>
+                                ) : null}
                               </LinearGradient>
                             )}
                             {forecast90 && (
@@ -1240,19 +1249,20 @@ const PredictionScreen = ({ navigation }) => {
                                 style={styles.forecastItem}
                               >
                                 <Text style={styles.forecastPeriod}>90 Days</Text>
-                                <Text style={styles.forecastScore}>{forecast90.predicted_score}</Text>
+                                <Text style={styles.forecastScore}>
+                                  {parseFloat(Math.max(0, Math.min(100, (overallRisk?.overall_risk_score ?? trendPrediction.current_risk_score ?? 0) + (forecast90.predicted_change ?? 0))).toFixed(1))}
+                                </Text>
                                 <Text style={styles.forecastCategory}>
                                   {forecast90.predicted_category?.replace('_', ' ').toUpperCase()}
                                 </Text>
-                                {(() => {
-                                  const liveChange90 = parseFloat((forecast90.predicted_score - (overallRisk?.overall_risk_score ?? trendPrediction.current_risk_score ?? 0)).toFixed(1));
-                                  return liveChange90 !== 0 ? (
-                                    <Text style={styles.forecastChange}>
-                                      {liveChange90 > 0 ? '+' : ''}{liveChange90} pts
-                                    </Text>
-                                  ) : null;
-                                })()
-                                }
+                                {forecast90.predicted_change != null && forecast90.predicted_change !== 0 ? (
+                                  <Text style={styles.forecastChange}>
+                                    {forecast90.predicted_change > 0 ? '+' : ''}{parseFloat(forecast90.predicted_change.toFixed(1))} pts
+                                  </Text>
+                                ) : null}
+                                {forecast90.explanation ? (
+                                  <Text style={styles.forecastExplanation}>{forecast90.explanation}</Text>
+                                ) : null}
                               </LinearGradient>
                             )}
                           </View>
@@ -1312,17 +1322,6 @@ const PredictionScreen = ({ navigation }) => {
                         Complete your initial assessment to unlock health trajectory predictions.
                       </Text>
                     </View>
-                  )}
-
-                  {!isDiagnosed && (
-                    <TouchableOpacity
-                      style={styles.refreshOverallButton}
-                      onPress={handleRefreshOverallRisk}
-                      activeOpacity={0.7}
-                    >
-                      <Icon name="refresh" size={18} color={colors.primary} />
-                      <Text style={styles.refreshOverallButtonText}>Refresh Comprehensive Assessment</Text>
-                    </TouchableOpacity>
                   )}
                 </View>
               </>
@@ -1474,14 +1473,14 @@ const PredictionScreen = ({ navigation }) => {
                 <Text style={styles.formulaTitle}>Overall Risk Score (0 – 100)</Text>
                 <View style={styles.formulaDivider} />
                 {[
-                  { label: 'ML Initial Assessment', weight: '35%', note: 'Largest weight — validated clinical model', url: 'https://doi.org/10.1056/NEJMoa012512' },
-                  { label: 'Food Intake Quality', weight: '15%', note: 'Primary modifiable T2D risk factor; diet affects everyone daily', url: 'https://doi.org/10.2337/dc10-1079' },
-                  { label: 'Smoking Status', weight: '13%', note: '44% increased T2D risk for active smokers', url: 'https://doi.org/10.1001/jama.298.22.2654' },
-                  { label: 'Sleep Duration & Quality', weight: '12%', note: 'Insulin resistance & hormonal disruption', url: 'https://doi.org/10.2337/dc09-1124' },
-                  { label: 'Physical Activity (Steps)', weight: '10%', note: 'Modifiable lifestyle factor', url: 'https://doi.org/10.1007/s10654-015-0056-z' },
-                  { label: 'Alcohol Consumption', weight: '8%', note: 'J-shaped relationship with risk', url: 'https://doi.org/10.2337/dc09-0227' },
-                  { label: 'BMI', weight: '5%', note: 'Partial capture beyond ML model', url: 'https://doi.org/10.1016/j.diabres.2010.04.012' },
-                  { label: 'Age', weight: '2%', note: 'Non-modifiable', url: 'https://doi.org/10.1371/journal.pone.0194127' },
+                  { label: 'BMI / Obesity', weight: '25%', note: 'Strongest Diabetes predictor; uses WHO Asian cutoffs (≥23 = overweight for Filipinos)', url: 'https://doi.org/10.1016/S0140-6736(03)15268-3' },
+                  { label: 'ML Initial Assessment', weight: '20%', note: 'Validated clinical model trained on BRFSS dataset', url: 'https://doi.org/10.1056/NEJMoa012512' },
+                  { label: 'Age', weight: '15%', note: 'Risk rises sharply after 45; strong non-modifiable predictor', url: 'https://doi.org/10.1371/journal.pone.0194127' },
+                  { label: 'Food Intake Quality', weight: '12%', note: 'Primary modifiable Diabetes risk factor; reflects daily dietary habits', url: 'https://doi.org/10.2337/dc10-1079' },
+                  { label: 'Physical Activity (Steps)', weight: '10%', note: 'Physical inactivity is a key modifiable risk factor', url: 'https://doi.org/10.1007/s10654-015-0056-z' },
+                  { label: 'Smoking Status', weight: '7%', note: '44% increased Diabetes risk for active smokers', url: 'https://doi.org/10.1001/jama.298.22.2654' },
+                  { label: 'Sleep Duration & Quality', weight: '6%', note: 'Disrupts insulin sensitivity and glucose metabolism', url: 'https://doi.org/10.2337/dc09-1124' },
+                  { label: 'Alcohol Consumption', weight: '4%', note: 'J-shaped relationship with Diabetes risk', url: 'https://doi.org/10.2337/dc09-0227' },
                   { label: 'Biological Sex', weight: '1%', note: 'Hormonal & metabolic differences', url: 'https://doi.org/10.1210/er.2015-1137' },
                 ].map((row, idx) => (
                   <View
@@ -1541,175 +1540,218 @@ const PredictionScreen = ({ navigation }) => {
               {/* ── Component Scoring Detail ── */}
               <Text style={styles.computationSectionLabel}>Component Scoring Detail</Text>
 
+              {/* Legend */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#E74C3C' }} />
+                  <Text style={{ fontSize: 12, color: colors.secondary }}><Text style={{ fontWeight: '700', color: '#E74C3C' }}>+</Text> Increases risk score</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#27AE60' }} />
+                  <Text style={{ fontSize: 12, color: colors.secondary }}><Text style={{ fontWeight: '700', color: '#27AE60' }}>−</Text> Decreases risk score</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.secondary }} />
+                  <Text style={{ fontSize: 12, color: colors.secondary }}><Text style={{ fontWeight: '700' }}>0</Text> No impact on score</Text>
+                </View>
+              </View>
+
               {/* Physical Activity */}
               <Text style={styles.componentLabel}>Physical Activity (Step Count)</Text>
+              <Text style={{ fontSize: 12, color: colors.secondary, marginBottom: 8, lineHeight: 17 }}>Daily step count is a key indicator of cardiovascular and metabolic health. Consistent movement lowers insulin resistance and reduces diabetes risk.</Text>
               <View style={styles.tableContainer}>
                 <View style={[styles.tableRow, styles.tableHeaderRow]}>
                   <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>Condition</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Points</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.4 }]}>Score (0–100)</Text>
                 </View>
                 {[
-                  { cond: '< 3,000 steps / day (very sedentary)', pts: '+ 40' },
-                  { cond: '3,000 – 4,999 steps / day (sedentary)', pts: '+ 25' },
-                  { cond: '5,000 – 6,999 steps / day (below target)', pts: '+ 10' },
-                  { cond: '7,000 – 9,999 steps / day (near target)', pts: '0' },
-                  { cond: '≥ 10,000 steps / day (meets goal)', pts: '− 5' },
-                  { cond: 'Inconsistent activity pattern', pts: '+ 10' },
+                  { cond: '< 3,000 steps / day (very sedentary)', pts: '~36–46', pos: true },
+                  { cond: '3,000 – 4,999 steps / day (sedentary)', pts: '~22–32', pos: true },
+                  { cond: '5,000 – 6,999 steps / day (below target)', pts: '~9–19', pos: true },
+                  { cond: '7,000 – 9,999 steps / day (near target)', pts: '~0–10', neutral: true },
+                  { cond: '≥ 10,000 steps / day (meets goal)', pts: '0', neutral: true },
+                  { cond: 'Inconsistent activity (< 3 active days / wk)', pts: '+10 added', pos: true },
                 ].map((r, i) => (
                   <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
                     <Text style={[styles.tableCell, { flex: 2.5 }]}>{r.cond}</Text>
-                    <Text style={[styles.tableCell, { flex: 1, fontWeight: '700',
-                      color: r.pts.startsWith('+') ? '#E74C3C' : r.pts.startsWith('−') ? '#27AE60' : colors.text }]}>
+                    <Text style={[styles.tableCell, { flex: 1.4, fontWeight: '700',
+                      color: r.pos ? '#E74C3C' : '#27AE60' }]}>
                       {r.pts}
                     </Text>
                   </View>
                 ))}
               </View>
+              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
+                Weight 10% → steps service scores are normalized to 0-100 for risk weighting; max contribution = +10.0 pts to overall score. Score blends baseline daily steps with logged data (confidence-weighted).
+              </Text>
 
               {/* Sleep */}
               <Text style={styles.componentLabel}>Sleep</Text>
+              <Text style={{ fontSize: 12, color: colors.secondary, marginBottom: 8, lineHeight: 17 }}>Poor or irregular sleep disrupts glucose regulation and hormones that control appetite, directly elevating diabetes risk.</Text>
               <View style={styles.tableContainer}>
                 <View style={[styles.tableRow, styles.tableHeaderRow]}>
                   <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>Condition</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Points</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.4 }]}>Added to Score</Text>
                 </View>
                 {[
-                  { cond: '< 6 h / night (short sleep)', pts: '+ 20–30' },
-                  { cond: '7 – 8 h / night (optimal)', pts: '0' },
-                  { cond: '> 9 h / night (long sleep)', pts: '+ 15–25' },
-                  { cond: 'High sleep-duration variability', pts: '+ 10–20' },
-                  { cond: 'Irregular bedtime pattern', pts: '+ 10–15' },
+                  { cond: '< 6 h / night (short sleep)', pts: '+ 20–30', pos: true },
+                  { cond: '7 – 8 h / night (optimal)', pts: '0', neutral: true },
+                  { cond: '> 9 h / night (long sleep)', pts: '+ 15–25', pos: true },
+                  { cond: 'High sleep-duration variability', pts: '+ 10–20', pos: true },
+                  { cond: 'Irregular bedtime pattern', pts: '+ 10–15', pos: true },
                 ].map((r, i) => (
                   <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
                     <Text style={[styles.tableCell, { flex: 2.5 }]}>{r.cond}</Text>
-                    <Text style={[styles.tableCell, { flex: 1, fontWeight: '700',
-                      color: r.pts.startsWith('+') ? '#E74C3C' : r.pts === '0' ? '#27AE60' : colors.text }]}>
+                    <Text style={[styles.tableCell, { flex: 1.4, fontWeight: '700',
+                      color: r.pos ? '#E74C3C' : '#27AE60' }]}>
                       {r.pts}
                     </Text>
                   </View>
                 ))}
               </View>
+              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
+                Weight 6% → sleep service scores are normalized to 0-100 for risk weighting; max contribution = +6.0 pts to overall score. Baseline typical sleep hours are blended with daily logged data (confidence-weighted).
+              </Text>
 
               {/* Smoking */}
               <Text style={styles.componentLabel}>Smoking</Text>
+              <Text style={{ fontSize: 12, color: colors.secondary, marginBottom: 8, lineHeight: 17 }}>Smoking impairs insulin sensitivity and promotes inflammation. Active smokers have up to 44% higher risk of developing Type 2 diabetes.</Text>
               <View style={styles.tableContainer}>
                 <View style={[styles.tableRow, styles.tableHeaderRow]}>
                   <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>Condition</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Points</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.4 }]}>Score (0–100)</Text>
                 </View>
                 {[
-                  { cond: 'Never smoked', pts: '1' },
-                  { cond: 'Current — light (< 10 cigs / day)', pts: '30' },
-                  { cond: 'Current — moderate (10–19 cigs / day)', pts: '40' },
-                  { cond: 'Current — heavy (≥ 20 cigs / day)', pts: '50' },
-                  { cond: 'Former smoker < 5 yrs since quit', pts: '30–40' },
-                  { cond: 'Former smoker 5–10 yrs since quit', pts: '20' },
-                  { cond: 'Former smoker > 10 yrs since quit', pts: '10–15' },
+                  { cond: 'Never smoked', pts: '0', prot: true },
+                  { cond: 'Former — quit > 10 yrs (light history)', pts: '~10', pos: true },
+                  { cond: 'Former — quit > 10 yrs (heavy history)', pts: '~25', pos: true },
+                  { cond: 'Former — quit 5–10 yrs', pts: '~25–50', pos: true },
+                  { cond: 'Former — quit < 5 yrs', pts: '~50–75', pos: true },
+                  { cond: 'Current — light (< 10 cigs / day)', pts: '~50', pos: true },
+                  { cond: 'Current — moderate (10–19 cigs / day)', pts: '~75', pos: true },
+                  { cond: 'Current — heavy (≥ 20 cigs / day)', pts: '100 (max)', pos: true },
                 ].map((r, i) => (
                   <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
                     <Text style={[styles.tableCell, { flex: 2.5 }]}>{r.cond}</Text>
-                    <Text style={[styles.tableCell, { flex: 1, fontWeight: '700',
-                      color: r.pts === '1' ? '#27AE60' : '#E74C3C' }]}>
+                    <Text style={[styles.tableCell, { flex: 1.4, fontWeight: '700',
+                      color: r.prot ? '#27AE60' : '#E74C3C' }]}>
                       {r.pts}
                     </Text>
                   </View>
                 ))}
               </View>
+              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
+                Weight 7% → max contribution = +7.0 pts to overall score. Baseline smoking history (status, cigarettes/day, pack-years, quit date) is used to calculate risk; daily logs refine it over time.
+              </Text>
 
               {/* Alcohol */}
               <Text style={styles.componentLabel}>Alcohol Intake</Text>
+              <Text style={{ fontSize: 12, color: colors.secondary, marginBottom: 8, lineHeight: 17 }}>Alcohol has a J-shaped relationship with diabetes risk — light drinking may be neutral or mildly protective, while heavy or binge drinking raises risk significantly.</Text>
               <View style={styles.tableContainer}>
                 <View style={[styles.tableRow, styles.tableHeaderRow]}>
                   <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>Condition</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Points</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.4 }]}>Score (0–100)</Text>
                 </View>
                 {[
-                  { cond: 'No consumption', pts: '0' },
-                  { cond: 'Light ≤ 7 drinks / week', pts: '− 5' },
-                  { cond: 'Moderate 7–14 drinks / week', pts: '+ 5' },
-                  { cond: 'Heavy > 14–21 drinks / week', pts: '+ 15' },
-                  { cond: 'Binge drinking episodes (≥ 4–5 per occasion)', pts: '+ 20' },
-                  { cond: 'Irregular pattern variability', pts: '+ 5 extra' },
+                  { cond: 'No consumption', pts: '0', neutral: true },
+                  { cond: 'Light ≤ 7 drinks / week', pts: '−25 (protective)', prot: true },
+                  { cond: 'Moderate 7–14 drinks / week', pts: '+25', pos: true },
+                  { cond: 'Heavy > 14–21 drinks / week', pts: '+75', pos: true },
+                  { cond: 'Binge / very high (≥ 4–5 per occasion)', pts: '+100 (max)', pos: true },
                 ].map((r, i) => (
                   <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
                     <Text style={[styles.tableCell, { flex: 2.5 }]}>{r.cond}</Text>
-                    <Text style={[styles.tableCell, { flex: 1, fontWeight: '700',
-                      color: r.pts.startsWith('+') ? '#E74C3C' : r.pts.startsWith('−') ? '#27AE60' : colors.text }]}>
+                    <Text style={[styles.tableCell, { flex: 1.4, fontWeight: '700',
+                      color: r.prot ? '#27AE60' : r.pos ? '#E74C3C' : colors.text }]}>
                       {r.pts}
                     </Text>
                   </View>
                 ))}
               </View>
+              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
+                Weight 4% → max contribution = +4.0 pts / min = −1.0 pts (protective) to overall score. Your baseline questionnaire answers (drinks/week, drinks per occasion, binge frequency) are used if daily logs are absent or fewer than 7 days exist.
+              </Text>
 
               {/* BMI */}
               <Text style={styles.componentLabel}>Body Mass Index (BMI)</Text>
+              <Text style={{ fontSize: 12, color: colors.secondary, marginBottom: 8, lineHeight: 17 }}>Excess body weight, especially abdominal fat, increases insulin resistance. This app uses WHO-recommended Asian BMI cutoffs, which are lower than standard Western cutoffs — important for Filipino users whose cardiometabolic risk rises at a lower BMI.</Text>
               <View style={styles.tableContainer}>
                 <View style={[styles.tableRow, styles.tableHeaderRow]}>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>BMI Range</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Points</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>BMI Range (Asian / Filipino Standard)</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.4 }]}>Score (0–100)</Text>
                 </View>
                 {[
-                  { cond: 'Underweight  < 18.5', pts: '+ 5' },
-                  { cond: 'Normal  18.5 – 24.9', pts: '0' },
-                  { cond: 'Overweight  25 – 29.9', pts: '+ 10' },
-                  { cond: 'Obese Class I  30 – 34.9', pts: '+ 20' },
-                  { cond: 'Obese Class II  35 – 39.9', pts: '+ 30' },
-                  { cond: 'Obese Class III  ≥ 40', pts: '+ 40' },
+                  { cond: 'Underweight  < 18.5', pts: '12', pos: true },
+                  { cond: 'Normal  18.5 – 22.9', pts: '0', prot: true },
+                  { cond: 'At Risk (overweight)  23.0 – 27.4', pts: '25', pos: true },
+                  { cond: 'Obese Class I  27.5 – 32.4', pts: '60', pos: true },
+                  { cond: 'Obese Class II  ≥ 32.5', pts: '100 (max)', pos: true },
                 ].map((r, i) => (
                   <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
                     <Text style={[styles.tableCell, { flex: 2.5 }]}>{r.cond}</Text>
-                    <Text style={[styles.tableCell, { flex: 1, fontWeight: '700',
-                      color: r.pts === '0' ? '#27AE60' : r.pts.startsWith('+') ? '#E74C3C' : colors.text }]}>
+                    <Text style={[styles.tableCell, { flex: 1.4, fontWeight: '700',
+                      color: r.prot ? '#27AE60' : '#E74C3C' }]}>
                       {r.pts}
                     </Text>
                   </View>
                 ))}
               </View>
+              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
+                Weight 25% → max contribution = +25.0 pts to overall score. WHO Asian cutoffs used (WHO Expert Consultation, 2004): overweight ≥23, obese ≥27.5. This is the most impactful single factor. Calculated from your profile height and weight.
+              </Text>
 
               {/* Age & Sex */}
               <Text style={styles.componentLabel}>Age</Text>
+              <Text style={{ fontSize: 12, color: colors.secondary, marginBottom: 8, lineHeight: 17 }}>Diabetes risk increases with age due to declining pancreatic beta-cell function and reduced physical activity over time. This factor is non-modifiable.</Text>
               <View style={styles.tableContainer}>
                 <View style={[styles.tableRow, styles.tableHeaderRow]}>
                   <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2 }]}>Age Range</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Points</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.4 }]}>Score (0–100)</Text>
                 </View>
                 {[
-                  { cond: '< 30 years', pts: '0' },
-                  { cond: '30 – 39 years', pts: '+ 2' },
-                  { cond: '40 – 49 years', pts: '+ 5' },
-                  { cond: '50 – 59 years', pts: '+ 8' },
-                  { cond: '60 – 69 years', pts: '+ 12' },
-                  { cond: '≥ 70 years', pts: '+ 15' },
+                  { cond: '< 30 years', pts: '0', prot: true },
+                  { cond: '30 – 39 years', pts: '13', pos: true },
+                  { cond: '40 – 49 years', pts: '33', pos: true },
+                  { cond: '50 – 59 years', pts: '53', pos: true },
+                  { cond: '60 – 69 years', pts: '80', pos: true },
+                  { cond: '≥ 70 years', pts: '100 (max)', pos: true },
                 ].map((r, i) => (
                   <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
                     <Text style={[styles.tableCell, { flex: 2 }]}>{r.cond}</Text>
-                    <Text style={[styles.tableCell, { flex: 1, fontWeight: '700',
-                      color: r.pts === '0' ? '#27AE60' : '#E74C3C' }]}>
+                    <Text style={[styles.tableCell, { flex: 1.4, fontWeight: '700',
+                      color: r.prot ? '#27AE60' : '#E74C3C' }]}>
                       {r.pts}
                     </Text>
                   </View>
                 ))}
               </View>
+              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
+                Weight 15% → max contribution = +15.0 pts to overall score. Non-modifiable; taken from your profile date of birth.
+              </Text>
 
               <Text style={styles.componentLabel}>Biological Sex</Text>
+              <Text style={{ fontSize: 12, color: colors.secondary, marginBottom: 8, lineHeight: 17 }}>Hormonal and metabolic differences between sexes contribute a small, non-modifiable influence on overall diabetes risk.</Text>
               <View style={styles.tableContainer}>
                 <View style={[styles.tableRow, styles.tableHeaderRow]}>
                   <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2 }]}>Sex</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Points</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.4 }]}>Score (0–100)</Text>
                 </View>
                 {[
-                  { cond: 'Female', pts: '0' },
-                  { cond: 'Male', pts: '+ 3' },
+                  { cond: 'Female', pts: '0', prot: true },
+                  { cond: 'Male', pts: '100 (max)', pos: true },
                 ].map((r, i) => (
                   <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
                     <Text style={[styles.tableCell, { flex: 2 }]}>{r.cond}</Text>
-                    <Text style={[styles.tableCell, { flex: 1, fontWeight: '700',
-                      color: r.pts === '0' ? '#27AE60' : '#E74C3C' }]}>
+                    <Text style={[styles.tableCell, { flex: 1.4, fontWeight: '700',
+                      color: r.prot ? '#27AE60' : '#E74C3C' }]}>
                       {r.pts}
                     </Text>
                   </View>
                 ))}
               </View>
+              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
+                Weight 1% → max contribution = +1.0 pt to overall score (males). Non-modifiable; taken from your profile.
+              </Text>
 
               {/* ── Scientific References ── */}
               <TouchableOpacity
@@ -1869,6 +1911,38 @@ const PredictionScreen = ({ navigation }) => {
                     title: 'National Diabetes Statistics Report, 2020',
                     journal: 'U.S. Department of Health and Human Services',
                     url: 'https://www.cdc.gov/diabetes/data/statistics-report/index.html',
+                  },
+                  {
+                    num: 19,
+                    authors: 'World Health Organization Expert Consultation.',
+                    year: '2004',
+                    title: 'Appropriate body-mass index for Asian populations and its implications for policy and intervention strategies',
+                    journal: 'The Lancet, 363(9403), 157–163',
+                    url: 'https://doi.org/10.1016/S0140-6736(03)15268-3',
+                  },
+                  {
+                    num: 20,
+                    authors: 'Yoon, K. H., Lee, J. H., Kim, J. W., Cho, J. H., Choi, Y. H., Ko, S. H., Zimmet, P., & Son, H. Y.',
+                    year: '2006',
+                    title: 'Epidemic obesity and type 2 diabetes in Asia',
+                    journal: 'The Lancet, 368(9548), 1681–1688',
+                    url: 'https://doi.org/10.1016/S0140-6736(06)69703-1',
+                  },
+                  {
+                    num: 21,
+                    authors: 'International Diabetes Federation.',
+                    year: '2021',
+                    title: 'IDF Diabetes Atlas (10th ed.)',
+                    journal: 'International Diabetes Federation',
+                    url: 'https://www.diabetesatlas.org',
+                  },
+                  {
+                    num: 22,
+                    authors: 'Food and Nutrition Research Institute – Department of Science and Technology (FNRI-DOST).',
+                    year: '2019',
+                    title: '2018 Expanded National Nutrition Survey (ENNS): Highlights',
+                    journal: 'Taguig City: FNRI-DOST, Republic of the Philippines',
+                    url: 'https://www.fnri.dost.gov.ph',
                   },
                 ].map((ref) => (
                   <View key={ref.num} style={styles.referenceItem}>
