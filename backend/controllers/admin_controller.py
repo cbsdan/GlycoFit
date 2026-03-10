@@ -796,12 +796,22 @@ def get_risk_component_averages():
             })
 
         # Aggregate component scores
+        # Each component value is a nested dict: {raw_score, weighted_score, has_data, ...}
+        # Skip demographic-only components (age, sex) as they aren't actionable
+        SKIP_COMPONENTS = {'age', 'sex'}
         component_sums = {}
         component_counts = {}
         for assessment in latest_assessments:
             components = assessment.get('component_scores', {})
             for key, val in components.items():
-                if isinstance(val, (int, float)):
+                if key in SKIP_COMPONENTS:
+                    continue
+                if isinstance(val, dict):
+                    raw = val.get('raw_score', 0)
+                    if isinstance(raw, (int, float)) and val.get('has_data', False):
+                        component_sums[key] = component_sums.get(key, 0) + raw
+                        component_counts[key] = component_counts.get(key, 0) + 1
+                elif isinstance(val, (int, float)):
                     component_sums[key] = component_sums.get(key, 0) + val
                     component_counts[key] = component_counts.get(key, 0) + 1
 

@@ -3,6 +3,8 @@ import {
   Grid, Typography, Box, CircularProgress, Paper,
   List, ListItem, ListItemText, ListItemIcon,
   Avatar, Divider, Chip, Tabs, Tab,
+  IconButton, Tooltip, Button,
+  Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
 import PeopleIcon from '@mui/icons-material/People';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
@@ -12,6 +14,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import VideoCallIcon from '@mui/icons-material/VideoCall';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import StatCard from '../components/common/StatCard';
 import UsersStatsModal from '../components/UsersStatsModal';
 import ActiveUsersModal from '../components/ActiveUsersModal';
@@ -66,6 +69,7 @@ function Dashboard() {
   const [consultSummary, setConsultSummary] = useState(null);
   const [recentActivity, setRecentActivity] = useState(null);
   const [activityTab, setActivityTab] = useState(0);
+  const [summaryDialog, setSummaryDialog] = useState({ open: false, chart: null });
 
   const getAuthHeaders = useCallback(async () => {
     try {
@@ -193,6 +197,147 @@ function Dashboard() {
         />
       )}
 
+      {/* Chart Summary Dialog */}
+      <Dialog open={summaryDialog.open} onClose={() => setSummaryDialog({ open: false, chart: null })} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 600 }}>
+          {summaryDialog.chart === 'riskDist' && '⚠ Risk Distribution — Summary'}
+          {summaryDialog.chart === 'trackerAdoption' && '📈 Tracker Adoption — Summary'}
+          {summaryDialog.chart === 'consultations' && '📞 Consultations — Summary'}
+          {summaryDialog.chart === 'recentActivity' && '🕐 Recent Activity — Summary'}
+        </DialogTitle>
+        <DialogContent dividers>
+          {/* Risk Distribution Summary */}
+          {summaryDialog.chart === 'riskDist' && (
+            riskDist ? (
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1.5 }}>
+                  <strong>{totalAssessed}</strong> users have been assessed for diabetes risk, with <strong>{unassessed}</strong> yet to complete an assessment.
+                </Typography>
+                {riskLabels.map((k, i) => {
+                  const count = distMap[k] || 0;
+                  const pct = totalAssessed > 0 ? Math.round((count / totalAssessed) * 100) : 0;
+                  return (
+                    <Box key={k} sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
+                      <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: RISK_COLORS[k], flexShrink: 0 }} />
+                      <Typography variant="body2" sx={{ flex: 1 }}>{riskDisplay[i]}</Typography>
+                      <Typography variant="body2" fontWeight={600}>{count} users</Typography>
+                      <Chip label={`${pct}%`} size="small" sx={{ bgcolor: RISK_COLORS[k] + '22', color: RISK_COLORS[k], fontWeight: 600, fontSize: '0.7rem', height: 20 }} />
+                    </Box>
+                  );
+                })}
+                {totalAssessed > 0 && (() => {
+                  const maxVal = Math.max(...riskValues);
+                  const dominant = riskLabels[riskValues.indexOf(maxVal)];
+                  return (
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                      Most users fall in the <strong style={{ textTransform: 'capitalize' }}>{dominant.replace('_', ' ')}</strong> risk category.
+                    </Typography>
+                  );
+                })()}
+              </Box>
+            ) : <Typography variant="body2" color="text.secondary">Data not loaded yet.</Typography>
+          )}
+
+          {/* Tracker Adoption Summary */}
+          {summaryDialog.chart === 'trackerAdoption' && (
+            trackerAdoption ? (
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1.5 }}>
+                  Out of <strong>{totalUsers}</strong> total users, the following shows tracker engagement:
+                </Typography>
+                {adoptionLabels.map((label, i) => {
+                  const count = adoptionValues[i];
+                  const pct = totalUsers > 0 ? Math.round((count / totalUsers) * 100) : 0;
+                  return (
+                    <Box key={label} sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
+                      <Typography variant="body2" sx={{ flex: 1 }}>{label}</Typography>
+                      <Typography variant="body2" fontWeight={600}>{count} users</Typography>
+                      <Chip label={`${pct}%`} size="small" sx={{ fontSize: '0.7rem', height: 20 }} />
+                    </Box>
+                  );
+                })}
+                {adoptionValues.length > 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
+                    Most adopted: <strong>{adoptionLabels[adoptionValues.indexOf(Math.max(...adoptionValues))]}</strong>
+                    {' · '}Least adopted: <strong>{adoptionLabels[adoptionValues.indexOf(Math.min(...adoptionValues))]}</strong>
+                  </Typography>
+                )}
+              </Box>
+            ) : <Typography variant="body2" color="text.secondary">Data not loaded yet.</Typography>
+          )}
+
+          {/* Consultations Summary */}
+          {summaryDialog.chart === 'consultations' && (
+            consultSummary ? (
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1.5 }}>
+                  <strong>{consultTotal}</strong> total consultations recorded across all physicians and patients.
+                </Typography>
+                {[
+                  { label: 'Completed', count: completedCount, color: '#10b981' },
+                  { label: 'Scheduled', count: scheduledCount, color: '#3b82f6' },
+                  { label: 'Cancelled', count: cancelledCount, color: '#ef4444' },
+                ].map(({ label, count, color }) => {
+                  const pct = consultTotal > 0 ? Math.round((count / consultTotal) * 100) : 0;
+                  return (
+                    <Box key={label} sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
+                      <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: color, flexShrink: 0 }} />
+                      <Typography variant="body2" sx={{ flex: 1 }}>{label}</Typography>
+                      <Typography variant="body2" fontWeight={600}>{count}</Typography>
+                      <Chip label={`${pct}%`} size="small" sx={{ bgcolor: color + '22', color, fontWeight: 600, fontSize: '0.7rem', height: 20 }} />
+                    </Box>
+                  );
+                })}
+                {consultTotal > 0 && (
+                  <Typography variant="body2" sx={{ mt: 1.5 }}>
+                    Completion rate: <strong>{Math.round((completedCount / consultTotal) * 100)}%</strong>
+                  </Typography>
+                )}
+                {avgRating > 0 && (
+                  <Box sx={{ mt: 1, p: 1.5, bgcolor: '#fefce8', borderRadius: 2 }}>
+                    <Typography variant="body2">⭐ Average patient rating: <strong>{avgRating}/5</strong> ({consultSummary.rated_count || 0} rated)</Typography>
+                  </Box>
+                )}
+              </Box>
+            ) : <Typography variant="body2" color="text.secondary">Data not loaded yet.</Typography>
+          )}
+
+          {/* Recent Activity Summary */}
+          {summaryDialog.chart === 'recentActivity' && (
+            <Box>
+              <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+                {[
+                  { label: 'New Registrations', count: registrations.length, color: '#667eea', bg: '#f0f4ff' },
+                  { label: 'Recent Consults', count: consultHistory.length, color: '#06b6d4', bg: '#e0f7fa' },
+                  { label: 'High-Risk Alerts', count: highRiskAlerts.length, color: '#ef4444', bg: '#fff1f2' },
+                ].map(({ label, count, color, bg }) => (
+                  <Box key={label} sx={{ textAlign: 'center', p: 1.5, bgcolor: bg, borderRadius: 2, flex: 1, minWidth: 90 }}>
+                    <Typography variant="h5" fontWeight={700} sx={{ color }}>{count}</Typography>
+                    <Typography variant="caption" color="text.secondary">{label}</Typography>
+                  </Box>
+                ))}
+              </Box>
+              {registrations.length > 0 && (
+                <Typography variant="body2" sx={{ mb: 0.5 }}>
+                  Latest registration: <strong>{registrations[0]?.name || registrations[0]?.email || 'Unknown'}</strong> on {formatDate(registrations[0]?.date)}
+                </Typography>
+              )}
+              {highRiskAlerts.length > 0 && (
+                <Typography variant="body2" color="error">
+                  ⚠ {highRiskAlerts.length} user{highRiskAlerts.length > 1 ? 's' : ''} flagged as high risk — immediate attention recommended.
+                </Typography>
+              )}
+              {registrations.length === 0 && consultHistory.length === 0 && highRiskAlerts.length === 0 && (
+                <Typography variant="body2" color="text.secondary">No recent activity to display.</Typography>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSummaryDialog({ open: false, chart: null })}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography
@@ -274,9 +419,19 @@ function Dashboard() {
         {/* Risk Distribution Doughnut */}
         <Grid item xs={12} md={6} lg={4}>
           <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0', height: '100%' }}>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-              <WarningAmberIcon sx={{ mr: 1, verticalAlign: 'middle', color: '#f59e0b' }} />
-              Risk Distribution
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                <WarningAmberIcon sx={{ mr: 1, verticalAlign: 'middle', color: '#f59e0b' }} />
+                Risk Distribution
+              </Typography>
+              <Tooltip title="View Summary">
+                <IconButton size="small" onClick={() => setSummaryDialog({ open: true, chart: 'riskDist' })}>
+                  <InfoOutlinedIcon fontSize="small" sx={{ color: '#9ca3af' }} />
+                </IconButton>
+              </Tooltip>
+            </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              Breakdown of all assessed users by risk level (Low, Moderate, High, Very High). Shows the proportion of the user base at each risk tier.
             </Typography>
             {riskDist ? (
               <>
@@ -314,8 +469,18 @@ function Dashboard() {
         {/* Tracker Adoption Bar */}
         <Grid item xs={12} md={6} lg={4}>
           <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0', height: '100%' }}>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-              📈 Tracker Adoption
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                📈 Tracker Adoption
+              </Typography>
+              <Tooltip title="View Summary">
+                <IconButton size="small" onClick={() => setSummaryDialog({ open: true, chart: 'trackerAdoption' })}>
+                  <InfoOutlinedIcon fontSize="small" sx={{ color: '#9ca3af' }} />
+                </IconButton>
+              </Tooltip>
+            </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              Number of users who have recorded at least one baseline entry for each health tracker (food, sleep, activity, etc.).
             </Typography>
             {trackerAdoption ? (
               <>
@@ -359,9 +524,19 @@ function Dashboard() {
         <Grid item xs={12} lg={4}>
           {/* Consultations Summary */}
           <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0', mb: 2 }}>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-              <VideoCallIcon sx={{ mr: 1, verticalAlign: 'middle', color: '#06b6d4' }} />
-              Consultations
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                <VideoCallIcon sx={{ mr: 1, verticalAlign: 'middle', color: '#06b6d4' }} />
+                Consultations
+              </Typography>
+              <Tooltip title="View Summary">
+                <IconButton size="small" onClick={() => setSummaryDialog({ open: true, chart: 'consultations' })}>
+                  <InfoOutlinedIcon fontSize="small" sx={{ color: '#9ca3af' }} />
+                </IconButton>
+              </Tooltip>
+            </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              Summary of all physician–patient consultations by status and average patient rating.
             </Typography>
             {consultSummary ? (
               <Box>
@@ -384,8 +559,18 @@ function Dashboard() {
 
           {/* Recent Activity with Tabs */}
           <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0' }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-              🕐 Recent Activity
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                🕐 Recent Activity
+              </Typography>
+              <Tooltip title="View Summary">
+                <IconButton size="small" onClick={() => setSummaryDialog({ open: true, chart: 'recentActivity' })}>
+                  <InfoOutlinedIcon fontSize="small" sx={{ color: '#9ca3af' }} />
+                </IconButton>
+              </Tooltip>
+            </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              Latest platform events: new user registrations, recent consultations, and users flagged as high-risk.
             </Typography>
             <Tabs
               value={activityTab}

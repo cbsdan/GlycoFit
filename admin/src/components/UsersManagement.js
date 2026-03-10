@@ -19,7 +19,6 @@ import {
   Checkbox,
   Typography,
 } from '@mui/material';
-import AdminCreatePhysician from './AdminCreatePhysician';
 import userService from '../services/userService';
 import MealModal from './MealModal';
 
@@ -31,7 +30,6 @@ function UsersManagement() {
   const [dialogType, setDialogType] = useState('disable');
   const [formData, setFormData] = useState({ reason: '', isPermanent: false, endDate: '' });
   const [mealModalOpen, setMealModalOpen] = useState(false);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [query, setQuery] = useState('');
 
   const filteredUsers = useMemo(() => {
@@ -113,9 +111,6 @@ function UsersManagement() {
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, gap: 2 }}>
-        <Typography variant="h4" gutterBottom>
-          Users Management
-        </Typography>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
           <TextField
             size="small"
@@ -124,9 +119,6 @@ function UsersManagement() {
             onChange={(e) => setQuery(e.target.value)}
             sx={{ width: { xs: 160, sm: 280 } }}
           />
-          <Button variant="contained" color="primary" onClick={() => setCreateDialogOpen(true)}>
-            Create Physician
-          </Button>
         </Box>
       </Box>
       <TableContainer component={Paper}>
@@ -244,16 +236,7 @@ function UsersManagement() {
         />
       )}
 
-      {/* Create Physician Dialog (moved from sidebar) */}
-      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Create Physician</DialogTitle>
-        <DialogContent>
-          <AdminCreatePhysician onSuccess={() => { setCreateDialogOpen(false); fetchUsers(); }} />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateDialogOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+
     </Box>
   );
 }

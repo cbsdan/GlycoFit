@@ -12,6 +12,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import EventIcon from '@mui/icons-material/Event';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import adminService from '../services/adminService';
+import AdminCreatePhysician from '../components/AdminCreatePhysician';
 
 function PhysicianManagementPage() {
   const [physicians, setPhysicians] = useState([]);
@@ -22,6 +23,7 @@ function PhysicianManagementPage() {
   const [detailTab, setDetailTab] = useState(0);
   const [detailData, setDetailData] = useState({ details: null, patients: [], consultations: [], availability: [] });
   const [detailLoading, setDetailLoading] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const fetchPhysicians = useCallback(async () => {
     setLoading(true);
@@ -62,9 +64,14 @@ function PhysicianManagementPage() {
       <Typography variant="h4" gutterBottom sx={{ fontWeight: 700, background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', backgroundClip: 'text', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
         Physician Management
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Manage registered physicians, view their patients, consultations, and availability.
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+        <Typography variant="body2" color="text.secondary">
+          Manage registered physicians, view their patients, consultations, and availability.
+        </Typography>
+        <Button variant="contained" color="success" onClick={() => setCreateDialogOpen(true)}>
+          Create Physician
+        </Button>
+      </Box>
 
       <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: '1px solid #e0e0e0', mb: 3 }}>
         <TextField
@@ -125,6 +132,17 @@ function PhysicianManagementPage() {
           </Table>
         </TableContainer>
       )}
+
+      {/* Create Physician Dialog */}
+      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Create Physician</DialogTitle>
+        <DialogContent>
+          <AdminCreatePhysician onSuccess={() => { setCreateDialogOpen(false); fetchPhysicians(); }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Physician Detail Dialog */}
       <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} maxWidth="md" fullWidth>
