@@ -560,6 +560,8 @@ const saveMeal = async (nutrients, mealName, foodType, notes = '', tempImagePubl
     // Invalidate meal caches
     await CacheService.invalidatePattern(/^meals_/);
     await CacheService.invalidatePattern(/^nutrition_summary_/);
+    await CacheService.invalidatePattern(/^food_assessment_/);
+    await CacheService.invalidatePattern(/^overall_risk_assessment/);
 
     return response.data;
   } catch (error) {
@@ -592,6 +594,8 @@ const saveMealFromText = async (nutrients, mealName, foodType, notes = '', servi
     // Invalidate meal caches
     await CacheService.invalidatePattern(/^meals_/);
     await CacheService.invalidatePattern(/^nutrition_summary_/);
+    await CacheService.invalidatePattern(/^food_assessment_/);
+    await CacheService.invalidatePattern(/^overall_risk_assessment/);
 
     return response.data;
   } catch (error) {
@@ -672,6 +676,8 @@ const updateMeal = async (mealId, mealName = null, notes = null, foodType = null
     await CacheService.invalidatePattern(/^meals_/);
     await CacheService.invalidatePattern(/^meal_detail_/);
     await CacheService.invalidatePattern(/^nutrition_summary_/);
+    await CacheService.invalidatePattern(/^food_assessment_/);
+    await CacheService.invalidatePattern(/^overall_risk_assessment/);
     
     return response.data;
   } catch (error) {
@@ -688,6 +694,8 @@ const deleteMeal = async (mealId) => {
     await CacheService.invalidatePattern(/^meals_/);
     await CacheService.invalidatePattern(/^meal_detail_/);
     await CacheService.invalidatePattern(/^nutrition_summary_/);
+    await CacheService.invalidatePattern(/^food_assessment_/);
+    await CacheService.invalidatePattern(/^overall_risk_assessment/);
     
     return response.data;
   } catch (error) {

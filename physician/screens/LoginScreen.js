@@ -230,7 +230,7 @@ export default function LoginScreen({ onLogin }) {
             )}
           </View>
 
-          {/* Forgot Password */}
+          {/* Forgot Password
           <TouchableOpacity
             onPress={handleForgotPassword}
             style={styles.forgotPassword}
@@ -238,7 +238,7 @@ export default function LoginScreen({ onLogin }) {
             <Text style={[styles.forgotPasswordText, { color: theme.primary }]}>
               Forgot Password?
             </Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
 
           {/* Login Button */}
           <TouchableOpacity

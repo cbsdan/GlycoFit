@@ -1013,14 +1013,16 @@ class ComprehensiveRiskService:
         return "\n".join(notes)
     
     def get_assessment(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Get existing assessment or compute new one"""
+        """Get existing assessment or compute new one; refresh if stale (>1 hour)"""
         assessment = OverallRiskAssessment.find_by_user_id(user_id)
-        
+
         if assessment:
-            return assessment.to_dict()
-        else:
-            # Compute new assessment
-            return self.compute_overall_risk(user_id)
+            age = datetime.utcnow() - assessment.updated_at
+            if age.total_seconds() < 3600:  # 1-hour TTL
+                return assessment.to_dict()
+
+        # Compute new assessment (no record yet, or record is stale)
+        return self.compute_overall_risk(user_id)
     
     def refresh_assessment(self, user_id: str) -> Dict[str, Any]:
         """Force refresh of risk assessment"""

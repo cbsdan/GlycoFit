@@ -366,9 +366,9 @@ const LoginScreen = ({ navigation }) => {
             />
 
             {/* Forgot password */}
-            <TouchableOpacity style={styles.forgotRow} activeOpacity={0.7}>
+            {/* <TouchableOpacity style={styles.forgotRow} activeOpacity={0.7}>
               <Text style={[styles.forgotText, { color: tv.forgotText }]}>Forgot password?</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
 
             {/* Login CTA */}
             <TouchableOpacity

@@ -90,6 +90,8 @@ const StepCounterScreen = ({ navigation }) => {
   const summaryRef = useRef(null);
   // Keeps latest activityData accessible inside callbacks without stale closure
   const activityDataRef = useRef(activityData);
+  // Tracks the last period for which historical data was synced to avoid spamming
+  const lastSyncedHistoricalPeriodRef = useRef(null);
 
   const periods = useMemo(() => [
     { id: 'today', label: 'Today', icon: 'calendar-today' },
@@ -515,6 +517,46 @@ const StepCounterScreen = ({ navigation }) => {
         });
       }
 
+      // Sync historical data to backend if fetched from Health Connect and not already synced for this period
+      if (selectedPeriod !== 'today' && hasPermissions && dailyData.length > 0 && lastSyncedHistoricalPeriodRef.current !== selectedPeriod) {
+        console.log('📤 Syncing historical data to backend...');
+        const todayStr = new Date().toDateString();
+        for (const day of dailyData) {
+          if (new Date(day.date).toDateString() === todayStr) continue; // Skip today, handled separately
+          const dataToSync = {
+            date: new Date(day.date).toISOString().split('T')[0] + 'T00:00:00.000Z',
+            steps: day.steps,
+            distance: day.distance,
+            activeCalories: day.activeCalories,
+            totalCalories: day.calories,
+            source: 'health_connect',
+            phoneSensorSteps: 0,
+            healthConnectSteps: day.steps,
+            streak: 0,
+            achievements: [],
+          };
+          try {
+            await api.saveDailyActivity(dataToSync);
+          } catch (e) {
+            console.warn('Failed to sync historical day:', day.date, e.message);
+          }
+        }
+        // Mark this period as synced
+        lastSyncedHistoricalPeriodRef.current = selectedPeriod;
+        // Refresh summary after syncing historical data
+        try {
+          const summaryResp = await getStepSummary(30);
+          const summaryData = summaryResp?.data || summaryResp;
+          if (isMountedRef.current) {
+            summaryRef.current = summaryData;
+            setSummary(summaryData);
+            setSummaryVersion(prev => prev + 1);
+          }
+        } catch (e) {
+          console.warn('Failed to refresh summary after historical sync', e);
+        }
+      }
+
       console.log('✅ Data loaded successfully');
     } catch (error) {
       console.error('❌ Load error:', error);
@@ -757,14 +799,56 @@ const StepCounterScreen = ({ navigation }) => {
 
   // Manual sync handler
   const handleManualSync = useCallback(async () => {
-    if (selectedPeriod !== 'today') {
-      toast.info('Switch to "Today" to sync data');
-      return;
+    if (selectedPeriod === 'today') {
+      await updateTodaySteps();
+      await syncActivityToBackend(false);
+    } else if (selectedPeriod !== 'today' && hasPermissions && activityData.dailyData.length > 0) {
+      // Sync historical data for week/month
+      console.log('📤 Manual sync: Syncing historical data to backend...');
+      const todayStr = new Date().toDateString();
+      let syncedCount = 0;
+      for (const day of activityData.dailyData) {
+        if (new Date(day.date).toDateString() === todayStr) continue; // Skip today
+        const dataToSync = {
+          date: new Date(day.date).toISOString().split('T')[0] + 'T00:00:00.000Z',
+          steps: day.steps,
+          distance: day.distance,
+          activeCalories: day.activeCalories,
+          totalCalories: day.calories,
+          source: 'health_connect',
+          phoneSensorSteps: 0,
+          healthConnectSteps: day.steps,
+          streak: 0,
+          achievements: [],
+        };
+        try {
+          await api.saveDailyActivity(dataToSync);
+          syncedCount++;
+        } catch (e) {
+          console.warn('Failed to sync historical day:', day.date, e.message);
+        }
+      }
+      if (syncedCount > 0) {
+        toast.success(`Synced ${syncedCount} historical days`);
+        // Refresh summary
+        try {
+          const summaryResp = await getStepSummary(30);
+          const summaryData = summaryResp?.data || summaryResp;
+          if (isMountedRef.current) {
+            summaryRef.current = summaryData;
+            setSummary(summaryData);
+            setSummaryVersion(prev => prev + 1);
+          }
+        } catch (e) {
+          console.warn('Failed to refresh summary after manual historical sync', e);
+        }
+      } else {
+        toast.info('No historical data to sync');
+      }
+    } else {
+      toast.info('Switch to "Today" or load historical data to sync');
     }
-
-    await updateTodaySteps();
-    await syncActivityToBackend(false);
-  }, [selectedPeriod, updateTodaySteps, syncActivityToBackend, toast]);
+  }, [selectedPeriod, updateTodaySteps, syncActivityToBackend, toast, hasPermissions, activityData.dailyData]);
 
   // Check for baseline on screen focus
   useFocusEffect(

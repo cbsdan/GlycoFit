@@ -125,7 +125,7 @@ const FoodTrackerScreen = ({ navigation }) => {
       if (hasBaselineData) {
         // Fetch comprehensive risk assessment with detailed explanations
         try {
-          const assessmentResponse = await api.getDetailedFoodAssessment(7);
+          const assessmentResponse = await api.getDetailedFoodAssessment(7, isRefreshing);
           console.log('Detailed Food Assessment Response:', JSON.stringify(assessmentResponse, null, 2));
 
           if (assessmentResponse.success) {

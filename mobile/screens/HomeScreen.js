@@ -472,7 +472,7 @@ const HomeScreen = ({ navigation }) => {
       subtitle: 'Check predictions',
       icon: 'chart-line',
       color: '#3498DB',
-      action: () => navigation.navigate('AssessmentResults'),
+      action: () => navigation.navigate('Assessment'),
     },
   ];
 

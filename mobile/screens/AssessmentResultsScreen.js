@@ -20,10 +20,13 @@ const AssessmentResultsScreen = ({ navigation, route }) => {
   const { colors } = useTheme();
   const { prediction, isUpdate } = route.params || {};
 
-
+  useEffect(() => {
+    if (!prediction) {
+      navigation.goBack();
+    }
+  }, [prediction, navigation]);
 
   if (!prediction) {
-    navigation.goBack();
     return null;
   }
 
