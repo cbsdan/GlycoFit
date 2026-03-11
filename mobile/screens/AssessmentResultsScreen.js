@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   StyleSheet,
   SafeAreaView,
   Dimensions,
-  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../context/ThemeContext';
@@ -20,13 +19,8 @@ const AssessmentResultsScreen = ({ navigation, route }) => {
   const { colors } = useTheme();
   const { prediction, isUpdate } = route.params || {};
 
-  useEffect(() => {
-    if (!prediction) {
-      navigation.goBack();
-    }
-  }, [prediction, navigation]);
-
   if (!prediction) {
+    navigation.goBack();
     return null;
   }
 
@@ -101,8 +95,6 @@ const AssessmentResultsScreen = ({ navigation, route }) => {
     }
     navigation.navigate('DiabetesRiskAssessment');
   };
-
-
 
   const styles = StyleSheet.create({
     container: {

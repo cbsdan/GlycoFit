@@ -64,8 +64,14 @@ def get_risk_distribution():
         total_assessed = sum(distribution.values())
         total_users = db.users.count_documents({"role": {"$in": ["user", "admin"]}})
 
+        # Flatten distribution keys to top level so the frontend can access riskDist.low etc.
         return jsonify({
+            'low': distribution.get('low', 0),
+            'moderate': distribution.get('moderate', 0),
+            'high': distribution.get('high', 0),
+            'very_high': distribution.get('very_high', 0),
             'distribution': distribution,
+            'total': total_assessed,
             'total_assessed': total_assessed,
             'total_users': total_users,
             'unassessed': max(0, total_users - total_assessed)
@@ -1051,8 +1057,21 @@ def get_food_tracker_stats():
         type_agg = list(db.user_meals.aggregate(type_pipeline))
         food_types = {item['_id']: item['count'] for item in type_agg if item['_id']}
 
-        # Risk distribution from baselines
+        # Risk distribution from baselines (derived from baseline_risk_score)
         risk_pipeline = [
+            {"$match": {"baseline_risk_score": {"$exists": True, "$ne": None}}},
+            {"$addFields": {
+                "risk_level": {
+                    "$switch": {
+                        "branches": [
+                            {"case": {"$lt": ["$baseline_risk_score", 30]}, "then": "low"},
+                            {"case": {"$lt": ["$baseline_risk_score", 60]}, "then": "moderate"},
+                            {"case": {"$lt": ["$baseline_risk_score", 80]}, "then": "high"},
+                        ],
+                        "default": "very_high"
+                    }
+                }
+            }},
             {"$group": {"_id": "$risk_level", "count": {"$sum": 1}}}
         ]
         risk_agg = list(db.food_baseline_assessments.aggregate(risk_pipeline))
@@ -1086,35 +1105,42 @@ def get_step_tracker_stats():
         total_users = db.users.count_documents({"role": {"$in": ["user", "admin"]}})
         baselines = db.step_baselines.count_documents({})
 
-        # Average daily steps (last 30 days)
+        # Average daily steps (last 30 days) — data is in user_activities (keyed by Firebase uid)
+        cutoff = datetime.utcnow() - timedelta(days=30)
         step_pipeline = [
             {"$match": {
-                "date": {"$gte": (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d')}
+                "activity_type": "daily",
+                "date": {"$gte": cutoff},
+                "steps": {"$exists": True, "$gt": 0}
             }},
             {"$group": {
                 "_id": None,
-                "avg_steps": {"$avg": "$total_steps"},
+                "avg_steps": {"$avg": "$steps"},
                 "total_records": {"$sum": 1},
-                "goal_met": {"$sum": {"$cond": [{"$gte": ["$total_steps", 10000]}, 1, 0]}}
+                "goal_met": {"$sum": {"$cond": [{"$gte": ["$steps", 10000]}, 1, 0]}}
             }}
         ]
-        step_agg = list(db.step_daily_records.aggregate(step_pipeline))
+        step_agg = list(db.user_activities.aggregate(step_pipeline))
         stats = step_agg[0] if step_agg else {}
 
-        # Activity level distribution from baselines
+        # Activity level distribution from baselines (field is baseline_activity_level)
         level_pipeline = [
-            {"$group": {"_id": "$activity_level", "count": {"$sum": 1}}}
+            {"$group": {"_id": "$baseline_activity_level", "count": {"$sum": 1}}}
         ]
         level_agg = list(db.step_baselines.aggregate(level_pipeline))
         levels = {item['_id']: item['count'] for item in level_agg if item['_id']}
+
+        avg_steps = stats.get('avg_steps') or 0
+        total_recs_s = stats.get('total_records') or 0
+        goal_met = stats.get('goal_met') or 0
 
         return jsonify({
             'total_users': total_users,
             'baselines': baselines,
             'completion_rate': round(baselines / total_users * 100, 1) if total_users > 0 else 0,
-            'avg_daily_steps': round(stats.get('avg_steps', 0)),
-            'total_records_30d': stats.get('total_records', 0),
-            'goal_achievement_rate': round(stats.get('goal_met', 0) / stats.get('total_records', 1) * 100, 1) if stats.get('total_records') else 0,
+            'avg_daily_steps': round(avg_steps),
+            'total_records_30d': total_recs_s,
+            'goal_achievement_rate': round(goal_met / total_recs_s * 100, 1) if total_recs_s else 0,
             'activity_level_distribution': levels,
         })
     except Exception as e:
@@ -1183,30 +1209,33 @@ def get_smoking_tracker_stats():
         status_agg = list(db.smoking_baselines.aggregate(status_pipeline))
         statuses = {item['_id']: item['count'] for item in status_agg if item['_id']}
 
-        # Current smokers avg cigarettes
+        # Current smokers avg cigarettes (field is typical_cigarettes_per_day, not cigarettes_per_day)
         current_pipeline = [
             {"$match": {"smoking_status": "current"}},
             {"$group": {
                 "_id": None,
-                "avg_cigarettes": {"$avg": "$cigarettes_per_day"},
-                "avg_pack_years": {"$avg": "$pack_years"},
+                "avg_cigarettes": {"$avg": "$typical_cigarettes_per_day"},
+                "avg_years_smoked": {"$avg": "$years_smoked"},
                 "count": {"$sum": 1}
             }}
         ]
         current_agg = list(db.smoking_baselines.aggregate(current_pipeline))
         current_stats = current_agg[0] if current_agg else {}
 
-        # Former smokers
-        former_pipeline = [
-            {"$match": {"smoking_status": "former"}},
-            {"$group": {
-                "_id": None,
-                "avg_years_quit": {"$avg": "$years_since_quit"},
-                "count": {"$sum": 1}
-            }}
-        ]
-        former_agg = list(db.smoking_baselines.aggregate(former_pipeline))
-        former_stats = former_agg[0] if former_agg else {}
+        # Former smokers — compute avg years since quit from quit_date in Python
+        former_docs = list(db.smoking_baselines.find(
+            {"smoking_status": "former", "quit_date": {"$exists": True, "$ne": None}},
+            {"quit_date": 1}
+        ))
+        former_count = db.smoking_baselines.count_documents({"smoking_status": "former"})
+        years_list = []
+        for doc in former_docs:
+            try:
+                quit_dt = datetime.strptime(doc['quit_date'], '%Y-%m-%d')
+                years_list.append((datetime.utcnow() - quit_dt).days / 365.25)
+            except Exception:
+                pass
+        avg_years_quit = round(sum(years_list) / len(years_list), 1) if years_list else 0
 
         return jsonify({
             'total_users': total_users,
@@ -1215,12 +1244,12 @@ def get_smoking_tracker_stats():
             'status_distribution': statuses,
             'current_smokers': {
                 'count': current_stats.get('count', 0),
-                'avg_cigarettes_per_day': round(current_stats.get('avg_cigarettes', 0), 1),
-                'avg_pack_years': round(current_stats.get('avg_pack_years', 0), 1),
+                'avg_cigarettes_per_day': round(current_stats.get('avg_cigarettes') or 0, 1),
+                'avg_years_smoked': round(current_stats.get('avg_years_smoked') or 0, 1),
             },
             'former_smokers': {
-                'count': former_stats.get('count', 0),
-                'avg_years_since_quit': round(former_stats.get('avg_years_quit', 0), 1),
+                'count': former_count,
+                'avg_years_since_quit': avg_years_quit,
             },
         })
     except Exception as e:
@@ -1235,34 +1264,34 @@ def get_alcohol_tracker_stats():
         total_users = db.users.count_documents({"role": {"$in": ["user", "admin"]}})
         baselines = db.alcohol_baselines.count_documents({})
 
-        # Average drinks per week
+        # Average drinks per week (computed from baseline_drinks_per_occasion * baseline_drinking_days_per_week)
         drinks_pipeline = [
             {"$group": {
                 "_id": None,
-                "avg_drinks": {"$avg": "$drinks_per_week"},
-                "avg_binge": {"$avg": "$binge_frequency"},
+                "avg_drinks_per_week": {"$avg": {"$multiply": ["$baseline_drinks_per_occasion", "$baseline_drinking_days_per_week"]}},
+                "avg_binge_freq": {"$avg": "$baseline_binge_frequency_per_month"},
                 "count": {"$sum": 1}
             }}
         ]
         drinks_agg = list(db.alcohol_baselines.aggregate(drinks_pipeline))
         drinks_stats = drinks_agg[0] if drinks_agg else {}
 
-        # Drink type preferences
-        type_pipeline = [
-            {"$unwind": {"path": "$preferred_drink_types", "preserveNullAndEmptyArrays": False}},
-            {"$group": {"_id": "$preferred_drink_types", "count": {"$sum": 1}}},
+        # Drinking pattern distribution (field is drinking_pattern)
+        pattern_pipeline = [
+            {"$match": {"drinking_pattern": {"$exists": True, "$ne": None}}},
+            {"$group": {"_id": "$drinking_pattern", "count": {"$sum": 1}}},
             {"$sort": {"count": -1}}
         ]
-        type_agg = list(db.alcohol_baselines.aggregate(type_pipeline))
-        drink_types = {item['_id']: item['count'] for item in type_agg if item['_id']}
+        pattern_agg = list(db.alcohol_baselines.aggregate(pattern_pipeline))
+        drink_patterns = {item['_id']: item['count'] for item in pattern_agg if item['_id']}
 
         return jsonify({
             'total_users': total_users,
             'baselines': baselines,
             'completion_rate': round(baselines / total_users * 100, 1) if total_users > 0 else 0,
-            'avg_drinks_per_week': round(drinks_stats.get('avg_drinks', 0), 1),
-            'avg_binge_frequency': round(drinks_stats.get('avg_binge', 0), 2),
-            'drink_type_preferences': drink_types,
+            'avg_drinks_per_week': round(drinks_stats.get('avg_drinks_per_week') or 0, 1),
+            'avg_binge_frequency_per_month': round(drinks_stats.get('avg_binge_freq') or 0, 2),
+            'drinking_pattern_distribution': drink_patterns,
         })
     except Exception as e:
         logging.error(f"[ADMIN] Error in alcohol tracker stats: {e}", exc_info=True)
