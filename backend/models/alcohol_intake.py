@@ -150,7 +150,16 @@ class AlcoholBaseline:
     def find_by_user_id(cls, user_id: str) -> Optional['AlcoholBaseline']:
         db = get_db()
         collection = db[cls.COLLECTION_NAME]
+
         data = collection.find_one({'user_id': str(user_id)})
+        if not data:
+            data = collection.find_one({'user_id': user_id})
+        if not data:
+            try:
+                data = collection.find_one({'user_id': ObjectId(user_id)})
+            except Exception:
+                data = None
+
         return cls.from_dict(data) if data else None
     
     @classmethod
@@ -546,10 +555,17 @@ class AlcoholMetrics:
         db = get_db()
         collection = db[cls.COLLECTION_NAME]
         data = collection.find_one({'user_id': str(user_id)})
-        
+        if not data:
+            data = collection.find_one({'user_id': user_id})
+        if not data:
+            try:
+                data = collection.find_one({'user_id': ObjectId(user_id)})
+            except Exception:
+                data = None
+
         if not data:
             return None
-        
+
         return cls(
             user_id=data['user_id'],
             avg_drinks_per_week_7d=data.get('avg_drinks_per_week_7d', 0.0),

@@ -135,6 +135,23 @@ class StepTrackingService:
         except Exception as e:
             logging.error(f"Error computing step metrics: {str(e)}")
             raise
+
+    @staticmethod
+    def get_metrics(user_id):
+        """Get cached metrics if available, otherwise compute and return them."""
+        try:
+            metrics_obj = StepMetrics.find_by_user_id(user_id)
+            if metrics_obj:
+                # convert to dict if model instance
+                if hasattr(metrics_obj, 'to_dict'):
+                    return metrics_obj.to_dict()
+                return metrics_obj
+
+            # No cached metrics - compute now
+            return StepTrackingService.compute_metrics(user_id)
+        except Exception as e:
+            logging.error(f"Error getting step metrics: {str(e)}")
+            return None
     
     @staticmethod
     def assess_risk(user_id, metrics, baseline):

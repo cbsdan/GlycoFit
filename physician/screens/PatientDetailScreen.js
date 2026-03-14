@@ -18,12 +18,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
-import { patientAPI, soapNoteAPI } from '../services/api';
+import { patientAPI, soapNoteAPI, physicianAPI } from '../services/api';
 import MEDICINES from '../assets/medicines.json';
 
 const { width } = Dimensions.get('window');
 
 // ===== SOAP TEMPLATES =====
+// Keep only a minimal blank template. All other templates are user-managed and stored per-physician.
 const SOAP_TEMPLATES = [
   {
     id: 'blank',
@@ -33,88 +34,11 @@ const SOAP_TEMPLATES = [
     description: 'Start from scratch',
     data: {
       subjective: '',
-      objective: { ogtt: '', fasting_blood_sugar: '', hba1c: '', physical_exam_findings: '' },
+      objective: { physical_exam_findings: '' },
       assessment: '',
       plan: '',
       prescriptions: [],
       follow_up_required: false,
-    },
-  },
-  {
-    id: 'routine_diabetes',
-    name: 'Routine Diabetes Check-up',
-    icon: 'fitness',
-    color: '#3B82F6',
-    description: 'Standard follow-up for diabetes management',
-    data: {
-      subjective: 'Patient presents for routine diabetes follow-up. Reports adherence to medication regimen. Denies episodes of hypoglycemia or hyperglycemia. No new complaints.',
-      objective: { ogtt: '', fasting_blood_sugar: '', hba1c: '', physical_exam_findings: 'General: Well-appearing, no acute distress.\nExtremities: No edema, pedal pulses intact, no foot ulcers.\nNeuro: Monofilament sensation intact bilaterally.' },
-      assessment: 'Type 2 Diabetes Mellitus — stable on current regimen. Continue monitoring.',
-      plan: '1. Continue current medications.\n2. Reinforce diet and exercise adherence.\n3. Repeat HbA1c and FBS in 3 months.\n4. Annual eye and foot exam referral.',
-      prescriptions: [],
-      follow_up_required: true,
-    },
-  },
-  {
-    id: 'uncontrolled_glucose',
-    name: 'Uncontrolled Blood Sugar',
-    icon: 'trending-up',
-    color: '#EF4444',
-    description: 'HbA1c or FBS above target range',
-    data: {
-      subjective: 'Patient reports difficulty controlling blood sugars. Admits to dietary non-compliance. Reports increased thirst and frequent urination over the past week.',
-      objective: { ogtt: '', fasting_blood_sugar: '', hba1c: '', physical_exam_findings: 'General: Mildly fatigued appearance.\nVitals: Within normal limits.\nSkin: Dry mucous membranes, no skin breakdown.' },
-      assessment: 'Type 2 Diabetes Mellitus — poorly controlled. Elevated HbA1c/FBS above target. Consider medication adjustment.',
-      plan: '1. Adjust/intensify pharmacotherapy (see prescriptions).\n2. Refer to diabetes educator / nutritionist.\n3. Increase SMBG frequency.\n4. Re-check HbA1c in 4-6 weeks.\n5. Discuss lifestyle modification goals.',
-      prescriptions: [],
-      follow_up_required: true,
-    },
-  },
-  {
-    id: 'new_diagnosis',
-    name: 'New Diabetes Diagnosis',
-    icon: 'alert-circle',
-    color: '#F59E0B',
-    description: 'Initial workup for newly diagnosed patient',
-    data: {
-      subjective: 'Patient presents with recent lab findings suggestive of diabetes. Reports polyuria, polydipsia, and unintentional weight change. No prior history of diabetes. Family history: ',
-      objective: { ogtt: '', fasting_blood_sugar: '', hba1c: '', physical_exam_findings: 'General: Well-nourished, no acute distress.\nVitals: BP _/_, HR _, Weight _ kg, BMI _.\nFoot exam: Skin intact, pulses palpable, sensation intact.\nFundoscopy: To be scheduled.' },
-      assessment: 'New diagnosis of Type 2 Diabetes Mellitus based on lab criteria (FBS ≥126 mg/dL or HbA1c ≥6.5%).',
-      plan: '1. Initiate first-line therapy (see prescriptions).\n2. Diabetes education and self-management training.\n3. Medical nutrition therapy referral.\n4. Baseline labs: lipid panel, renal function, urinalysis.\n5. Ophthalmology and podiatry referrals.\n6. Follow up in 2-4 weeks to assess response.',
-      prescriptions: [
-        { medication: 'Metformin', dosage: '500mg', frequency: 'Once daily with meals', duration: '3 months' },
-      ],
-      follow_up_required: true,
-    },
-  },
-  {
-    id: 'hypoglycemia',
-    name: 'Hypoglycemic Episode',
-    icon: 'arrow-down-circle',
-    color: '#8B5CF6',
-    description: 'Assessment after a low blood sugar event',
-    data: {
-      subjective: 'Patient reports episode(s) of hypoglycemia — symptoms included dizziness, sweating, tremors, and confusion. Occurred at approximately _. Last meal was _. Currently on _ medication.',
-      objective: { ogtt: '', fasting_blood_sugar: '', hba1c: '', physical_exam_findings: 'General: Alert and oriented, no acute distress at time of visit.\nVitals: Stable.\nNeuro: No focal deficits.' },
-      assessment: 'Hypoglycemic episode — likely related to medication dosing / missed meal / increased activity. Evaluate medication regimen.',
-      plan: '1. Review and adjust hypoglycemia-causing agents (see prescriptions).\n2. Educate on hypoglycemia recognition, prevention, and treatment (15-15 rule).\n3. Consider CGM or more frequent SMBG.\n4. Adjust meal timing and carbohydrate intake.\n5. Follow up in 1-2 weeks.',
-      prescriptions: [],
-      follow_up_required: true,
-    },
-  },
-  {
-    id: 'annual_comprehensive',
-    name: 'Annual Comprehensive Review',
-    icon: 'clipboard',
-    color: '#10B981',
-    description: 'Full annual diabetes review with all screenings',
-    data: {
-      subjective: 'Patient presents for annual comprehensive diabetes review. Current medications: _.\nSelf-monitoring frequency: _.\nDiet adherence: _.\nExercise routine: _.\nReview of systems: Denies chest pain, vision changes, numbness, foot sores.',
-      objective: { ogtt: '', fasting_blood_sugar: '', hba1c: '', physical_exam_findings: 'General: Well-appearing.\nVitals: BP _/_, HR _, Weight _ kg, BMI _.\nEyes: Fundoscopy result: _.\nFeet: Skin intact, monofilament test normal, pulses palpable.\nNeuro: DTRs normal, no peripheral neuropathy signs.' },
-      assessment: 'Type 2 Diabetes Mellitus — annual review. Complications screening completed. Overall control: ',
-      plan: '1. Review and optimize medication regimen.\n2. Order labs: HbA1c, lipid panel, CMP, microalbumin/creatinine ratio.\n3. Confirm ophthalmology visit completed/scheduled.\n4. Foot care education reinforced.\n5. Flu / pneumonia vaccination status reviewed.\n6. Follow up in 3 months with lab results.',
-      prescriptions: [],
-      follow_up_required: true,
     },
   },
 ];
@@ -123,7 +47,7 @@ export default function PatientDetailScreen({ route, navigation }) {
   const { patient, relationship } = route.params;
   const { colors: theme } = useTheme();
   const { showToast } = useToast();
-  
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [patientData, setPatientData] = useState(null);
@@ -135,12 +59,13 @@ export default function PatientDetailScreen({ route, navigation }) {
   const [showVitalsModal, setShowVitalsModal] = useState(false);
   const [showSoapModal, setShowSoapModal] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [userTemplates, setUserTemplates] = useState([]);
   const [expandedNoteId, setExpandedNoteId] = useState(null);
   const [editingNote, setEditingNote] = useState(null);
   const [vitalsForm, setVitalsForm] = useState({ ogtt: '', fasting_blood_sugar: '', hba1c: '' });
   const [soapForm, setSoapForm] = useState({
     subjective: '',
-    objective: { ogtt: '', fasting_blood_sugar: '', hba1c: '', physical_exam_findings: '' },
+    objective: { physical_exam_findings: '' },
     assessment: '',
     plan: '',
     prescriptions: [],
@@ -149,6 +74,10 @@ export default function PatientDetailScreen({ route, navigation }) {
   const [newRx, setNewRx] = useState({ medication: '', dosage: '', frequency: '', duration: '' });
   const [showMedSuggestions, setShowMedSuggestions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [templateForm, setTemplateForm] = useState({ name: '', description: '', data: null, useCurrentForm: false });
 
   const filteredMeds = MEDICINES.filter((m) => {
     if (newRx.medication.length === 0) return false;
@@ -178,6 +107,17 @@ export default function PatientDetailScreen({ route, navigation }) {
   useEffect(() => {
     fetchPatientDetails();
   }, []);
+
+  const fetchTemplates = async () => {
+    try {
+      const res = await physicianAPI.getTemplates();
+      if (res && res.success) {
+        setUserTemplates(res.data || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch templates', e);
+    }
+  };
 
   useEffect(() => {
     if (selectedTab === 'consultations') fetchSoapNotes();
@@ -215,6 +155,92 @@ export default function PatientDetailScreen({ route, navigation }) {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openTemplateManager = () => {
+    fetchTemplates();
+    setShowTemplateManager(true);
+  };
+
+  const openEditTemplate = (tpl) => {
+    setEditingTemplate(tpl || null);
+    setTemplateForm({
+      name: tpl ? tpl.name : '',
+      description: tpl ? tpl.description : '',
+      data: tpl ? tpl.data : soapForm,
+      useCurrentForm: tpl ? false : true,
+    });
+    setShowTemplateEditor(true);
+  };
+
+  const handleSaveTemplate = async () => {
+    try {
+      setSubmitting(true);
+      const payload = {
+        name: templateForm.name,
+        description: templateForm.description,
+        data: templateForm.useCurrentForm ? soapForm : (templateForm.data || { subjective: '', objective: { physical_exam_findings: '' }, assessment: '', plan: '', prescriptions: [], follow_up_required: false }),
+      };
+      // Validate required fields
+      if (!payload.name || String(payload.name).trim().length === 0) {
+        showToast('Template name is required', 'error');
+        setSubmitting(false);
+        return;
+      }
+      let res;
+      if (editingTemplate) {
+        res = await physicianAPI.updateTemplate(editingTemplate.id, payload);
+      } else {
+        res = await physicianAPI.createTemplate(payload);
+      }
+      if (res && res.success) {
+        showToast(editingTemplate ? 'Template updated' : 'Template created', 'success');
+        // Close editor/manager
+        setShowTemplateManager(false);
+        setEditingTemplate(null);
+        setTemplateForm({ name: '', description: '', data: null, useCurrentForm: false });
+        setShowTemplateEditor(false);
+        fetchTemplates();
+
+        // If a new template was just created, open the SOAP modal prefilled with the template data
+        if (!editingTemplate) {
+          try {
+            const tplData = payload.data || {};
+            setSoapForm({
+              subjective: tplData.subjective || '',
+              objective: { ...(tplData.objective || { physical_exam_findings: '' }) },
+              assessment: tplData.assessment || '',
+              plan: tplData.plan || '',
+              prescriptions: tplData.prescriptions ? [...tplData.prescriptions] : [],
+              follow_up_required: tplData.follow_up_required || false,
+            });
+            setShowSoapModal(true);
+          } catch (e) {
+            console.error('Failed to open SOAP from template', e);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to save template', e);
+      showToast('Failed to save template', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (tplId) => {
+    try {
+      const confirmed = true; // Could add confirmation UI
+      if (!confirmed) return;
+      const res = await physicianAPI.deleteTemplate(tplId);
+      if (res && res.success) {
+        showToast('Template deleted', 'success');
+        fetchTemplates();
+      }
+    } catch (e) {
+      console.error('Failed to delete template', e);
+      showToast('Failed to delete template', 'error');
     }
   };
 
@@ -600,7 +626,7 @@ export default function PatientDetailScreen({ route, navigation }) {
 
   const handleEditNote = (note) => {
     setEditingNote(note);
-    if (note.consultation_mode === 'quick_vitals') {
+      if (note.consultation_mode === 'quick_vitals') {
       const obj = note.soap_objective || {};
       setVitalsForm({
         ogtt: obj.ogtt != null ? String(obj.ogtt) : '',
@@ -613,9 +639,6 @@ export default function PatientDetailScreen({ route, navigation }) {
       setSoapForm({
         subjective: note.soap_subjective || '',
         objective: {
-          ogtt: obj.ogtt != null ? String(obj.ogtt) : '',
-          fasting_blood_sugar: obj.fasting_blood_sugar != null ? String(obj.fasting_blood_sugar) : '',
-          hba1c: obj.hba1c != null ? String(obj.hba1c) : '',
           physical_exam_findings: obj.physical_exam_findings || '',
         },
         assessment: note.soap_assessment || '',
@@ -636,9 +659,6 @@ export default function PatientDetailScreen({ route, navigation }) {
         consultation_mode: 'full',
         subjective: soapForm.subjective,
         objective: {
-          ogtt: soapForm.objective.ogtt ? parseFloat(soapForm.objective.ogtt) : null,
-          fasting_blood_sugar: soapForm.objective.fasting_blood_sugar ? parseFloat(soapForm.objective.fasting_blood_sugar) : null,
-          hba1c: soapForm.objective.hba1c ? parseFloat(soapForm.objective.hba1c) : null,
           physical_exam_findings: soapForm.objective.physical_exam_findings,
         },
         assessment: soapForm.assessment,
@@ -653,11 +673,11 @@ export default function PatientDetailScreen({ route, navigation }) {
         res = await soapNoteAPI.create(payload);
       }
       if (res.success) {
-        showToast(editingNote ? 'SOAP note updated' : 'SOAP note created', 'success');
+        showToast(editingNote ? 'Consultation updated' : 'Consultation created', 'success');
         setShowSoapModal(false);
         setSoapForm({
           subjective: '',
-          objective: { ogtt: '', fasting_blood_sugar: '', hba1c: '', physical_exam_findings: '' },
+          objective: { physical_exam_findings: '' },
           assessment: '',
           plan: '',
           prescriptions: [],
@@ -690,7 +710,7 @@ export default function PatientDetailScreen({ route, navigation }) {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.soapActionBtn, { backgroundColor: theme.primary + '18', borderColor: theme.primary }]}
-            onPress={() => setShowTemplatePicker(true)}
+            onPress={async () => { await fetchTemplates(); setShowTemplatePicker(true); }}
           >
             <Ionicons name="document-text" size={22} color={theme.primary} />
             <Text style={[styles.soapActionBtnText, { color: theme.primary }]}>New Consultation</Text>
@@ -760,6 +780,25 @@ export default function PatientDetailScreen({ route, navigation }) {
                   )}
                 </View>
 
+                {/* Summary: objective snippet, prescriptions summary, follow-up flag (only when not expanded) */}
+                {!isExpanded && (
+                  <>
+                    {note.soap_prescriptions && note.soap_prescriptions.length > 0 ? (
+                      <View style={{ marginTop: 8 }}>
+                        <Text style={[styles.smallLabel, { color: theme.secondary }]}>Prescriptions</Text>
+                        <Text numberOfLines={1} style={[styles.smallText, { color: theme.text }]}>{note.soap_prescriptions.map(r => r.medication).join(', ')}</Text>
+                      </View>
+                    ) : null}
+
+                    {note.follow_up_required ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                        <Ionicons name="checkbox" size={18} color={theme.primary} />
+                        <Text style={{ color: theme.text, marginLeft: 8 }}>Follow-up required</Text>
+                      </View>
+                    ) : null}
+                  </>
+                )}
+
                 {/* For full consultations, show expand button */}
                 {!isQuick && (
                   <>
@@ -768,8 +807,8 @@ export default function PatientDetailScreen({ route, navigation }) {
                       onPress={() => setExpandedNoteId(isExpanded ? null : note.id)}
                     >
                       <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={theme.primary} />
-                      <Text style={[styles.viewSoapBtnText, { color: theme.primary }]}>
-                        {isExpanded ? 'Hide SOAP Note' : 'View SOAP Note'}
+                      <Text style={[styles.viewSoapBtnText, { color: theme.primary }]}> 
+                        {isExpanded ? 'Hide Consultation' : 'View Consultation'}
                       </Text>
                     </TouchableOpacity>
 
@@ -782,15 +821,13 @@ export default function PatientDetailScreen({ route, navigation }) {
                             {note.soap_subjective || 'N/A'}
                           </Text>
                         </View>
-                        {/* O — Physical Exam */}
-                        {obj.physical_exam_findings ? (
-                          <View style={styles.soapSection}>
-                            <Text style={[styles.soapSectionLabel, { color: theme.warning }]}>O — Physical Exam Findings</Text>
-                            <Text style={[styles.soapSectionText, { color: theme.text }]}>
-                              {obj.physical_exam_findings}
-                            </Text>
-                          </View>
-                        ) : null}
+                        {/* O — Physical Exam (always show in expanded view, show 'N/A' if empty) */}
+                        <View style={styles.soapSection}>
+                          <Text style={[styles.soapSectionLabel, { color: theme.warning }]}>O — Physical Exam Findings</Text>
+                          <Text style={[styles.soapSectionText, { color: theme.text }]}>
+                            {obj.physical_exam_findings || 'N/A'}
+                          </Text>
+                        </View>
                         {/* A */}
                         <View style={styles.soapSection}>
                           <Text style={[styles.soapSectionLabel, { color: theme.error }]}>A — Assessment</Text>
@@ -893,6 +930,101 @@ export default function PatientDetailScreen({ route, navigation }) {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      {/* ===== TEMPLATE MANAGER MODAL ===== */}
+      <Modal visible={showTemplateManager} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.templateManagerContent, { backgroundColor: theme.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Manage Templates</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TouchableOpacity onPress={() => setShowTemplateManager(false)}>
+                  <Ionicons name="close" size={24} color={theme.secondary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              {(userTemplates || []).length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="document-text-outline" size={48} color={theme.secondary} />
+                  <Text style={[styles.emptyText, { color: theme.secondary }]}>No custom templates</Text>
+                </View>
+              ) : (
+                (userTemplates || []).map((tpl) => (
+                  <View key={tpl.id} style={[styles.templateRow, { borderColor: theme.border }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.templateName, { color: theme.text }]}>{tpl.name}</Text>
+                      <Text style={[styles.templateDesc, { color: theme.secondary }]} numberOfLines={2}>{tpl.description}</Text>
+                    </View>
+                    <View style={styles.templateActions}>
+                      <TouchableOpacity onPress={() => openEditTemplate(tpl)} style={{ marginRight: 12 }}>
+                        <Ionicons name="create-outline" size={20} color={theme.primary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleDeleteTemplate(tpl.id)}>
+                        <Ionicons name="trash-outline" size={20} color={theme.error} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )}
+              <View style={{ height: 18 }} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ===== TEMPLATE EDIT MODAL ===== */}
+      <Modal visible={showTemplateEditor} transparent animationType="slide">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>{editingTemplate ? 'Edit Template' : 'New Template'}</Text>
+                <TouchableOpacity onPress={() => { setEditingTemplate(null); setShowTemplateManager(false); setShowTemplateEditor(false); setTemplateForm({ name: '', description: '', data: null, useCurrentForm: false }); }}>
+                  <Ionicons name="close" size={24} color={theme.secondary} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.modalBody}>
+                <Text style={[styles.inputLabel, { color: theme.secondary }]}>Template Name</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                  placeholder="e.g. Routine Diabetes Check-up"
+                  placeholderTextColor={theme.secondary}
+                  value={templateForm.name}
+                  onChangeText={(v) => setTemplateForm(p => ({ ...p, name: v }))}
+                />
+
+                <Text style={[styles.inputLabel, { color: theme.secondary }]}>Description</Text>
+                <TextInput
+                  style={[styles.textArea, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                  placeholder="Short description"
+                  placeholderTextColor={theme.secondary}
+                  value={templateForm.description}
+                  onChangeText={(v) => setTemplateForm(p => ({ ...p, description: v }))}
+                />
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                  <TouchableOpacity onPress={() => setTemplateForm(p => ({ ...p, useCurrentForm: !p.useCurrentForm }))}>
+                    <Ionicons name={templateForm.useCurrentForm ? 'checkbox' : 'square-outline'} size={22} color={theme.primary} />
+                  </TouchableOpacity>
+                  <Text style={{ color: theme.text, marginLeft: 8 }}>Use current form as template data</Text>
+                </View>
+
+                <View style={{ height: 12 }} />
+              </ScrollView>
+
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, { backgroundColor: theme.primary, opacity: submitting ? 0.6 : 1 }]}
+                onPress={handleSaveTemplate}
+                disabled={submitting}
+              >
+                {submitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.modalSubmitBtnText}>{editingTemplate ? 'Update Template' : 'Create Template'}</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* ===== TEMPLATE PICKER MODAL ===== */}
       <Modal visible={showTemplatePicker} transparent animationType="fade">
@@ -900,38 +1032,53 @@ export default function PatientDetailScreen({ route, navigation }) {
           <View style={[styles.templatePickerContent, { backgroundColor: theme.card }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: theme.text }]}>Choose a Template</Text>
-              <TouchableOpacity onPress={() => setShowTemplatePicker(false)}>
-                <Ionicons name="close" size={24} color={theme.secondary} />
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TouchableOpacity onPress={() => { openEditTemplate(null); setShowTemplatePicker(false); }} style={{ marginRight: 12 }}>
+                  <Text style={{ color: theme.primary }}>New</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={openTemplateManager} style={{ marginRight: 12 }}>
+                  <Text style={{ color: theme.primary }}>Manage</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowTemplatePicker(false)}>
+                  <Ionicons name="close" size={24} color={theme.secondary} />
+                </TouchableOpacity>
+              </View>
             </View>
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              {SOAP_TEMPLATES.map((tpl) => (
-                <TouchableOpacity
-                  key={tpl.id}
-                  style={[styles.templateCard, { backgroundColor: tpl.color + '10', borderColor: tpl.color + '40' }]}
-                  onPress={() => {
-                    setSoapForm({
-                      subjective: tpl.data.subjective,
-                      objective: { ...tpl.data.objective },
-                      assessment: tpl.data.assessment,
-                      plan: tpl.data.plan,
-                      prescriptions: tpl.data.prescriptions ? [...tpl.data.prescriptions] : [],
-                      follow_up_required: tpl.data.follow_up_required || false,
-                    });
-                    setShowTemplatePicker(false);
-                    setShowSoapModal(true);
-                  }}
-                >
-                  <View style={[styles.templateIconWrap, { backgroundColor: tpl.color + '20' }]}>
-                    <Ionicons name={tpl.icon} size={24} color={tpl.color} />
-                  </View>
-                  <View style={styles.templateInfo}>
-                    <Text style={[styles.templateName, { color: theme.text }]}>{tpl.name}</Text>
-                    <Text style={[styles.templateDesc, { color: theme.secondary }]}>{tpl.description}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={theme.secondary} />
-                </TouchableOpacity>
-              ))}
+              {(() => {
+                const combined = [
+                  ...(userTemplates || []).map((t) => ({ ...t, isCustom: true })),
+                  ...SOAP_TEMPLATES.map((t) => ({ ...t, isCustom: false }))
+                ];
+                return combined.map((tpl) => (
+                  <TouchableOpacity
+                    key={tpl.id}
+                    style={[styles.templateCard, { backgroundColor: (tpl.color || '#3B82F6') + '10', borderColor: (tpl.color || '#3B82F6') + '40' }]}
+                    onPress={() => {
+                      const data = tpl.data || tpl;
+                      setSoapForm({
+                        subjective: data.subjective || '',
+                        objective: { ...(data.objective || { physical_exam_findings: '' }) },
+                        assessment: data.assessment || '',
+                        plan: data.plan || '',
+                        prescriptions: data.prescriptions ? [...data.prescriptions] : [],
+                        follow_up_required: data.follow_up_required || false,
+                      });
+                      setShowTemplatePicker(false);
+                      setShowSoapModal(true);
+                    }}
+                  >
+                    <View style={[styles.templateIconWrap, { backgroundColor: (tpl.color || '#3B82F6') + '20' }]}>
+                      <Ionicons name={tpl.icon || 'document-text'} size={24} color={tpl.color || '#3B82F6'} />
+                    </View>
+                    <View style={styles.templateInfo}>
+                      <Text style={[styles.templateName, { color: theme.text }]}>{tpl.name}</Text>
+                      <Text style={[styles.templateDesc, { color: theme.secondary }]}>{tpl.description}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={theme.secondary} />
+                  </TouchableOpacity>
+                ));
+              })()}
               <View style={{ height: 16 }} />
             </ScrollView>
           </View>
@@ -947,7 +1094,7 @@ export default function PatientDetailScreen({ route, navigation }) {
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContentFull, { backgroundColor: theme.card }]}>
               <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>{editingNote ? 'Edit SOAP Consultation' : 'New SOAP Consultation'}</Text>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>{editingNote ? 'Edit Consultation' : 'New Consultation'}</Text>
                 <TouchableOpacity onPress={() => { setShowSoapModal(false); setEditingNote(null); }}>
                   <Ionicons name="close" size={24} color={theme.secondary} />
                 </TouchableOpacity>
@@ -970,36 +1117,6 @@ export default function PatientDetailScreen({ route, navigation }) {
 
                 {/* O — Objective */}
                 <Text style={[styles.soapFormSectionTitle, { color: theme.warning }]}>O — Objective</Text>
-
-                <Text style={[styles.inputLabel, { color: theme.secondary }]}>Oral Glucose Tolerance Test (mg/dL)</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  placeholder="e.g. 140"
-                  placeholderTextColor={theme.secondary}
-                  keyboardType="decimal-pad"
-                  value={soapForm.objective.ogtt}
-                  onChangeText={(v) => setSoapForm(p => ({ ...p, objective: { ...p.objective, ogtt: v } }))}
-                />
-
-                <Text style={[styles.inputLabel, { color: theme.secondary }]}>Fasting Blood Sugar (mg/dL)</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  placeholder="e.g. 100"
-                  placeholderTextColor={theme.secondary}
-                  keyboardType="decimal-pad"
-                  value={soapForm.objective.fasting_blood_sugar}
-                  onChangeText={(v) => setSoapForm(p => ({ ...p, objective: { ...p.objective, fasting_blood_sugar: v } }))}
-                />
-
-                <Text style={[styles.inputLabel, { color: theme.secondary }]}>HbA1c (%)</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  placeholder="e.g. 5.7"
-                  placeholderTextColor={theme.secondary}
-                  keyboardType="decimal-pad"
-                  value={soapForm.objective.hba1c}
-                  onChangeText={(v) => setSoapForm(p => ({ ...p, objective: { ...p.objective, hba1c: v } }))}
-                />
 
                 <Text style={[styles.inputLabel, { color: theme.secondary }]}>Physical Exam Findings</Text>
                 <TextInput
@@ -1149,7 +1266,7 @@ export default function PatientDetailScreen({ route, navigation }) {
                 {submitting ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={styles.modalSubmitBtnText}>{editingNote ? 'Update SOAP Note' : 'Save SOAP Note'}</Text>
+                  <Text style={styles.modalSubmitBtnText}>{editingNote ? 'Update Note' : 'Save Note'}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -1704,6 +1821,13 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     maxHeight: '75%',
   },
+  templateManagerContent: {
+    width: '100%',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 24,
+    maxHeight: '80%',
+  },
   templateCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1711,6 +1835,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     marginBottom: 10,
+  },
+  templateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  templateActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 12,
   },
   templateIconWrap: {
     width: 44,

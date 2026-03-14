@@ -35,14 +35,14 @@ def create_soap_note():
       - patient_id (required)
       - consultation_mode: 'quick_vitals' | 'full'  (default: 'full')
       
-    Quick Vitals fields (consultation_mode == 'quick_vitals'):
-      - ogtt (Oral Glucose Tolerance Test)
-      - fasting_blood_sugar
-      - hba1c
+        Quick Vitals fields (consultation_mode == 'quick_vitals'):
+            - ogtt (Oral Glucose Tolerance Test)
+            - fasting_blood_sugar
+            - hba1c
       
-    Full SOAP fields (consultation_mode == 'full'):
-      - subjective: text
-      - objective: { ogtt, fasting_blood_sugar, hba1c, physical_exam_findings }
+        Full SOAP fields (consultation_mode == 'full'):
+            - subjective: text
+            - objective: { physical_exam_findings }
       - assessment: text
       - plan: text
       - prescriptions: [{ medication, dosage, frequency, duration, notes }]
@@ -87,13 +87,10 @@ def create_soap_note():
             consultation.soap_plan = ''
             consultation.soap_prescriptions = []
         else:
-            # Full SOAP
+            # Full SOAP (objective no longer includes glucose labs)
             objective = data.get('objective', {})
             consultation.soap_subjective = data.get('subjective', '')
             consultation.soap_objective = {
-                'ogtt': objective.get('ogtt'),
-                'fasting_blood_sugar': objective.get('fasting_blood_sugar'),
-                'hba1c': objective.get('hba1c'),
                 'physical_exam_findings': objective.get('physical_exam_findings', ''),
             }
             consultation.soap_assessment = data.get('assessment', '')
@@ -164,9 +161,6 @@ def update_soap_note(note_id):
             if 'objective' in data:
                 obj = data['objective']
                 update_fields['soap_objective'] = {
-                    'ogtt': obj.get('ogtt'),
-                    'fasting_blood_sugar': obj.get('fasting_blood_sugar'),
-                    'hba1c': obj.get('hba1c'),
                     'physical_exam_findings': obj.get('physical_exam_findings', ''),
                 }
             if 'assessment' in data:

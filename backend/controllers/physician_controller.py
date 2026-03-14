@@ -346,3 +346,114 @@ def delete_physician_fcm_token():
     except Exception as e:
         logging.error(f"Error deleting FCM token: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
+
+
+def get_templates():
+    """Get consultation templates for current physician"""
+    try:
+        current_user = g.current_user
+        physician = Physician.find_by_user_id(current_user._id)
+        if not physician:
+            # Auto-create physician profile if missing
+            physician = Physician(user_id=current_user._id, specialization='General Practice', license_number='', years_of_experience=0)
+            physician.save()
+
+        return jsonify({'success': True, 'data': physician.consultation_templates}), 200
+    except Exception as e:
+        logging.error(f"Error getting templates: {str(e)}")
+        return jsonify({'success': False, 'message': 'Failed to get templates'}), 500
+
+
+def create_template():
+    """Create a new consultation template for the physician"""
+    try:
+        current_user = g.current_user
+        data = request.get_json() or {}
+        name = data.get('name')
+        tpl_data = data.get('data')
+        description = data.get('description', '')
+
+        if not name or not tpl_data:
+            return jsonify({'success': False, 'message': 'name and data are required'}), 400
+
+        physician = Physician.find_by_user_id(current_user._id)
+        if not physician:
+            physician = Physician(user_id=current_user._id, specialization='General Practice', license_number='', years_of_experience=0)
+
+        template = {
+            'id': str(ObjectId()),
+            'name': name,
+            'description': description,
+            'data': tpl_data,
+            'created_at': datetime.utcnow(),
+            'updated_at': datetime.utcnow(),
+        }
+
+        physician.consultation_templates = physician.consultation_templates or []
+        physician.consultation_templates.append(template)
+        physician.updated_at = datetime.utcnow()
+        physician.save()
+
+        return jsonify({'success': True, 'data': template}), 201
+    except Exception as e:
+        logging.error(f"Error creating template: {str(e)}")
+        return jsonify({'success': False, 'message': 'Failed to create template'}), 500
+
+
+def update_template(template_id):
+    """Update an existing consultation template"""
+    try:
+        current_user = g.current_user
+        data = request.get_json() or {}
+
+        physician = Physician.find_by_user_id(current_user._id)
+        if not physician:
+            return jsonify({'success': False, 'message': 'Physician profile not found'}), 404
+
+        templates = physician.consultation_templates or []
+        found = False
+        for i, t in enumerate(templates):
+            if t.get('id') == template_id:
+                # Update fields
+                t['name'] = data.get('name', t.get('name'))
+                t['description'] = data.get('description', t.get('description'))
+                t['data'] = data.get('data', t.get('data'))
+                t['updated_at'] = datetime.utcnow()
+                templates[i] = t
+                found = True
+                break
+
+        if not found:
+            return jsonify({'success': False, 'message': 'Template not found'}), 404
+
+        physician.consultation_templates = templates
+        physician.updated_at = datetime.utcnow()
+        physician.save()
+
+        return jsonify({'success': True, 'data': t}), 200
+    except Exception as e:
+        logging.error(f"Error updating template: {str(e)}")
+        return jsonify({'success': False, 'message': 'Failed to update template'}), 500
+
+
+def delete_template(template_id):
+    """Delete a consultation template"""
+    try:
+        current_user = g.current_user
+        physician = Physician.find_by_user_id(current_user._id)
+        if not physician:
+            return jsonify({'success': False, 'message': 'Physician profile not found'}), 404
+
+        templates = physician.consultation_templates or []
+        new_templates = [t for t in templates if t.get('id') != template_id]
+        if len(new_templates) == len(templates):
+            return jsonify({'success': False, 'message': 'Template not found'}), 404
+
+        physician.consultation_templates = new_templates
+        physician.updated_at = datetime.utcnow()
+        physician.save()
+
+        return jsonify({'success': True, 'message': 'Template deleted'}), 200
+    except Exception as e:
+        logging.error(f"Error deleting template: {str(e)}")
+        return jsonify({'success': False, 'message': 'Failed to delete template'}), 500

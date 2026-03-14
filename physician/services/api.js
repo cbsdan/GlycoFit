@@ -18,6 +18,7 @@ api.interceptors.request.use(
   async (config) => {
     try {
       let token = await SecureStore.getItemAsync('auth_token');
+      // Do not log tokens in production - keep requests silent to avoid terminal noise
       
       // Check if token exists and is not expired
       if (token && !isTokenExpired(token)) {
@@ -46,24 +47,27 @@ api.interceptors.response.use(
   (response) => {
     return response;
   },
-  async (error) => {
-    const originalRequest = error.config;
-    
+    async (error) => {
+    const originalRequest = error.config || {};
+
+    // Keep response interceptor quiet in normal operation to avoid console noise
+
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
-      
+
       // Clear any potentially invalid tokens
       if (error.response?.data?.message?.includes('expired')) {
         await SecureStore.deleteItemAsync('auth_token');
       }
-      
+
       // Only try to refresh if the user is actually logged in
       if (auth?.currentUser) {
         try {
           const newToken = await auth.currentUser.getIdToken(true);
-          
+
           if (newToken) {
             await SecureStore.setItemAsync('auth_token', newToken);
+            originalRequest.headers = originalRequest.headers || {};
             originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
             return api(originalRequest);
           }
@@ -72,7 +76,7 @@ api.interceptors.response.use(
         }
       }
     }
-    
+
     return Promise.reject(error);
   }
 );
@@ -279,6 +283,47 @@ export const physicianAPI = {
       return response.data;
     } catch (error) {
       console.error('Get physician stats error:', error);
+      throw error;
+    }
+  },
+
+  // Consultation templates (per-physician)
+  getTemplates: async () => {
+    try {
+      const response = await api.get('/physician/templates');
+      return response.data;
+    } catch (error) {
+      console.error('Get templates error:', error);
+      throw error;
+    }
+  },
+
+  createTemplate: async (data) => {
+    try {
+      const response = await api.post('/physician/templates', data);
+      return response.data;
+    } catch (error) {
+      console.error('Create template error:', error);
+      throw error;
+    }
+  },
+
+  updateTemplate: async (id, data) => {
+    try {
+      const response = await api.put(`/physician/templates/${id}`, data);
+      return response.data;
+    } catch (error) {
+      console.error('Update template error:', error);
+      throw error;
+    }
+  },
+
+  deleteTemplate: async (id) => {
+    try {
+      const response = await api.delete(`/physician/templates/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Delete template error:', error);
       throw error;
     }
   },

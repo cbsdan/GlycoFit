@@ -250,6 +250,21 @@ def get_patient_details(patient_id):
             physician.save()
             logging.info(f"Physician profile created successfully")
         
+        # If caller passed a Firebase UID via query param, resolve it to Mongo _id
+        firebase_uid = request.args.get('uid') or request.args.get('firebase_uid')
+        if firebase_uid:
+            try:
+                user_by_uid = User.find_by_uid(firebase_uid)
+                if not user_by_uid:
+                    return jsonify({
+                        'success': False,
+                        'message': 'Patient not found by uid'
+                    }), 404
+                # replace patient_id with resolved Mongo id for subsequent lookups
+                patient_id = str(user_by_uid._id)
+            except Exception as uid_err:
+                logging.warning(f"Error resolving uid {firebase_uid}: {str(uid_err)}")
+
         # Verify relationship exists - prefer active over other statuses
         # (there may be multiple records, e.g. one active + one inactive)
         relationship = PatientPhysician.find_by_patient_and_physician(patient_id, physician._id, status='active')
@@ -355,6 +370,27 @@ def get_patient_details(patient_id):
         # ========== COMPREHENSIVE HEALTH TRACKING DATA ==========
         db = get_db()
         patient_data['tracking_data'] = {}
+
+        # Prepare alternate id (firebase uid) for fallback lookups
+        alt_uid = getattr(patient, 'uid', None)
+
+        # Helper to try multiple id formats for model finders
+        def try_variants(find_fn):
+            # try original patient_id, then stringified mongo id, then firebase uid
+            variants = [patient_id, str(getattr(patient, '_id', ''))]
+            if alt_uid:
+                variants.append(alt_uid)
+
+            for vid in variants:
+                if not vid:
+                    continue
+                try:
+                    res = find_fn(vid)
+                    if res:
+                        return res, vid
+                except Exception:
+                    continue
+            return None, None
         
         # 1. Diabetes Assessment Result
         try:
@@ -379,10 +415,12 @@ def get_patient_details(patient_id):
         
         # 2. Food Risk Assessment
         try:
-            food_baseline = FoodBaselineAssessment.find_by_user_id(patient_id)
-            if food_baseline:
-                # Get comprehensive food risk
-                risk_data = FoodTrackingService.calculate_comprehensive_risk(patient_id, days=7)
+            # Food baseline is stored with ObjectId user references; use the resolved Mongo _id
+            mongo_id = str(getattr(patient, '_id', patient_id))
+            baseline_resp = FoodBaselineAssessment.get_user_baseline(mongo_id)
+            if baseline_resp and baseline_resp.get('baseline'):
+                # Use mongo_id when calculating comprehensive risk
+                risk_data = FoodTrackingService.calculate_comprehensive_risk(mongo_id, days=7)
                 if risk_data.get('success'):
                     patient_data['tracking_data']['food_tracker'] = {
                         'has_data': True,
@@ -400,11 +438,11 @@ def get_patient_details(patient_id):
             logging.warning(f"Error fetching food tracker data: {str(e)}")
             patient_data['tracking_data']['food_tracker'] = {'has_data': False}
         
-        # 3. Sleep Tracking
+        # 3. Sleep Tracking (try multiple id variants)
         try:
             sleep_service = SleepTrackingService()
-            sleep_summary = sleep_service.get_sleep_summary(patient_id)
-            if sleep_summary.get('has_baseline'):
+            sleep_summary, used_id = try_variants(lambda vid: sleep_service.get_sleep_summary(vid))
+            if sleep_summary and sleep_summary.get('has_baseline'):
                 metrics = sleep_summary.get('metrics', {})
                 risk = sleep_summary.get('risk_assessment', {})
                 patient_data['tracking_data']['sleep_tracking'] = {
@@ -415,17 +453,56 @@ def get_patient_details(patient_id):
                     'risk_category': risk.get('category'),
                     'days_tracked': metrics.get('days_with_data_7d')
                 }
+                # mark source as mongo
+                patient_data['tracking_data']['sleep_tracking']['source'] = 'mongo'
             else:
+                # Firestore fallback: if patient has firebase uid, try fetching from Firestore collections
                 patient_data['tracking_data']['sleep_tracking'] = {'has_data': False}
+                logging.info(f"Sleep tracking not found in Mongo for patient {patient_id}; attempting Firestore fallback (uid={alt_uid})")
+                try:
+                    from config.firebase_admin import get_firebase_app
+                    import firebase_admin
+                    from firebase_admin import firestore
+
+                    if alt_uid:
+                        fs = firestore.client(get_firebase_app())
+                        # try several common collection names
+                        collections_to_try = ['sleep_metrics', 'sleep_daily_records', 'sleep_baselines']
+                        found = None
+                        for coll in collections_to_try:
+                            try:
+                                docs = fs.collection(coll).where('user_id', '==', alt_uid).limit(1).get()
+                                if not docs:
+                                    docs = fs.collection(coll).where('uid', '==', alt_uid).limit(1).get()
+                                if docs:
+                                    doc = docs[0]
+                                    data = doc.to_dict()
+                                    # Map common fields if present
+                                    patient_data['tracking_data']['sleep_tracking'] = {
+                                        'has_data': True,
+                                        'avg_sleep_7d': data.get('avg_sleep_7d') or data.get('avg_sleep') or None,
+                                        'avg_sleep_30d': data.get('avg_sleep_30d') or None,
+                                        'risk_score': data.get('risk_score') or None,
+                                        'risk_category': data.get('risk_category') or None,
+                                        'days_tracked': data.get('days_with_data_7d') or data.get('days_tracked') or None,
+                                        'source': f'firestore:{coll}'
+                                    }
+                                    logging.info(f"Found sleep tracking in Firestore collection '{coll}' for uid={alt_uid}")
+                                    found = True
+                                    break
+                            except Exception:
+                                continue
+                except Exception as e:
+                    logging.warning(f"Firestore sleep fallback error: {str(e)}")
         except Exception as e:
             logging.warning(f"Error fetching sleep tracking data: {str(e)}")
             patient_data['tracking_data']['sleep_tracking'] = {'has_data': False}
         
-        # 4. Step Counter
+        # 4. Step Counter (try multiple id variants)
         try:
-            step_baseline = StepBaseline.find_by_user_id(patient_id)
+            step_baseline, used_id = try_variants(lambda vid: StepBaseline.find_by_user_id(vid))
             if step_baseline:
-                step_metrics = StepTrackingService.get_metrics(patient_id)
+                step_metrics = StepTrackingService.get_metrics(used_id)
                 if step_metrics:
                     patient_data['tracking_data']['step_counter'] = {
                         'has_data': True,
@@ -437,17 +514,19 @@ def get_patient_details(patient_id):
                     }
                 else:
                     patient_data['tracking_data']['step_counter'] = {'has_data': True, 'baseline_only': True}
+                # mark source as mongo
+                patient_data['tracking_data']['step_counter']['source'] = 'mongo'
             else:
                 patient_data['tracking_data']['step_counter'] = {'has_data': False}
         except Exception as e:
             logging.warning(f"Error fetching step counter data: {str(e)}")
             patient_data['tracking_data']['step_counter'] = {'has_data': False}
         
-        # 5. Smoking Intake
+        # 5. Smoking Intake (try multiple id variants)
         try:
             smoking_service = SmokingTrackingService()
-            smoking_summary = smoking_service.get_smoking_summary(patient_id)
-            if smoking_summary.get('has_baseline'):
+            smoking_summary, used_id = try_variants(lambda vid: smoking_service.get_smoking_summary(vid))
+            if smoking_summary and smoking_summary.get('has_baseline'):
                 baseline = smoking_summary.get('baseline', {})
                 metrics = smoking_summary.get('metrics', {})
                 risk = smoking_summary.get('risk_assessment', {})
@@ -459,30 +538,84 @@ def get_patient_details(patient_id):
                     'risk_category': risk.get('risk_category'),
                     'explanation': risk.get('explanation')
                 }
+                patient_data['tracking_data']['smoking_intake']['source'] = 'mongo'
             else:
                 patient_data['tracking_data']['smoking_intake'] = {'has_data': False}
         except Exception as e:
             logging.warning(f"Error fetching smoking intake data: {str(e)}")
             patient_data['tracking_data']['smoking_intake'] = {'has_data': False}
         
-        # 6. Alcohol Intake
+        # 6. Alcohol Intake (try multiple id variants)
         try:
-            alcohol_baseline = AlcoholBaseline.find_by_user_id(patient_id)
+            alcohol_baseline, used_id = try_variants(lambda vid: AlcoholBaseline.find_by_user_id(vid))
             if alcohol_baseline:
-                alcohol_metrics = AlcoholMetrics.find_by_user_id(patient_id)
-                if alcohol_metrics:
+                alcohol_metrics = AlcoholMetrics.find_by_user_id(used_id)
+
+                def _model_to_dict(obj, keys):
+                    if not obj:
+                        return {}
+                    if isinstance(obj, dict):
+                        return obj
+                    if hasattr(obj, 'to_dict') and callable(obj.to_dict):
+                        try:
+                            return obj.to_dict()
+                        except Exception:
+                            pass
+                    # Fallback: pick attributes
+                    out = {}
+                    for k in keys:
+                        out[k] = getattr(obj, k, None)
+                    return out
+
+                keys = ['drinks_per_week_7d', 'drinks_per_week_30d', 'risk_score', 'risk_category', 'consumption_pattern']
+                am = _model_to_dict(alcohol_metrics, keys)
+                if am and any(am.get(k) is not None for k in keys):
                     patient_data['tracking_data']['alcohol_intake'] = {
                         'has_data': True,
-                        'drinks_per_week_7d': alcohol_metrics.get('drinks_per_week_7d'),
-                        'drinks_per_week_30d': alcohol_metrics.get('drinks_per_week_30d'),
-                        'risk_score': alcohol_metrics.get('risk_score'),
-                        'risk_category': alcohol_metrics.get('risk_category'),
-                        'consumption_pattern': alcohol_metrics.get('consumption_pattern')
+                        'drinks_per_week_7d': am.get('drinks_per_week_7d'),
+                        'drinks_per_week_30d': am.get('drinks_per_week_30d'),
+                        'risk_score': am.get('risk_score'),
+                        'risk_category': am.get('risk_category'),
+                        'consumption_pattern': am.get('consumption_pattern')
                     }
+                    patient_data['tracking_data']['alcohol_intake']['source'] = 'mongo'
                 else:
-                    patient_data['tracking_data']['alcohol_intake'] = {'has_data': True, 'baseline_only': True}
+                    patient_data['tracking_data']['alcohol_intake'] = {'has_data': True, 'baseline_only': True, 'source': 'mongo'}
             else:
+                # Firestore fallback for alcohol: check Firestore collections by firebase uid
                 patient_data['tracking_data']['alcohol_intake'] = {'has_data': False}
+                logging.info(f"Alcohol tracking not found in Mongo for patient {patient_id}; attempting Firestore fallback (uid={alt_uid})")
+                try:
+                    from config.firebase_admin import get_firebase_app
+                    import firebase_admin
+                    from firebase_admin import firestore
+
+                    if alt_uid:
+                        fs = firestore.client(get_firebase_app())
+                        collections_to_try = ['alcohol_metrics', 'alcohol_daily_records', 'alcohol_baselines']
+                        for coll in collections_to_try:
+                            try:
+                                docs = fs.collection(coll).where('user_id', '==', alt_uid).limit(1).get()
+                                if not docs:
+                                    docs = fs.collection(coll).where('uid', '==', alt_uid).limit(1).get()
+                                if docs:
+                                    doc = docs[0]
+                                    data = doc.to_dict()
+                                    patient_data['tracking_data']['alcohol_intake'] = {
+                                        'has_data': True,
+                                        'drinks_per_week_7d': data.get('avg_drinks_per_week_7d') or data.get('drinks_per_week') or None,
+                                        'drinks_per_week_30d': data.get('avg_drinks_per_week_30d') or None,
+                                        'risk_score': data.get('risk_score') or None,
+                                        'risk_category': data.get('risk_category') or None,
+                                        'consumption_pattern': data.get('consumption_pattern') or data.get('drinking_pattern') or None,
+                                        'source': f'firestore:{coll}'
+                                    }
+                                    logging.info(f"Found alcohol tracking in Firestore collection '{coll}' for uid={alt_uid}")
+                                    break
+                            except Exception:
+                                continue
+                except Exception as e:
+                    logging.warning(f"Firestore alcohol fallback error: {str(e)}")
         except Exception as e:
             logging.warning(f"Error fetching alcohol intake data: {str(e)}")
             patient_data['tracking_data']['alcohol_intake'] = {'has_data': False}

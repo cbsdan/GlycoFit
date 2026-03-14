@@ -118,7 +118,17 @@ class StepBaseline:
         """Find baseline by user ID"""
         db = get_db()
         collection = db[cls.COLLECTION_NAME]
+
+        # Try multiple id formats to be resilient to stored formats
         data = collection.find_one({"user_id": user_id})
+        if not data:
+            data = collection.find_one({"user_id": str(user_id)})
+        if not data:
+            try:
+                data = collection.find_one({"user_id": ObjectId(user_id)})
+            except Exception:
+                data = None
+
         if data:
             return cls.from_dict(data)
         return None
@@ -257,7 +267,16 @@ class StepMetrics:
         """Find metrics by user ID"""
         db = get_db()
         collection = db[cls.COLLECTION_NAME]
+
         data = collection.find_one({"user_id": user_id})
+        if not data:
+            data = collection.find_one({"user_id": str(user_id)})
+        if not data:
+            try:
+                data = collection.find_one({"user_id": ObjectId(user_id)})
+            except Exception:
+                data = None
+
         if data:
             return cls.from_dict(data)
         return None
