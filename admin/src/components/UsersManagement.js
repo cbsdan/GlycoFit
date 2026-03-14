@@ -21,6 +21,7 @@ import {
 } from '@mui/material';
 import userService from '../services/userService';
 import MealModal from './MealModal';
+import UserViewModal from './UserViewModal';
 
 function UsersManagement() {
   const [users, setUsers] = useState([]);
@@ -30,6 +31,8 @@ function UsersManagement() {
   const [dialogType, setDialogType] = useState('disable');
   const [formData, setFormData] = useState({ reason: '', isPermanent: false, endDate: '' });
   const [mealModalOpen, setMealModalOpen] = useState(false);
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [viewUser, setViewUser] = useState(null);
   const [query, setQuery] = useState('');
 
   const filteredUsers = useMemo(() => {
@@ -73,6 +76,16 @@ function UsersManagement() {
   const handleOpenMealModal = (user) => {
     setSelectedUser(user);
     setMealModalOpen(true);
+  };
+
+  const handleOpenViewModal = (user) => {
+    setViewUser(user);
+    setViewModalOpen(true);
+  };
+
+  const handleCloseViewModal = () => {
+    setViewModalOpen(false);
+    setViewUser(null);
   };
 
   const handleCloseDialog = () => {
@@ -143,6 +156,14 @@ function UsersManagement() {
                 </TableCell>
                 <TableCell>
                   <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="secondary"
+                      onClick={() => handleOpenViewModal(user)}
+                    >
+                      View
+                    </Button>
                     <Button
                       size="small"
                       variant="outlined"
@@ -235,6 +256,13 @@ function UsersManagement() {
           userName={`${selectedUser.first_name} ${selectedUser.last_name}`}
         />
       )}
+
+      {/* User View Modal */}
+      <UserViewModal
+        open={viewModalOpen}
+        onClose={handleCloseViewModal}
+        user={viewUser}
+      />
 
 
     </Box>

@@ -265,27 +265,37 @@ def get_user_trackers(uid):
             return jsonify(error='User not found'), 404
 
         user_id_str = str(user._id)
+        user_obj_id = ObjectId(user_id_str)
         trackers = {}
 
-        # Food baseline
-        food_bl = db.food_baseline_assessments.find_one({"user_id": user_id_str})
+        # Food baseline — stored with ObjectId user_id
+        food_bl = db.food_baseline_assessments.find_one({"user_id": user_obj_id})
+        raw_score = food_bl.get('baseline_risk_score') if food_bl else None
+        if raw_score is not None:
+            if raw_score <= 30:
+                food_risk_level = 'low'
+            elif raw_score <= 60:
+                food_risk_level = 'moderate'
+            elif raw_score <= 80:
+                food_risk_level = 'high'
+            else:
+                food_risk_level = 'very_high'
+        else:
+            food_risk_level = None
         trackers['food'] = {
             'has_baseline': food_bl is not None,
-            'baseline_risk_score': food_bl.get('risk_score') if food_bl else None,
-            'baseline_risk_level': food_bl.get('risk_level') if food_bl else None,
+            'baseline_risk_score': round(raw_score, 1) if raw_score is not None else None,
+            'baseline_risk_level': food_risk_level,
         }
 
-        # Step baseline & recent
+        # Step baseline & step_metrics (precomputed aggregates)
         step_bl = db.step_baselines.find_one({"user_id": user_id_str})
-        recent_steps = list(db.step_daily_records.find(
-            {"user_id": user_id_str}
-        ).sort("date", -1).limit(7))
-        avg_steps_7d = sum(r.get('total_steps', 0) for r in recent_steps) / max(len(recent_steps), 1)
+        step_metrics_doc = db.step_metrics.find_one({"user_id": user_id_str})
         trackers['steps'] = {
             'has_baseline': step_bl is not None,
-            'avg_daily_steps_7d': round(avg_steps_7d),
-            'activity_level': step_bl.get('activity_level') if step_bl else None,
-            'recent_records': len(recent_steps),
+            'avg_daily_steps_7d': round(step_metrics_doc.get('avg_steps_7d') or 0) if step_metrics_doc else 0,
+            'activity_level': step_bl.get('baseline_activity_level') if step_bl else None,
+            'recent_records': (step_metrics_doc.get('days_with_data_7d') or 0) if step_metrics_doc else 0,
         }
 
         # Sleep baseline & recent
@@ -296,7 +306,7 @@ def get_user_trackers(uid):
         avg_sleep_7d = sum(r.get('sleep_duration_hours', 0) for r in recent_sleep) / max(len(recent_sleep), 1)
         trackers['sleep'] = {
             'has_baseline': sleep_bl is not None,
-            'avg_sleep_hours_7d': round(avg_sleep_7d, 1),
+            'avg_sleep_hours_7d': round(avg_sleep_7d, 1) if recent_sleep else None,
             'baseline_avg': sleep_bl.get('baseline_avg_sleep_hours') if sleep_bl else None,
             'recent_records': len(recent_sleep),
         }
@@ -306,16 +316,22 @@ def get_user_trackers(uid):
         trackers['smoking'] = {
             'has_baseline': smoking_bl is not None,
             'status': smoking_bl.get('smoking_status') if smoking_bl else None,
-            'cigarettes_per_day': smoking_bl.get('cigarettes_per_day') if smoking_bl else None,
-            'pack_years': smoking_bl.get('pack_years') if smoking_bl else None,
+            'cigarettes_per_day': smoking_bl.get('typical_cigarettes_per_day') if smoking_bl else None,
+            'pack_years': smoking_bl.get('years_smoked') if smoking_bl else None,
         }
 
-        # Alcohol baseline
+        # Alcohol baseline — drinks_per_week is not stored directly, compute it
         alcohol_bl = db.alcohol_baselines.find_one({"user_id": user_id_str})
+        if alcohol_bl:
+            days_pw = alcohol_bl.get('baseline_drinking_days_per_week') or 0
+            drinks_poc = alcohol_bl.get('baseline_drinks_per_occasion') or 0
+            drinks_per_week = round(days_pw * drinks_poc, 2)
+        else:
+            drinks_per_week = None
         trackers['alcohol'] = {
             'has_baseline': alcohol_bl is not None,
-            'drinks_per_week': alcohol_bl.get('drinks_per_week') if alcohol_bl else None,
-            'binge_frequency': alcohol_bl.get('binge_frequency') if alcohol_bl else None,
+            'drinks_per_week': drinks_per_week,
+            'binge_frequency': alcohol_bl.get('baseline_binge_frequency_per_month') if alcohol_bl else None,
         }
 
         return jsonify(trackers)
@@ -370,26 +386,36 @@ def get_user_activity(uid):
         if not user:
             return jsonify(error='User not found'), 404
 
-        user_id_str = str(user._id)
-        start, end = _parse_date_range(30)
+        # user_activities stores field "uid" = Firebase UID (set by activity_controller)
+        # health_data stores field "user_id" = Firebase UID (set by health_data_controller)
+        firebase_uid = user.uid
 
-        # Activity records
+        # Activity records — field is "uid", value is Firebase UID
         activities = list(db.user_activities.find({
-            "user_id": user_id_str,
-            "date": {"$gte": start.strftime('%Y-%m-%d'), "$lte": end.strftime('%Y-%m-%d')}
+            "uid": firebase_uid,
+            "activity_type": "daily"
         }).sort("date", -1).limit(30))
 
-        activity_data = [{
-            'date': a.get('date'),
-            'steps': a.get('steps'),
-            'distance': a.get('distance'),
-            'calories_burned': a.get('calories_burned'),
-            'active_minutes': a.get('active_minutes'),
-        } for a in activities]
+        activity_data = []
+        for a in activities:
+            raw_date = a.get('date')
+            if raw_date is None:
+                date_str = None
+            elif hasattr(raw_date, 'isoformat'):
+                date_str = raw_date.isoformat()
+            else:
+                date_str = str(raw_date)
+            activity_data.append({
+                'date': date_str,
+                'steps': a.get('steps'),
+                'distance': a.get('distance'),
+                'calories_burned': a.get('active_calories'),  # stored as active_calories
+                'active_minutes': a.get('active_minutes'),
+            })
 
-        # Health data (Health Connect synced data)
+        # Health data (Health Connect synced data) — field "user_id" = Firebase UID
         health_records = list(db.health_data.find({
-            "user_id": user_id_str,
+            "user_id": firebase_uid,
         }).sort("created_at", -1).limit(20))
 
         health_data = [{

@@ -136,29 +136,29 @@ function Dashboard() {
 
   // ── Derived chart data ─────────────────────────────────────────────────
   const distMap = riskDist?.distribution || {};
-  const riskLabels    = ['low', 'moderate', 'high', 'very_high'];
-  const riskDisplay   = ['Low', 'Moderate', 'High', 'Very High'];
-  const riskValues    = riskLabels.map((k) => distMap[k] || 0);
+  const riskLabels = ['low', 'moderate', 'high', 'very_high'];
+  const riskDisplay = ['Low', 'Moderate', 'High', 'Very High'];
+  const riskValues = riskLabels.map((k) => distMap[k] || 0);
   const totalAssessed = riskDist?.total_assessed || 0;
-  const unassessed    = riskDist?.unassessed || 0;
+  const unassessed = riskDist?.unassessed || 0;
 
-  const adoptionMap    = trackerAdoption?.adoption || {};
+  const adoptionMap = trackerAdoption?.adoption || {};
   const adoptionLabels = Object.keys(adoptionMap).map((k) => k.charAt(0).toUpperCase() + k.slice(1));
   const adoptionValues = Object.values(adoptionMap);
-  const totalUsers     = trackerAdoption?.total_users || 0;
+  const totalUsers = trackerAdoption?.total_users || 0;
 
-  const byStatus       = consultSummary?.by_status || {};
-  const consultTotal   = consultSummary?.total || 0;
-  const avgRating      = consultSummary?.avg_rating || 0;
+  const byStatus = consultSummary?.by_status || {};
+  const consultTotal = consultSummary?.total || 0;
+  const avgRating = consultSummary?.avg_rating || 0;
   const completedCount = byStatus.completed || 0;
   const scheduledCount = byStatus.scheduled || 0;
   const cancelledCount = byStatus.cancelled || 0;
 
-  const registrations  = recentActivity?.recent_registrations || [];
+  const registrations = recentActivity?.recent_registrations || [];
   const consultHistory = recentActivity?.recent_consultations || [];
-  const highRiskAlerts = recentActivity?.high_risk_alerts    || [];
+  const highRiskAlerts = recentActivity?.high_risk_alerts || [];
 
-  const riskColor = (cat) => ({ low:'#10b981', moderate:'#f59e0b', high:'#ef4444', very_high:'#991b1b' }[cat] || '#9ca3af');
+  const riskColor = (cat) => ({ low: '#10b981', moderate: '#f59e0b', high: '#ef4444', very_high: '#991b1b' }[cat] || '#9ca3af');
 
   return (
     <Box>
@@ -402,19 +402,9 @@ function Dashboard() {
           />
         </Grid>
       </Grid>
-      
-      {/* ── Row 2: Risk Trend + Component Averages ──────────────────────── */}
-      <Grid container spacing={3} sx={{ mt: 2 }}>
-        <Grid item xs={12} md={8}>
-          <RiskTrendChart />
-        </Grid>
-        <Grid item xs={12} md={4}>
-          <RiskComponentsChart />
-        </Grid>
-      </Grid>
 
-      {/* ── Row 3: Risk Distribution + Tracker Adoption + Consultations/Activity */}
-      <Grid container spacing={3} sx={{ mt: 2, alignItems: "start" }} >
+      {/* ── Row 2: Risk Distribution + Tracker Adoption + Risk Component Averages ── */}
+      <Grid container spacing={3} sx={{ mt: 2 }}>
 
         {/* Risk Distribution Doughnut */}
         <Grid item xs={12} md={6} lg={4}>
@@ -520,168 +510,178 @@ function Dashboard() {
           </Paper>
         </Grid>
 
-        {/* Consultations + Recent Activity */}
-        <Grid item xs={12} lg={4}>
-          {/* Consultations Summary */}
-          <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0', mb: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                <VideoCallIcon sx={{ mr: 1, verticalAlign: 'middle', color: '#06b6d4' }} />
-                Consultations
+        <Grid item xs={12} md={12} lg={4}>
+          <RiskComponentsChart />
+        </Grid>
+
+      </Grid>
+
+      {/* ── Row 3: Risk Score Trend + Consultations / Recent Activity ── */}
+      <Grid container spacing={3} sx={{ mt: 2, alignItems: "start" }}>
+        <Grid item xs={12} md={8}>
+          <RiskTrendChart />
+        </Grid>
+        <Grid item xs={12} md={4}>
+            {/* Consultations Summary */}
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0', mb: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  <VideoCallIcon sx={{ mr: 1, verticalAlign: 'middle', color: '#06b6d4' }} />
+                  Consultations
+                </Typography>
+                <Tooltip title="View Summary">
+                  <IconButton size="small" onClick={() => setSummaryDialog({ open: true, chart: 'consultations' })}>
+                    <InfoOutlinedIcon fontSize="small" sx={{ color: '#9ca3af' }} />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                Summary of all physician–patient consultations by status and average patient rating.
               </Typography>
-              <Tooltip title="View Summary">
-                <IconButton size="small" onClick={() => setSummaryDialog({ open: true, chart: 'consultations' })}>
-                  <InfoOutlinedIcon fontSize="small" sx={{ color: '#9ca3af' }} />
-                </IconButton>
-              </Tooltip>
-            </Box>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-              Summary of all physician–patient consultations by status and average patient rating.
-            </Typography>
-            {consultSummary ? (
-              <Box>
-                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                  <Chip label={`${consultTotal} Total`} size="small" sx={{ bgcolor: '#ede9fe', color: '#7c3aed', fontWeight: 600 }} />
-                  <Chip label={`${completedCount} Completed`} size="small" sx={{ bgcolor: '#d1fae5', color: '#065f46', fontWeight: 600 }} />
-                  <Chip label={`${scheduledCount} Scheduled`} size="small" sx={{ bgcolor: '#dbeafe', color: '#1e40af', fontWeight: 600 }} />
-                  {cancelledCount > 0 && (
-                    <Chip label={`${cancelledCount} Cancelled`} size="small" sx={{ bgcolor: '#fee2e2', color: '#991b1b', fontWeight: 600 }} />
+              {consultSummary ? (
+                <Box>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Chip label={`${consultTotal} Total`} size="small" sx={{ bgcolor: '#ede9fe', color: '#7c3aed', fontWeight: 600 }} />
+                    <Chip label={`${completedCount} Completed`} size="small" sx={{ bgcolor: '#d1fae5', color: '#065f46', fontWeight: 600 }} />
+                    <Chip label={`${scheduledCount} Scheduled`} size="small" sx={{ bgcolor: '#dbeafe', color: '#1e40af', fontWeight: 600 }} />
+                    {cancelledCount > 0 && (
+                      <Chip label={`${cancelledCount} Cancelled`} size="small" sx={{ bgcolor: '#fee2e2', color: '#991b1b', fontWeight: 600 }} />
+                    )}
+                  </Box>
+                  {avgRating > 0 && (
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                      ⭐ Avg rating: {avgRating}/5 ({consultSummary.rated_count || 0} rated)
+                    </Typography>
                   )}
                 </Box>
-                {avgRating > 0 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    ⭐ Avg rating: {avgRating}/5 ({consultSummary.rated_count || 0} rated)
-                  </Typography>
-                )}
+              ) : <CircularProgress size={24} />}
+            </Paper>
+
+            {/* Recent Activity with Tabs */}
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  🕐 Recent Activity
+                </Typography>
+                <Tooltip title="View Summary">
+                  <IconButton size="small" onClick={() => setSummaryDialog({ open: true, chart: 'recentActivity' })}>
+                    <InfoOutlinedIcon fontSize="small" sx={{ color: '#9ca3af' }} />
+                  </IconButton>
+                </Tooltip>
               </Box>
-            ) : <CircularProgress size={24} />}
-          </Paper>
-
-          {/* Recent Activity with Tabs */}
-          <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                🕐 Recent Activity
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                Latest platform events: new user registrations, recent consultations, and users flagged as high-risk.
               </Typography>
-              <Tooltip title="View Summary">
-                <IconButton size="small" onClick={() => setSummaryDialog({ open: true, chart: 'recentActivity' })}>
-                  <InfoOutlinedIcon fontSize="small" sx={{ color: '#9ca3af' }} />
-                </IconButton>
-              </Tooltip>
-            </Box>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-              Latest platform events: new user registrations, recent consultations, and users flagged as high-risk.
-            </Typography>
-            <Tabs
-              value={activityTab}
-              onChange={(_, v) => setActivityTab(v)}
-              variant="fullWidth"
-              sx={{ mb: 1, '& .MuiTab-root': { fontSize: '0.7rem', minHeight: 36, py: 0 } }}
-            >
-              <Tab label={`New (${registrations.length})`} />
-              <Tab label={`Consults (${consultHistory.length})`} />
-              <Tab label={`⚠ High (${highRiskAlerts.length})`} />
-            </Tabs>
+              <Tabs
+                value={activityTab}
+                onChange={(_, v) => setActivityTab(v)}
+                variant="fullWidth"
+                sx={{ mb: 1, '& .MuiTab-root': { fontSize: '0.7rem', minHeight: 36, py: 0 } }}
+              >
+                <Tab label={`New (${registrations.length})`} />
+                <Tab label={`Consults (${consultHistory.length})`} />
+                <Tab label={`⚠ High (${highRiskAlerts.length})`} />
+              </Tabs>
 
-            {recentActivity === null ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={24} /></Box>
-            ) : (
-              <>
-                {/* Tab 0: Registrations */}
-                {activityTab === 0 && (
-                  <List dense disablePadding>
-                    {registrations.length === 0 ? (
-                      <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>No recent registrations</Typography>
-                    ) : registrations.map((u, i) => (
-                      <React.Fragment key={u.id || i}>
-                        <ListItem disableGutters sx={{ py: 0.5 }}>
-                          <ListItemIcon sx={{ minWidth: 36 }}>
-                            <Avatar sx={{ width: 28, height: 28, bgcolor: '#667eea', fontSize: 12 }}>
-                              <PersonAddIcon sx={{ fontSize: 14 }} />
-                            </Avatar>
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={u.name || u.email || 'User'}
-                            secondary={formatDate(u.date)}
-                            primaryTypographyProps={{ fontSize: '0.82rem', fontWeight: 500 }}
-                            secondaryTypographyProps={{ fontSize: '0.72rem' }}
-                          />
-                        </ListItem>
-                        {i < registrations.length - 1 && <Divider />}
-                      </React.Fragment>
-                    ))}
-                  </List>
-                )}
+              {recentActivity === null ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={24} /></Box>
+              ) : (
+                <>
+                  {/* Tab 0: Registrations */}
+                  {activityTab === 0 && (
+                    <List dense disablePadding>
+                      {registrations.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>No recent registrations</Typography>
+                      ) : registrations.map((u, i) => (
+                        <React.Fragment key={u.id || i}>
+                          <ListItem disableGutters sx={{ py: 0.5 }}>
+                            <ListItemIcon sx={{ minWidth: 36 }}>
+                              <Avatar sx={{ width: 28, height: 28, bgcolor: '#667eea', fontSize: 12 }}>
+                                <PersonAddIcon sx={{ fontSize: 14 }} />
+                              </Avatar>
+                            </ListItemIcon>
+                            <ListItemText
+                              primary={u.name || u.email || 'User'}
+                              secondary={formatDate(u.date)}
+                              primaryTypographyProps={{ fontSize: '0.82rem', fontWeight: 500 }}
+                              secondaryTypographyProps={{ fontSize: '0.72rem' }}
+                            />
+                          </ListItem>
+                          {i < registrations.length - 1 && <Divider />}
+                        </React.Fragment>
+                      ))}
+                    </List>
+                  )}
 
-                {/* Tab 1: Consultations */}
-                {activityTab === 1 && (
-                  <List dense disablePadding>
-                    {consultHistory.length === 0 ? (
-                      <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>No recent consultations</Typography>
-                    ) : consultHistory.map((c, i) => (
-                      <React.Fragment key={c.id || i}>
-                        <ListItem disableGutters sx={{ py: 0.5 }}>
-                          <ListItemIcon sx={{ minWidth: 36 }}>
-                            <Avatar sx={{ width: 28, height: 28, bgcolor: '#06b6d4', fontSize: 12 }}>
-                              <VideoCallIcon sx={{ fontSize: 14 }} />
-                            </Avatar>
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={c.patient_name || 'Patient'}
-                            secondary={`${c.physician_name || 'Dr.'} · ${formatDate(c.date)}`}
-                            primaryTypographyProps={{ fontSize: '0.82rem', fontWeight: 500 }}
-                            secondaryTypographyProps={{ fontSize: '0.72rem' }}
-                          />
-                          <Chip
-                            label={STATUS_DISPLAY[c.status] || c.status || '—'}
-                            size="small"
-                            sx={{ fontSize: '0.65rem', height: 18, ml: 0.5 }}
-                          />
-                        </ListItem>
-                        {i < consultHistory.length - 1 && <Divider />}
-                      </React.Fragment>
-                    ))}
-                  </List>
-                )}
+                  {/* Tab 1: Consultations */}
+                  {activityTab === 1 && (
+                    <List dense disablePadding>
+                      {consultHistory.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>No recent consultations</Typography>
+                      ) : consultHistory.map((c, i) => (
+                        <React.Fragment key={c.id || i}>
+                          <ListItem disableGutters sx={{ py: 0.5 }}>
+                            <ListItemIcon sx={{ minWidth: 36 }}>
+                              <Avatar sx={{ width: 28, height: 28, bgcolor: '#06b6d4', fontSize: 12 }}>
+                                <VideoCallIcon sx={{ fontSize: 14 }} />
+                              </Avatar>
+                            </ListItemIcon>
+                            <ListItemText
+                              primary={c.patient_name || 'Patient'}
+                              secondary={`${c.physician_name || 'Dr.'} · ${formatDate(c.date)}`}
+                              primaryTypographyProps={{ fontSize: '0.82rem', fontWeight: 500 }}
+                              secondaryTypographyProps={{ fontSize: '0.72rem' }}
+                            />
+                            <Chip
+                              label={STATUS_DISPLAY[c.status] || c.status || '—'}
+                              size="small"
+                              sx={{ fontSize: '0.65rem', height: 18, ml: 0.5 }}
+                            />
+                          </ListItem>
+                          {i < consultHistory.length - 1 && <Divider />}
+                        </React.Fragment>
+                      ))}
+                    </List>
+                  )}
 
-                {/* Tab 2: High-risk alerts */}
-                {activityTab === 2 && (
-                  <List dense disablePadding>
-                    {highRiskAlerts.length === 0 ? (
-                      <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>No high-risk alerts</Typography>
-                    ) : highRiskAlerts.map((a, i) => (
-                      <React.Fragment key={a.user_id || i}>
-                        <ListItem disableGutters sx={{ py: 0.5 }}>
-                          <ListItemIcon sx={{ minWidth: 36 }}>
-                            <Avatar sx={{ width: 28, height: 28, bgcolor: riskColor(a.risk_category), fontSize: 12 }}>
-                              <ReportProblemIcon sx={{ fontSize: 14 }} />
-                            </Avatar>
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={a.user_name || 'User'}
-                            secondary={`Score: ${a.risk_score ?? '—'} · ${formatDate(a.date)}`}
-                            primaryTypographyProps={{ fontSize: '0.82rem', fontWeight: 500 }}
-                            secondaryTypographyProps={{ fontSize: '0.72rem' }}
-                          />
-                          <Chip
-                            label={(a.risk_category || '').replace('_', ' ')}
-                            size="small"
-                            sx={{
-                              fontSize: '0.65rem', height: 18, ml: 0.5,
-                              bgcolor: riskColor(a.risk_category) + '22',
-                              color: riskColor(a.risk_category),
-                              fontWeight: 600,
-                            }}
-                          />
-                        </ListItem>
-                        {i < highRiskAlerts.length - 1 && <Divider />}
-                      </React.Fragment>
-                    ))}
-                  </List>
-                )}
-              </>
-            )}
-          </Paper>
+                  {/* Tab 2: High-risk alerts */}
+                  {activityTab === 2 && (
+                    <List dense disablePadding>
+                      {highRiskAlerts.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>No high-risk alerts</Typography>
+                      ) : highRiskAlerts.map((a, i) => (
+                        <React.Fragment key={a.user_id || i}>
+                          <ListItem disableGutters sx={{ py: 0.5 }}>
+                            <ListItemIcon sx={{ minWidth: 36 }}>
+                              <Avatar sx={{ width: 28, height: 28, bgcolor: riskColor(a.risk_category), fontSize: 12 }}>
+                                <ReportProblemIcon sx={{ fontSize: 14 }} />
+                              </Avatar>
+                            </ListItemIcon>
+                            <ListItemText
+                              primary={a.user_name || 'User'}
+                              secondary={`Score: ${a.risk_score ?? '—'} · ${formatDate(a.date)}`}
+                              primaryTypographyProps={{ fontSize: '0.82rem', fontWeight: 500 }}
+                              secondaryTypographyProps={{ fontSize: '0.72rem' }}
+                            />
+                            <Chip
+                              label={(a.risk_category || '').replace('_', ' ')}
+                              size="small"
+                              sx={{
+                                fontSize: '0.65rem', height: 18, ml: 0.5,
+                                bgcolor: riskColor(a.risk_category) + '22',
+                                color: riskColor(a.risk_category),
+                                fontWeight: 600,
+                              }}
+                            />
+                          </ListItem>
+                          {i < highRiskAlerts.length - 1 && <Divider />}
+                        </React.Fragment>
+                      ))}
+                    </List>
+                  )}
+                </>
+              )}
+            </Paper>
         </Grid>
       </Grid>
     </Box>
