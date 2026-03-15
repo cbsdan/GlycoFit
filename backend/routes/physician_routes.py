@@ -56,6 +56,12 @@ from controllers.soap_note_controller import (
     update_soap_note,
     delete_soap_note
 )
+from controllers.physician_controller import (
+    get_templates,
+    create_template,
+    update_template,
+    delete_template,
+)
 from middleware.firebase_auth import firebase_auth_required
 from flask import g
 
@@ -312,3 +318,23 @@ def soap_note_update(note_id):
 def soap_note_delete(note_id):
     """Delete a SOAP note"""
     return delete_soap_note(note_id)
+
+
+# ============================================
+# TEMPLATE ROUTES
+# ============================================
+@physician_bp.route('/templates', methods=['GET'])
+def templates_get():
+    return get_templates()
+
+@physician_bp.route('/templates', methods=['POST'])
+def templates_create():
+    return create_template()
+
+@physician_bp.route('/templates/<template_id>', methods=['PUT'])
+def templates_update(template_id):
+    return update_template(template_id)
+
+@physician_bp.route('/templates/<template_id>', methods=['DELETE'])
+def templates_delete(template_id):
+    return delete_template(template_id)

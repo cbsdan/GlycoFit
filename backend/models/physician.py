@@ -33,6 +33,8 @@ class Physician:
         }
         self.created_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
+        # Consultation templates stored per-physician
+        self.consultation_templates = []
 
     def to_dict(self):
         """Convert physician object to dictionary for MongoDB storage"""
@@ -51,6 +53,7 @@ class Physician:
             'bio': self.bio,
             'languages': self.languages,
             'working_hours': self.working_hours,
+            'consultation_templates': self.consultation_templates,
             'created_at': self.created_at,
             'updated_at': self.updated_at
         }
@@ -76,6 +79,7 @@ class Physician:
         physician.working_hours = data.get('working_hours', physician.working_hours)
         physician.created_at = data.get('created_at', datetime.utcnow())
         physician.updated_at = data.get('updated_at', datetime.utcnow())
+        physician.consultation_templates = data.get('consultation_templates', [])
         return physician
 
     def save(self):
@@ -194,6 +198,7 @@ class Physician:
             'bio': self.bio,
             'languages': self.languages,
             'working_hours': self.working_hours,
+            'consultation_templates': self.consultation_templates,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
