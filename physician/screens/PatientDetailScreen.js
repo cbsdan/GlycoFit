@@ -48,6 +48,166 @@ export default function PatientDetailScreen({ route, navigation }) {
   const { colors: theme } = useTheme();
   const { showToast } = useToast();
 
+  const toNumberOrNull = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const normalizeTrackingData = (payload = {}) => {
+    const tracking = payload?.tracking_data || payload?.tracking || {};
+
+    const diabetes = tracking.diabetes_assessment || payload?.diabetes_assessment || {};
+    const food = tracking.food_tracker || payload?.food_tracker || payload?.food_summary || {};
+    const step = tracking.step_counter || payload?.step_counter || payload?.step_summary || {};
+    const sleep = tracking.sleep_tracking || payload?.sleep_tracking || payload?.sleep_summary || {};
+    const smoking = tracking.smoking_intake || payload?.smoking_intake || payload?.smoking_summary || {};
+    const alcohol = tracking.alcohol_intake || payload?.alcohol_intake || payload?.alcohol_summary || {};
+
+    const hasValue = (value) => value !== null && value !== undefined && value !== '';
+
+    const pickNumber = (...values) => {
+      for (const value of values) {
+        const parsed = toNumberOrNull(value);
+        if (parsed !== null) return parsed;
+      }
+      return null;
+    };
+
+    const normalized = {
+      diabetes_assessment: {
+        ...diabetes,
+        risk_level: (diabetes.risk_level || diabetes.prediction?.risk_level || '').toLowerCase() || undefined,
+        percentage: pickNumber(
+          diabetes.percentage,
+          diabetes.probability_percentage,
+          diabetes.prediction?.percentage,
+          diabetes.prediction?.probability
+        ),
+      },
+      food_tracker: {
+        ...food,
+        risk_score: pickNumber(
+          food.risk_score,
+          food.comprehensive_risk_score,
+          food.metrics?.risk_score,
+          food.risk_assessment?.risk_score
+        ),
+        risk_category: food.risk_category || food.metrics?.risk_category || food.risk_assessment?.risk_category,
+        meals_analyzed: pickNumber(
+          food.meals_analyzed,
+          food.total_meals_analyzed,
+          food.breakdown?.daily_analysis?.total_meals,
+          food.status?.days_tracked_last_week
+        ),
+        baseline_only: food.baseline_only || (food.status?.has_baseline && !food.status?.has_daily_data),
+      },
+      step_counter: {
+        ...step,
+        avg_steps_7d: pickNumber(
+          step.avg_steps_7d,
+          step.average_steps_7d,
+          step.metrics?.avg_steps_7d,
+          step.data?.metrics?.avg_steps_7d
+        ),
+        activity_level: step.activity_level || step.metrics?.activity_level || step.baseline?.baseline_activity_level,
+        risk_category: step.risk_category || step.metrics?.risk_category,
+        baseline_only: step.baseline_only || (step.status?.has_baseline && !step.status?.has_daily_data),
+      },
+      sleep_tracking: {
+        ...sleep,
+        avg_sleep_7d: pickNumber(
+          sleep.avg_sleep_7d,
+          sleep.average_sleep_7d,
+          sleep.metrics?.avg_sleep_7d,
+          sleep.data?.metrics?.avg_sleep_7d
+        ),
+        days_tracked: pickNumber(
+          sleep.days_tracked,
+          sleep.days_with_data_7d,
+          sleep.metrics?.days_with_data_7d,
+          sleep.status?.days_tracked_last_week
+        ),
+        risk_category: sleep.risk_category || sleep.metrics?.risk_category || sleep.risk_assessment?.category,
+        baseline_only: sleep.baseline_only || (sleep.status?.has_baseline && !sleep.status?.has_daily_data),
+      },
+      smoking_intake: {
+        ...smoking,
+        smoking_status: String(
+          smoking.smoking_status ||
+          smoking.current_status ||
+          smoking.baseline?.smoking_status ||
+          smoking.baseline?.current_status ||
+          smoking.metrics?.current_status ||
+          ''
+        ).toLowerCase() || undefined,
+        avg_cigarettes_7d: pickNumber(
+          smoking.avg_cigarettes_7d,
+          smoking.average_cigarettes_7d,
+          smoking.metrics?.avg_cigarettes_7d,
+          smoking.data?.metrics?.avg_cigarettes_7d
+        ),
+        risk_category: smoking.risk_category || smoking.metrics?.risk_category || smoking.risk_assessment?.risk_category,
+        baseline_only: smoking.baseline_only || (smoking.has_baseline && !smoking.has_daily_data),
+      },
+      alcohol_intake: {
+        ...alcohol,
+        drinks_per_week_7d: pickNumber(
+          alcohol.drinks_per_week_7d,
+          alcohol.avg_drinks_per_week_7d,
+          alcohol.metrics?.avg_drinks_per_week_7d,
+          alcohol.data?.metrics?.avg_drinks_per_week_7d
+        ),
+        consumption_pattern: alcohol.consumption_pattern || alcohol.drinking_pattern || alcohol.baseline?.drinking_pattern,
+        risk_category: alcohol.risk_category || alcohol.metrics?.risk_category || alcohol.risk_assessment?.risk_category,
+        baseline_only: alcohol.baseline_only || (alcohol.status?.has_baseline && !alcohol.status?.has_daily_data),
+      },
+    };
+
+    normalized.food_tracker.has_data = Boolean(
+      normalized.food_tracker.has_data === true ||
+      hasValue(normalized.food_tracker.risk_score) ||
+      hasValue(normalized.food_tracker.risk_category) ||
+      hasValue(normalized.food_tracker.meals_analyzed) ||
+      normalized.food_tracker.baseline_only
+    );
+
+    normalized.step_counter.has_data = Boolean(
+      normalized.step_counter.has_data === true ||
+      hasValue(normalized.step_counter.avg_steps_7d) ||
+      hasValue(normalized.step_counter.risk_category) ||
+      hasValue(normalized.step_counter.activity_level) ||
+      normalized.step_counter.baseline_only
+    );
+
+    normalized.sleep_tracking.has_data = Boolean(
+      normalized.sleep_tracking.has_data === true ||
+      hasValue(normalized.sleep_tracking.avg_sleep_7d) ||
+      hasValue(normalized.sleep_tracking.days_tracked) ||
+      hasValue(normalized.sleep_tracking.risk_category) ||
+      sleep?.status?.has_baseline
+    );
+
+    normalized.smoking_intake.has_data = Boolean(
+      normalized.smoking_intake.has_data === true ||
+      hasValue(normalized.smoking_intake.smoking_status) ||
+      hasValue(normalized.smoking_intake.avg_cigarettes_7d) ||
+      hasValue(normalized.smoking_intake.risk_category) ||
+      smoking?.has_baseline ||
+      normalized.smoking_intake.baseline_only
+    );
+
+    normalized.alcohol_intake.has_data = Boolean(
+      normalized.alcohol_intake.has_data === true ||
+      hasValue(normalized.alcohol_intake.drinks_per_week_7d) ||
+      hasValue(normalized.alcohol_intake.consumption_pattern) ||
+      hasValue(normalized.alcohol_intake.risk_category) ||
+      normalized.alcohol_intake.baseline_only
+    );
+
+    return normalized;
+  };
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [patientData, setPatientData] = useState(null);
@@ -106,6 +266,7 @@ export default function PatientDetailScreen({ route, navigation }) {
 
   useEffect(() => {
     fetchPatientDetails();
+    fetchSoapNotes();
   }, []);
 
   const fetchTemplates = async () => {
@@ -119,9 +280,7 @@ export default function PatientDetailScreen({ route, navigation }) {
     }
   };
 
-  useEffect(() => {
-    if (selectedTab === 'consultations') fetchSoapNotes();
-  }, [selectedTab, fetchSoapNotes]);
+  // Removed tab-dependent fetch for all around chart rendering in overview
 
   const fetchPatientDetails = async () => {
     try {
@@ -130,13 +289,17 @@ export default function PatientDetailScreen({ route, navigation }) {
       const response = await patientAPI.getPatientDetails(patientId);
       
       if (response.success) {
-        setPatientData(response.data);
+        const normalizedData = {
+          ...response.data,
+          tracking_data: normalizeTrackingData(response.data),
+        };
+        setPatientData(normalizedData);
       } else {
         // Use the passed patient data as fallback
         setPatientData({
           ...patient,
           health_data: {},
-          tracking_data: {},
+          tracking_data: normalizeTrackingData(patient),
           prescriptions: [],
           consultations: [],
           appointments: [],
@@ -148,7 +311,7 @@ export default function PatientDetailScreen({ route, navigation }) {
       setPatientData({
         ...patient,
         health_data: {},
-        tracking_data: {},
+        tracking_data: normalizeTrackingData(patient),
         prescriptions: [],
         consultations: [],
         appointments: [],
@@ -301,6 +464,243 @@ export default function PatientDetailScreen({ route, navigation }) {
   const trackingData = data.tracking_data || {};
   const glucoseStatus = getGlucoseStatus(healthInfo.glucose_level || healthData.latest_glucose);
 
+  const getChartData = () => {
+    if (!soapNotes || soapNotes.length === 0) return null;
+    const vitalsData = [...soapNotes]
+      .filter(note => {
+        const obj = note.soap_objective || {};
+        return obj.ogtt != null || obj.fasting_blood_sugar != null || obj.hba1c != null;
+      })
+      .sort((a,b) => new Date(a.created_at) - new Date(b.created_at))
+      .slice(-10); // recommended to only show the latest 10 data points on a mobile screen for readability
+      
+    if (vitalsData.length < 2) return null;
+
+    const labels = vitalsData.map(node => {
+      const d = new Date(node.created_at);
+      return `${d.getMonth()+1}/${d.getDate()}`;
+    });
+    
+    let lastFbs = 0;
+    const fbsData = vitalsData.map(note => {
+      let val = Number(note.soap_objective?.fasting_blood_sugar);
+      if (val) lastFbs = val;
+      return val || lastFbs;
+    });
+
+    let lastOgtt = 0;
+    const ogttData = vitalsData.map(note => {
+      let val = Number(note.soap_objective?.ogtt);
+      if (val) lastOgtt = val;
+      return val || lastOgtt;
+    });
+
+    let lastHba1c = 0;
+    const hba1cData = vitalsData.map(note => {
+      let val = Number(note.soap_objective?.hba1c);
+      if (val) lastHba1c = val;
+      return val || lastHba1c;
+    });
+
+    return { vitalsData, labels, fbsData, ogttData, hba1cData };
+  };
+
+  const renderManualChart = () => {
+    const dataObj = getChartData();
+    if (!dataObj) return null;
+
+    const { vitalsData, labels, fbsData, ogttData, hba1cData } = dataObj;
+    
+    if (vitalsData.length === 0) return null;
+
+    const CHART_H = 160;
+    const CHART_W = width - 64; // Horizontal span for data points
+
+    // Calculate independent bounds to maximize visible difference for each dataset
+    const getBounds = (arr) => {
+      const valid = arr.filter(v => v > 0);
+      if (valid.length === 0) return { min: 0, max: 10, range: 10 };
+      const minVal = Math.min(...valid);
+      const maxVal = Math.max(...valid);
+      if (minVal === maxVal) {
+        return { min: Math.max(0, minVal - 5), max: maxVal + 5, range: 10 };
+      }
+      // Add a 15% vertical padding top and bottom
+      const pad = (maxVal - minVal) * 0.15;
+      const finalMin = Math.max(0, minVal - pad);
+      const finalMax = maxVal + pad;
+      return { min: finalMin, max: finalMax, range: finalMax - finalMin };
+    };
+
+    const fbsBounds = getBounds(fbsData);
+    const ogttBounds = getBounds(ogttData);
+    const hba1cBounds = getBounds(hba1cData);
+
+    const getX = (index) => {
+      if (vitalsData.length <= 1) return CHART_W / 2;
+      return (index / (vitalsData.length - 1)) * CHART_W;
+    };
+    
+    const getY = (val, bounds) => {
+      if (!val) return CHART_H;
+      return CHART_H - ((val - bounds.min) / bounds.range) * CHART_H;
+    };
+
+    const renderLine = (data, color, bounds) => {
+      return data.map((val, i) => {
+        if (i === data.length - 1 || !val || !data[i + 1]) return null;
+        const x1 = getX(i);
+        const y1 = getY(val, bounds);
+        const x2 = getX(i + 1);
+        const y2 = getY(data[i + 1], bounds);
+
+        const cx = (x1 + x2) / 2;
+        const cy = (y1 + y2) / 2;
+        const length = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+        const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+
+        return (
+          <View
+            key={`line-${i}`}
+            style={{
+              position: 'absolute',
+              left: cx - length / 2,
+              top: cy - 1,
+              width: length,
+              height: 2,
+              backgroundColor: color,
+              transform: [{ rotate: `${angle}deg` }]
+            }}
+          />
+        );
+      });
+    };
+
+    const renderPoints = (data, color, labelColor, bounds, isDecimal = false, offset = { dx: -20, dy: -20 }) => {
+      // Only show up to 5 point labels across the graph evenly distributed regardless of total size.
+      const labelInterval = Math.max(1, Math.floor((data.length - 1) / 4));
+      
+      return data.map((val, i) => {
+        const isLabelVisible = i % labelInterval === 0 || i === data.length - 1;
+        
+        return (
+          <View key={`point-${i}`}>
+            <View
+              style={{
+                position: 'absolute',
+                left: getX(i) - 4,
+                top: getY(val, bounds) - 4,
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: color,
+                borderWidth: 1.5,
+                borderColor: theme.card,
+                zIndex: 10
+              }}
+            />
+            {isLabelVisible && val > 0 && (
+              <Text 
+                style={{
+                  position: 'absolute',
+                  left: getX(i) + offset.dx,
+                  top: getY(val, bounds) + offset.dy,
+                  fontSize: 10,
+                  color: labelColor,
+                  fontWeight: '600',
+                  textAlign: 'center',
+                  width: 40,
+                  zIndex: 20
+                }}
+              >
+                {isDecimal ? Number(val).toFixed(1) : Math.round(val)}
+              </Text>
+            )}
+          </View>
+        );
+      });
+    };
+
+    return (
+      <View style={{ marginBottom: 16 }}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Vitals History</Text>
+        <View style={[styles.card, { backgroundColor: theme.card, paddingVertical: 20, paddingHorizontal: 16, alignItems: 'center' }]}>
+          
+          {/* Legend */}
+          <View style={{ width: '100%', marginBottom: 20 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ width: 10, height: 10, backgroundColor: theme.error, borderRadius: 5, marginRight: 6 }} />
+                <Text style={{ fontSize: 12, color: theme.text }}>FBS</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ width: 10, height: 10, backgroundColor: theme.primary, borderRadius: 5, marginRight: 6 }} />
+                <Text style={{ fontSize: 12, color: theme.text }}>OGTT</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ width: 10, height: 10, backgroundColor: theme.success, borderRadius: 5, marginRight: 6 }} />
+                <Text style={{ fontSize: 12, color: theme.text }}>HbA1c</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={{ width: CHART_W, height: CHART_H, alignSelf: 'center', marginVertical: 10 }}>
+            {/* Horizontal Grid lines */}
+            {[0, 0.25, 0.5, 0.75, 1].map((multiplier, i) => (
+              <View
+                key={`h-grid-${i}`}
+                style={{
+                  position: 'absolute',
+                  top: CHART_H * multiplier,
+                  width: '100%',
+                  height: 1,
+                  backgroundColor: theme.border,
+                  opacity: 0.45
+                }}
+              />
+            ))}
+
+            {/* Vertical Grid lines */}
+            {labels.map((_, i) => (
+              <View
+                key={`v-grid-${i}`}
+                style={{
+                  position: 'absolute',
+                  left: getX(i),
+                  top: 0,
+                  width: 1,
+                  height: '100%',
+                  backgroundColor: theme.border,
+                  opacity: 0.45
+                }}
+              />
+            ))}
+            
+            {/* Lines */}
+            {renderLine(fbsData, theme.error, fbsBounds)}
+            {renderLine(ogttData, theme.primary, ogttBounds)}
+            {renderLine(hba1cData, theme.success, hba1cBounds)}
+            
+            {/* Points over lines - Stagger offsets to avoid overlapping */}
+            {renderPoints(fbsData, theme.error, theme.error, fbsBounds, false, { dx: -20, dy: -22 })}
+            {renderPoints(ogttData, theme.primary, theme.primary, ogttBounds, false, { dx: 6, dy: -6 })}
+            {renderPoints(hba1cData, theme.success, theme.success, hba1cBounds, true, { dx: -20, dy: 8 })}
+          </View>
+          
+          {/* X-Axis Labels */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: CHART_W, marginTop: 12 }}>
+            {labels.map((lbl, i) => (
+              <Text key={`lbl-${i}`} style={{ fontSize: 10, color: theme.secondary, width: 40, textAlign: 'center', marginLeft: -20 }}>
+                {lbl}
+              </Text>
+            ))}
+          </View>
+
+        </View>
+      </View>
+    );
+  };
+
   const renderOverview = () => (
     <ScrollView 
       style={styles.tabContent}
@@ -349,7 +749,7 @@ export default function PatientDetailScreen({ route, navigation }) {
       <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
         <View style={styles.trackingHeader}>
           <Ionicons name="medical" size={22} color={theme.primary} />
-          <Text style={[styles.trackingTitle, { color: theme.text }]}>Assessment Result</Text>
+          <Text style={[styles.trackingTitle, { color: theme.text }]}>Initial Assessment Result</Text>
         </View>
         <View style={styles.trackingContent}>
           <View style={styles.trackingRow}>
@@ -365,7 +765,7 @@ export default function PatientDetailScreen({ route, navigation }) {
           <View style={styles.trackingRow}>
             <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Probability:</Text>
             <Text style={[styles.trackingValue, { color: theme.text }]}>
-              {trackingData.diabetes_assessment?.percentage ? `${trackingData.diabetes_assessment.percentage.toFixed(1)}%` : 'N/A'}
+              {trackingData.diabetes_assessment?.percentage !== null && trackingData.diabetes_assessment?.percentage !== undefined ? `${trackingData.diabetes_assessment.percentage.toFixed(1)}%` : 'N/A'}
             </Text>
           </View>
         </View>
@@ -388,7 +788,7 @@ export default function PatientDetailScreen({ route, navigation }) {
             <View style={styles.trackingRow}>
               <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Risk Score:</Text>
               <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.food_tracker.risk_score ? `${trackingData.food_tracker.risk_score.toFixed(1)}/100` : 'N/A'}
+                {trackingData.food_tracker.risk_score !== null && trackingData.food_tracker.risk_score !== undefined ? `${trackingData.food_tracker.risk_score.toFixed(1)}/100` : 'N/A'}
               </Text>
             </View>
             <View style={styles.trackingRow}>
@@ -400,7 +800,7 @@ export default function PatientDetailScreen({ route, navigation }) {
             <View style={styles.trackingRow}>
               <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Meals Analyzed:</Text>
               <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.food_tracker.meals_analyzed ? `${trackingData.food_tracker.meals_analyzed} (last 7 days)` : 'N/A'}
+                {trackingData.food_tracker.meals_analyzed !== null && trackingData.food_tracker.meals_analyzed !== undefined ? `${trackingData.food_tracker.meals_analyzed} (last 7 days)` : 'N/A'}
               </Text>
             </View>
           </View>
@@ -424,13 +824,7 @@ export default function PatientDetailScreen({ route, navigation }) {
             <View style={styles.trackingRow}>
               <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Avg Steps (7d):</Text>
               <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.step_counter.avg_steps_7d ? trackingData.step_counter.avg_steps_7d.toLocaleString() : 'N/A'}
-              </Text>
-            </View>
-            <View style={styles.trackingRow}>
-              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Activity Level:</Text>
-              <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.step_counter.activity_level || 'N/A'}
+                {trackingData.step_counter.avg_steps_7d !== null && trackingData.step_counter.avg_steps_7d !== undefined ? trackingData.step_counter.avg_steps_7d.toLocaleString() : 'N/A'}
               </Text>
             </View>
             <View style={styles.trackingRow}>
@@ -451,12 +845,16 @@ export default function PatientDetailScreen({ route, navigation }) {
         </View>
         {!trackingData.sleep_tracking?.has_data ? (
           <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>N/A</Text>
+        ) : trackingData.sleep_tracking.baseline_only ? (
+          <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>
+            Baseline assessment completed. No daily logs yet.
+          </Text>
         ) : (
           <View style={styles.trackingContent}>
             <View style={styles.trackingRow}>
               <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Avg Sleep (7d):</Text>
               <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.sleep_tracking.avg_sleep_7d ? `${trackingData.sleep_tracking.avg_sleep_7d.toFixed(1)} hrs` : 'N/A'}
+                {trackingData.sleep_tracking.avg_sleep_7d !== null && trackingData.sleep_tracking.avg_sleep_7d !== undefined ? `${trackingData.sleep_tracking.avg_sleep_7d.toFixed(1)} hrs` : 'N/A'}
               </Text>
             </View>
             <View style={styles.trackingRow}>
@@ -468,7 +866,7 @@ export default function PatientDetailScreen({ route, navigation }) {
             <View style={styles.trackingRow}>
               <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Days Tracked:</Text>
               <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.sleep_tracking.days_tracked || 'N/A'}
+                {trackingData.sleep_tracking.days_tracked !== null && trackingData.sleep_tracking.days_tracked !== undefined ? trackingData.sleep_tracking.days_tracked : 'N/A'}
               </Text>
             </View>
           </View>
@@ -483,6 +881,10 @@ export default function PatientDetailScreen({ route, navigation }) {
         </View>
         {!trackingData.smoking_intake?.has_data ? (
           <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>N/A</Text>
+        ) : trackingData.smoking_intake.baseline_only ? (
+          <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>
+            Baseline assessment completed. No daily logs yet.
+          </Text>
         ) : (
           <View style={styles.trackingContent}>
             <View style={styles.trackingRow}>
@@ -497,7 +899,7 @@ export default function PatientDetailScreen({ route, navigation }) {
               <View style={styles.trackingRow}>
                 <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Avg/day (7d):</Text>
                 <Text style={[styles.trackingValue, { color: theme.text }]}>
-                  {trackingData.smoking_intake.avg_cigarettes_7d ? `${trackingData.smoking_intake.avg_cigarettes_7d.toFixed(1)} cigarettes` : 'N/A'}
+                  {trackingData.smoking_intake.avg_cigarettes_7d !== null && trackingData.smoking_intake.avg_cigarettes_7d !== undefined ? `${trackingData.smoking_intake.avg_cigarettes_7d.toFixed(1)} cigarettes` : 'N/A'}
                 </Text>
               </View>
             )}
@@ -528,7 +930,7 @@ export default function PatientDetailScreen({ route, navigation }) {
             <View style={styles.trackingRow}>
               <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Drinks/week (7d):</Text>
               <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.alcohol_intake.drinks_per_week_7d ? trackingData.alcohol_intake.drinks_per_week_7d.toFixed(1) : 'N/A'}
+                {trackingData.alcohol_intake.drinks_per_week_7d !== null && trackingData.alcohol_intake.drinks_per_week_7d !== undefined ? trackingData.alcohol_intake.drinks_per_week_7d.toFixed(1) : 'N/A'}
               </Text>
             </View>
             <View style={styles.trackingRow}>
@@ -716,6 +1118,9 @@ export default function PatientDetailScreen({ route, navigation }) {
             <Text style={[styles.soapActionBtnText, { color: theme.primary }]}>New Consultation</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Vitals Chart */}
+        {renderManualChart()}
 
         {/* History */}
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Consultation History</Text>

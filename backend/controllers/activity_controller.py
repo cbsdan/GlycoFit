@@ -116,6 +116,20 @@ def save_daily_activity():
             except Exception as e:
                 logger.warning("save_daily_activity: error fetching prev day: %s", e)
 
+            # --- ALWAY RECOMPUTE METRICS AFTER SAVING NEW DAILY DATA ---
+            try:
+                from models.user import User
+                from services.step_tracking_service import StepTrackingService
+                from services.comprehensive_risk_service import get_comprehensive_risk_service
+                user = User.find_by_uid(uid)
+                if user:
+                    user_id_str = str(user['_id'])
+                    StepTrackingService.compute_metrics(user_id_str)
+                    # Also update overall risk assessment
+                    get_comprehensive_risk_service().refresh_assessment(user_id_str)
+            except Exception as metric_err:
+                logger.warning("save_daily_activity: error computing metrics: %s", metric_err)
+
             return jsonify({
                 'success': True,
                 'message': 'Activity saved successfully',

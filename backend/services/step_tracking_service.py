@@ -75,7 +75,7 @@ class StepTrackingService:
             
             # 7-day metrics
             if records_7d and len(records_7d) > 0:
-                steps_7d = [r.get('steps', 0) for r in records_7d if r.get('steps')]
+                steps_7d = [r.get('steps', 0) for r in records_7d if r.get('steps') is not None]
                 if steps_7d:
                     metrics_data['avg_steps_7d'] = mean(steps_7d)
                     metrics_data['days_with_data_7d'] = len(steps_7d)
@@ -91,7 +91,7 @@ class StepTrackingService:
             
             # 30-day metrics
             if records_30d and len(records_30d) > 0:
-                steps_30d = [r.get('steps', 0) for r in records_30d if r.get('steps')]
+                steps_30d = [r.get('steps', 0) for r in records_30d if r.get('steps') is not None]
                 if steps_30d:
                     metrics_data['avg_steps_30d'] = mean(steps_30d)
                     metrics_data['days_with_data_30d'] = len(steps_30d)
