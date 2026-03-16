@@ -13,6 +13,7 @@ Consolidates data from all lifestyle trackers:
 from flask import jsonify, request
 import logging
 from services.lifestyle_recommendation_service import get_lifestyle_recommendation_service
+from services.lifestyle_ml_service import get_lifestyle_ml_service
 from services.food_tracking_service import FoodTrackingService
 from services.sleep_tracking_service import get_sleep_tracking_service
 from services.step_tracking_service import StepTrackingService
@@ -20,9 +21,50 @@ from services.smoking_tracking_service import get_smoking_tracking_service
 from models.alcohol_intake import AlcoholBaseline, AlcoholMetrics
 from models.smoking_tracking import SmokingBaseline, SmokingMetrics
 from models.step_tracking import StepBaseline
+from models.overall_risk_assessment import OverallRiskAssessment
 from models.user import User
 
 logger = logging.getLogger(__name__)
+
+
+def _user_field(user_obj, key, default=None):
+    """Read a user field from either model instance or dict-like payload."""
+    if user_obj is None:
+        return default
+    if isinstance(user_obj, dict):
+        return user_obj.get(key, default)
+    return getattr(user_obj, key, default)
+
+
+def _bool_query(value) -> bool:
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+
+
+def _estimate_age_risk_score(age: float) -> float:
+    if age <= 0:
+        return 0.0
+    if age < 35:
+        return 10.0
+    if age < 45:
+        return 25.0
+    if age < 55:
+        return 45.0
+    if age < 65:
+        return 65.0
+    return 80.0
+
+
+def _estimate_bmi_risk_score(bmi: float) -> float:
+    if bmi <= 0:
+        return 0.0
+    # WHO Asian cutoffs (used elsewhere in project docs/services).
+    if bmi < 23:
+        return 10.0
+    if bmi < 27.5:
+        return 35.0
+    if bmi < 32.5:
+        return 65.0
+    return 85.0
 
 
 def get_current_user_id():
@@ -32,9 +74,9 @@ def get_current_user_id():
 
 def get_unified_recommendations():
     """
-    Get unified recommendations for all lifestyle trackers.
+    Get unified recommendations for lifestyle ML trackers.
     
-    Consolidates data from all trackers and provides:
+    Consolidates data from model-supported trackers and provides:
     - Overall risk assessment
     - Timeline predictions
     - Prioritized recommendations
@@ -63,10 +105,12 @@ def get_unified_recommendations():
         days = int(request.args.get('days', 30))
         if days < 7 or days > 90:
             days = 30
+        use_mock = _bool_query(request.args.get('mock', 'false'))
         
         service = get_lifestyle_recommendation_service()
+        user = User.find_by_id(user_id)
         
-        # Gather data from each tracker
+        # Gather data from model-supported trackers only (food, activity, alcohol)
         trackers_data = {}
         
         # 1. Food Tracker
@@ -99,38 +143,25 @@ def get_unified_recommendations():
         except Exception as e:
             logger.error(f"Error getting food data: {e}")
             trackers_data['food'] = {'has_data': False, 'error': str(e)}
+
+        if not trackers_data.get('food', {}).get('has_data') and use_mock:
+            food_predictions = service.predict_food_impact(
+                avg_glycemic_load=115,
+                avg_fiber_grams=18,
+                avg_added_sugars=34,
+                avg_calories=1950,
+                duration_days=7,
+                baseline_risk_score=50
+            )
+            trackers_data['food'] = {
+                'has_data': True,
+                'is_mock': True,
+                'risk_score': 50,
+                'risk_category': 'moderate',
+                'predictions': food_predictions
+            }
         
-        # 2. Sleep Tracker
-        try:
-            sleep_service = get_sleep_tracking_service()
-            sleep_summary = sleep_service.get_sleep_summary(user_id)
-            
-            if sleep_summary and sleep_summary.get('metrics'):
-                metrics = sleep_summary['metrics']
-                risk = sleep_summary.get('risk_assessment', {})
-                
-                sleep_predictions = service.predict_sleep_impact(
-                    avg_sleep_hours=metrics.get('avg_sleep_7d') or metrics.get('avg_sleep_30d', 7),
-                    sleep_variability_hours=metrics.get('sleep_variability_30d'),
-                    bedtime_variability_minutes=metrics.get('bedtime_variability_30d'),
-                    duration_days=metrics.get('days_with_data_30d', 0)
-                )
-                trackers_data['sleep'] = {
-                    'has_data': True,
-                    'risk_score': risk.get('score', 0),
-                    'risk_category': risk.get('category', 'unknown'),
-                    'predictions': sleep_predictions
-                }
-            else:
-                trackers_data['sleep'] = {
-                    'has_data': False,
-                    'healthy_defaults': service.get_healthy_defaults()['guidelines']['sleep']
-                }
-        except Exception as e:
-            logger.error(f"Error getting sleep data: {e}")
-            trackers_data['sleep'] = {'has_data': False, 'error': str(e)}
-        
-        # 3. Activity Tracker (Steps)
+        # 2. Activity Tracker (Steps)
         try:
             step_metrics = StepTrackingService.compute_metrics(user_id)
             step_baseline_unified = StepBaseline.find_by_user_id(user_id)
@@ -183,8 +214,22 @@ def get_unified_recommendations():
         except Exception as e:
             logger.error(f"Error getting activity data: {e}")
             trackers_data['activity'] = {'has_data': False, 'error': str(e)}
+
+        if not trackers_data.get('activity', {}).get('has_data') and use_mock:
+            step_predictions = service.predict_activity_impact(
+                avg_daily_steps=5200,
+                days_goal_met=8,
+                duration_days=30
+            )
+            trackers_data['activity'] = {
+                'has_data': True,
+                'is_mock': True,
+                'risk_score': 45,
+                'avg_steps': 5200,
+                'predictions': step_predictions
+            }
         
-        # 4. Alcohol Tracker
+        # 3. Alcohol Tracker
         try:
             alcohol_metrics = AlcoholMetrics.find_by_user_id(user_id)
             alcohol_baseline = AlcoholBaseline.find_by_user_id(user_id)
@@ -192,8 +237,8 @@ def get_unified_recommendations():
             # Get user gender for proper thresholds
             user_gender = 'male'
             try:
-                user = User.get_by_id(user_id)
-                user_gender = user.get('gender', 'male').lower() if user else 'male'
+                user = User.find_by_id(user_id)
+                user_gender = (_user_field(user, 'gender', 'male') or 'male').lower()
             except:
                 pass
             
@@ -228,78 +273,275 @@ def get_unified_recommendations():
         except Exception as e:
             logger.error(f"Error getting alcohol data: {e}")
             trackers_data['alcohol'] = {'has_data': False, 'error': str(e)}
+
+        if not trackers_data.get('alcohol', {}).get('has_data') and use_mock:
+            alcohol_predictions = service.predict_alcohol_impact(
+                drinks_per_week=3,
+                binge_episodes_monthly=0,
+                duration_days=30,
+                gender=user_gender
+            )
+            trackers_data['alcohol'] = {
+                'has_data': True,
+                'is_mock': True,
+                'risk_multiplier': alcohol_predictions.get('risk_multiplier', 1.0),
+                'risk_category': alcohol_predictions.get('risk_category'),
+                'predictions': alcohol_predictions
+            }
         
-        # 5. Smoking Tracker
-        try:
-            smoking_service = get_smoking_tracking_service()
-            baseline = smoking_service.get_baseline(user_id)
-            
-            if baseline:
-                # Get metrics to calculate pack-years
-                metrics = smoking_service.get_metrics(user_id)
-                
-                # If no metrics yet, compute them
-                if not metrics:
-                    logger.info(f"Computing initial metrics for unified recommendations for user {user_id}")
-                    metrics = smoking_service.compute_metrics(user_id)
-                
-                smoking_status = baseline.get('smoking_status', 'never')
-                pack_years = metrics.get('cumulative_pack_years', 0) if metrics else 0
-                years_since_quit = None
-                
-                # Calculate years since quit for former smokers
-                if smoking_status == 'former' and baseline.get('quit_date'):
-                    from datetime import datetime
-                    try:
-                        quit_date = datetime.fromisoformat(baseline['quit_date'])
-                        years_since_quit = (datetime.utcnow() - quit_date).days / 365.25
-                    except Exception as e:
-                        logger.warning(f"Error calculating years since quit: {e}")
-                
-                smoking_predictions = service.predict_smoking_impact(
-                    smoking_status=smoking_status,
-                    pack_years=pack_years,
-                    years_since_quit=years_since_quit
-                )
-                trackers_data['smoking'] = {
-                    'has_data': True,
-                    'status': smoking_status,
-                    'risk_multiplier': smoking_predictions.get('risk_multiplier', 1.0),
-                    'risk_category': smoking_predictions.get('risk_category'),
-                    'predictions': smoking_predictions
-                }
+        # Build ML input payload (food + activity + alcohol only)
+        ml_inputs = {
+            'food': {},
+            'activity': {},
+            'alcohol': {},
+            'profile': {}
+        }
+
+        # Optional profile features used by some trained models.
+        if user:
+            age_value = _user_field(user, 'age')
+            if age_value is None:
+                dob_value = _user_field(user, 'date_of_birth') or _user_field(user, 'birth_date') or _user_field(user, 'dob')
             else:
-                trackers_data['smoking'] = {
-                    'has_data': False,
-                    'healthy_defaults': service.get_healthy_defaults()['guidelines']['smoking']
-                }
-        except Exception as e:
-            logger.error(f"Error getting smoking data: {e}")
-            trackers_data['smoking'] = {'has_data': False, 'error': str(e)}
-        
-        # Calculate overall risk
+                dob_value = None
+
+            if age_value is None and dob_value:
+                try:
+                    from datetime import datetime
+                    dob = dob_value
+                    dob_dt = datetime.fromisoformat(dob.replace('Z', '+00:00')) if isinstance(dob, str) else dob
+                    age_value = int((datetime.utcnow() - dob_dt.replace(tzinfo=None)).days / 365.25)
+                except Exception:
+                    age_value = None
+
+            bmi_value = _user_field(user, 'bmi')
+            if bmi_value is None:
+                bmi_value = _user_field(user, 'body_mass_index')
+
+            if bmi_value is None:
+                try:
+                    weight_kg = None
+                    if _user_field(user, 'weight_kg') is not None:
+                        weight_kg = float(_user_field(user, 'weight_kg'))
+                    elif _user_field(user, 'weight') is not None:
+                        weight_kg = float(_user_field(user, 'weight'))
+
+                    height_cm = None
+                    if _user_field(user, 'height_cm') is not None:
+                        height_cm = float(_user_field(user, 'height_cm'))
+                    elif _user_field(user, 'height') is not None:
+                        # Assume meters for typical profile `height` values <= 3, otherwise cm.
+                        raw_height = float(_user_field(user, 'height'))
+                        height_cm = raw_height * 100.0 if raw_height <= 3 else raw_height
+
+                    if weight_kg and height_cm and height_cm > 0:
+                        bmi_value = weight_kg / ((height_cm / 100.0) ** 2)
+                except Exception:
+                    bmi_value = None
+
+            if age_value is not None:
+                ml_inputs['profile']['age'] = age_value
+            if bmi_value is not None:
+                ml_inputs['profile']['bmi'] = bmi_value
+
+        if trackers_data.get('food', {}).get('has_data'):
+            current_pattern = trackers_data['food'].get('predictions', {}).get('current_pattern', {})
+            ml_inputs['food'] = {
+                'glycemic_load': current_pattern.get('avg_glycemic_load', 0),
+                'fiber': current_pattern.get('avg_fiber_grams', 0),
+                'added_sugars': current_pattern.get('avg_added_sugars', 0),
+                'calories': current_pattern.get('avg_calories', 0)
+            }
+
+        if trackers_data.get('activity', {}).get('has_data'):
+            current_pattern = trackers_data['activity'].get('predictions', {}).get('current_pattern', {})
+            ml_inputs['activity'] = {
+                'avg_daily_steps': current_pattern.get('avg_daily_steps', trackers_data['activity'].get('avg_steps', 0)),
+                'days_goal_met': current_pattern.get('days_goal_met', 0),
+                'duration_days': current_pattern.get('duration_days', 0)
+            }
+
+        if trackers_data.get('alcohol', {}).get('has_data'):
+            current_pattern = trackers_data['alcohol'].get('predictions', {}).get('current_pattern', {})
+            ml_inputs['alcohol'] = {
+                'drinks_per_week': current_pattern.get('drinks_per_week', 0),
+                'binge_episodes_monthly': current_pattern.get('binge_episodes_monthly', 0),
+                'duration_days': current_pattern.get('duration_days', 0)
+            }
+
+        ml_service = get_lifestyle_ml_service()
+        model_prediction = ml_service.predict(ml_inputs) if ml_service.is_initialized else None
+
+        # Keep recommendation aggregation from current rule-based service, but limited to model trackers.
         food_risk_data = trackers_data.get('food', {}).get('predictions') if trackers_data.get('food', {}).get('has_data') else None
-        sleep_risk_data = trackers_data.get('sleep', {}).get('predictions') if trackers_data.get('sleep', {}).get('has_data') else None
         activity_risk_data = trackers_data.get('activity', {}).get('predictions') if trackers_data.get('activity', {}).get('has_data') else None
         alcohol_risk_data = trackers_data.get('alcohol', {}).get('predictions') if trackers_data.get('alcohol', {}).get('has_data') else None
-        smoking_risk_data = trackers_data.get('smoking', {}).get('predictions') if trackers_data.get('smoking', {}).get('has_data') else None
-        
+
         overall_assessment = service.calculate_overall_lifestyle_risk(
             food_risk=food_risk_data,
-            sleep_risk=sleep_risk_data,
             activity_risk=activity_risk_data,
-            alcohol_risk=alcohol_risk_data,
-            smoking_risk=smoking_risk_data
+            alcohol_risk=alcohol_risk_data
         )
+
+        if model_prediction:
+            overall_assessment['overall_risk_score'] = model_prediction.get('percentage', overall_assessment['overall_risk_score'])
+            overall_assessment['overall_risk_category'] = model_prediction.get('risk_level', overall_assessment['overall_risk_category'])
+
+        # Build assessment-tab compatible structure.
+        # Calibrated to your trained model's feature-importance profile:
+        # BMI ~40.02%, Age ~36.54%, Daily food (sugar+calories) ~11.75%,
+        # Activity ~5.98%, Alcohol ~5.72%.
+        component_weights = {
+            'food': 0.1175,
+            'activity': 0.0598,
+            'alcohol': 0.0572,
+            'age': 0.3654,
+            'bmi': 0.4001,
+        }
+
+        food_raw = trackers_data.get('food', {}).get('risk_score', 0) if trackers_data.get('food', {}).get('has_data') else 0
+        activity_raw = trackers_data.get('activity', {}).get('risk_score', 0) if trackers_data.get('activity', {}).get('has_data') else 0
+        alcohol_risk_multiplier = trackers_data.get('alcohol', {}).get('risk_multiplier', 1.0) if trackers_data.get('alcohol', {}).get('has_data') else 1.0
+        alcohol_raw = min(100, max(0, round((alcohol_risk_multiplier - 1.0) * 100, 2)))
+
+        age_raw = float(ml_inputs.get('profile', {}).get('age', 0) or 0)
+        bmi_raw = float(ml_inputs.get('profile', {}).get('bmi', 0) or 0)
+        age_risk_score = _estimate_age_risk_score(age_raw)
+        bmi_risk_score = _estimate_bmi_risk_score(bmi_raw)
+
+        component_scores = {
+            'food': {
+                'raw_score': round(float(food_raw), 2),
+                'weighted_score': round(float(food_raw) * component_weights['food'], 2),
+                'weight': component_weights['food'],
+                'status': trackers_data.get('food', {}).get('risk_category', 'no_data') if trackers_data.get('food', {}).get('has_data') else 'no_data',
+                'details': 'Daily food contribution (sugar/calorie-driven)',
+                'has_data': bool(trackers_data.get('food', {}).get('has_data')),
+            },
+            'activity': {
+                'raw_score': round(float(activity_raw), 2),
+                'weighted_score': round(float(activity_raw) * component_weights['activity'], 2),
+                'weight': component_weights['activity'],
+                'status': trackers_data.get('activity', {}).get('predictions', {}).get('activity_category', 'no_data') if trackers_data.get('activity', {}).get('has_data') else 'no_data',
+                'details': 'Physical activity/step tracker contribution',
+                'has_data': bool(trackers_data.get('activity', {}).get('has_data')),
+            },
+            'alcohol': {
+                'raw_score': round(float(alcohol_raw), 2),
+                'weighted_score': round(float(alcohol_raw) * component_weights['alcohol'], 2),
+                'weight': component_weights['alcohol'],
+                'status': trackers_data.get('alcohol', {}).get('risk_category', 'no_data') if trackers_data.get('alcohol', {}).get('has_data') else 'no_data',
+                'details': 'Alcohol intake tracker contribution',
+                'has_data': bool(trackers_data.get('alcohol', {}).get('has_data')),
+            },
+            'age': {
+                'raw_score': round(age_risk_score, 2),
+                'input_value': round(age_raw, 2),
+                'weighted_score': round(float(age_risk_score) * component_weights['age'], 2),
+                'weight': component_weights['age'],
+                'status': 'profile' if age_raw > 0 else 'missing',
+                'details': 'Age fetched from profile and converted to an age-risk contribution for display',
+                'has_data': age_raw > 0,
+            },
+            'bmi': {
+                'raw_score': round(bmi_risk_score, 2),
+                'input_value': round(bmi_raw, 2),
+                'weighted_score': round(float(bmi_risk_score) * component_weights['bmi'], 2),
+                'weight': component_weights['bmi'],
+                'status': 'profile' if bmi_raw > 0 else 'missing',
+                'details': 'BMI fetched/computed from profile and converted to a BMI-risk contribution for display',
+                'has_data': bmi_raw > 0,
+            },
+        }
+
+        primary_risk_factors = []
+        component_name_map = {
+            'food': 'Diet & Nutrition',
+            'activity': 'Physical Activity',
+            'alcohol': 'Alcohol Consumption',
+            'age': 'Age Factor',
+            'bmi': 'Body Mass Index',
+        }
+        for key, score_info in component_scores.items():
+            if score_info.get('has_data'):
+                primary_risk_factors.append({
+                    'component': key,
+                    'component_name': component_name_map.get(key, key.title()),
+                    'weighted_score': score_info.get('weighted_score', 0),
+                    'raw_score': score_info.get('raw_score', 0),
+                    'weight_percentage': int(score_info.get('weight', 0) * 100),
+                    'details': score_info.get('details', ''),
+                    'status': score_info.get('status', 'unknown')
+                })
+        primary_risk_factors.sort(key=lambda x: x['weighted_score'], reverse=True)
+
+        # If model prediction is unavailable, derive overall score from visible component contributions
+        # to avoid a constant fallback score for users with different age/BMI/profile states.
+        if not model_prediction:
+            derived_score = 0.0
+            for score_info in component_scores.values():
+                if score_info.get('has_data'):
+                    derived_score += float(score_info.get('weighted_score', 0.0))
+            derived_score = round(max(0.0, min(100.0, derived_score)), 2)
+            overall_assessment['overall_risk_score'] = derived_score
+            overall_assessment['overall_risk_category'] = OverallRiskAssessment.classify_risk_category(derived_score)
+
+        recommendations = []
+        for rec in overall_assessment.get('all_recommendations', [])[:10]:
+            title = rec.get('title')
+            msg = rec.get('message')
+            if title and msg:
+                recommendations.append(f"{title}: {msg}")
+            elif title:
+                recommendations.append(title)
+
+        trackers_with_data = [k for k in ['food', 'activity', 'alcohol'] if trackers_data.get(k, {}).get('has_data')]
+        if len(trackers_with_data) == 3:
+            confidence_level = 'high'
+        elif len(trackers_with_data) == 2:
+            confidence_level = 'moderate'
+        elif len(trackers_with_data) == 1:
+            confidence_level = 'low'
+        else:
+            confidence_level = 'preliminary'
+
+        missing_trackers = [k for k in ['food', 'activity', 'alcohol'] if k not in trackers_with_data]
+        used_mock_trackers = [
+            k for k in ['food', 'activity', 'alcohol']
+            if trackers_data.get(k, {}).get('is_mock')
+        ]
+        if missing_trackers and not used_mock_trackers:
+            data_quality_notes = f"Missing lifestyle tracker data: {', '.join(missing_trackers)}. Results use available data and profile features (age/BMI)."
+        elif used_mock_trackers:
+            data_quality_notes = f"Using mock data for: {', '.join(used_mock_trackers)} (enable for testing with ?mock=true). Profile features (age/BMI) are included from user data."
+        else:
+            data_quality_notes = 'All model-supported lifestyle trackers are available.'
+
+        category_info = OverallRiskAssessment.get_risk_category_info(overall_assessment['overall_risk_category'])
         
         return jsonify({
             'success': True,
             'data': {
                 'overall_risk_score': overall_assessment['overall_risk_score'],
                 'overall_risk_category': overall_assessment['overall_risk_category'],
+                'category_info': category_info,
+                'confidence_level': confidence_level,
+                'component_scores': component_scores,
+                'primary_risk_factors': primary_risk_factors,
+                'protective_factors': [],
+                'key_improvements': overall_assessment['priority_actions'][:3],
+                'recommendations': recommendations,
+                'data_quality_notes': data_quality_notes,
                 'trackers': trackers_data,
                 'trackers_analyzed': overall_assessment['trackers_analyzed'],
                 'trackers_missing': overall_assessment['trackers_missing'],
+                'model_prediction': model_prediction,
+                'model_inputs': {
+                    'profile': {
+                        'age': ml_inputs.get('profile', {}).get('age'),
+                        'bmi': ml_inputs.get('profile', {}).get('bmi')
+                    }
+                },
                 'priority_actions': overall_assessment['priority_actions'],
                 'all_recommendations': overall_assessment['all_recommendations'][:10],  # Top 10
                 'healthy_defaults': overall_assessment['healthy_defaults']
@@ -520,8 +762,8 @@ def get_alcohol_predictions():
         # Get user gender
         user_gender = 'male'
         try:
-            user = User.get_by_id(user_id)
-            user_gender = user.get('gender', 'male').lower() if user else 'male'
+            user = User.find_by_id(user_id)
+            user_gender = (_user_field(user, 'gender', 'male') or 'male').lower()
         except:
             pass
         

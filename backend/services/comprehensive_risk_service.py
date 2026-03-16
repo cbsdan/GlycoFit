@@ -35,21 +35,21 @@ class ComprehensiveRiskService:
     #   Initial Assessment (0.20): Validated ML model (BRFSS); captures clinical/family-history risk.
     #   Age (0.15):              Risk rises sharply after 45; one of the strongest non-modifiable predictors
     #                            (Bellou et al., 2018 PLOS ONE; IDF Atlas, 2021).
-    #   Food (0.12):             Primary modifiable T2D risk factor (Malik et al., 2010 Diabetes Care).
-    #   Steps (0.10):            Physical inactivity is a major modifiable risk (Aune et al., 2015).
-    #   Smoking (0.07):          44% increased T2D risk for active smokers (Willi et al., 2007 JAMA).
-    #   Sleep (0.06):            Disrupts insulin sensitivity and glucose metabolism.
-    #   Alcohol (0.04):          J-shaped relationship with risk.
+    #   Food (0.18):             Primary modifiable T2D risk factor (Malik et al., 2010 Diabetes Care).
+    #   Steps (0.15):            Physical inactivity is a major modifiable risk (Aune et al., 2015).
+    #   Alcohol (0.06):          J-shaped relationship with risk.
+    #   Smoking (0.00):          Excluded from overall computation for assessment tab (kept for tracking/display).
+    #   Sleep (0.00):            Excluded from overall computation for assessment tab (kept for tracking/display).
     #   Sex (0.01):              Small hormonal/metabolic contribution.
     WEIGHTS = {
         'bmi': 0.25,
         'initial_assessment': 0.20,
         'age': 0.15,
-        'food': 0.12,
-        'steps': 0.10,
-        'smoking': 0.07,
-        'sleep': 0.06,
-        'alcohol': 0.04,
+        'food': 0.18,
+        'steps': 0.15,
+        'smoking': 0.00,
+        'sleep': 0.00,
+        'alcohol': 0.06,
         'sex': 0.01
     }
     
@@ -749,15 +749,17 @@ class ComprehensiveRiskService:
         tracker_count = 0
         tracker_days = 0
         
-        for tracker in ['sleep', 'steps', 'smoking', 'alcohol']:
+        for tracker in ['food', 'steps', 'alcohol']:
             if components.get(tracker):
                 tracker_count += 1
                 # Check if tracker has sufficient data
-                if tracker == 'sleep':
-                    days = getattr(components[tracker], 'days_with_data_30d', 0)
+                if tracker == 'food':
+                    try:
+                        daily_analysis = components[tracker].get('breakdown', {}).get('daily_analysis', {})
+                        days = int(daily_analysis.get('days_with_data', 0))
+                    except Exception:
+                        days = 0
                 elif tracker == 'steps':
-                    days = getattr(components[tracker], 'days_with_data_30d', 0)
-                elif tracker == 'smoking':
                     days = getattr(components[tracker], 'days_with_data_30d', 0)
                 elif tracker == 'alcohol':
                     days = getattr(components[tracker], 'days_with_data_30d', 0)

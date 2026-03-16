@@ -114,6 +114,14 @@ const SettingsScreen = ({ navigation }) => {
       title: 'Account',
       items: [
         {
+          id: 'initial-assessment',
+          title: 'Initial Diabetes Assessment',
+          subtitle: 'Review or update your initial risk assessment',
+          icon: 'clipboard-edit-outline',
+          action: () => navigation.navigate('DiabetesRiskAssessment'),
+          showArrow: true,
+        },
+        {
           id: 'profile',
           title: 'Profile Information',
           subtitle: 'Update your personal details',
