@@ -18,7 +18,7 @@ import { useToast } from '../context/ToastContext';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getMyAssessment, getOverallRiskAssessment, refreshOverallRiskAssessment, getOverallRiskPrediction } from '../services/api';
+import { getMyAssessment, getOverallRiskAssessment, refreshOverallRiskAssessment, getOverallRiskPrediction, getLifestyleRecommendations } from '../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -35,7 +35,7 @@ const PredictionScreen = ({ navigation }) => {
   const [computationVisible, setComputationVisible] = useState(false);
   const [refsVisible, setRefsVisible] = useState(false);
 
-  // Check if user is diagnosed with prediabetes or type 2 diabetes
+  // Keep diagnosis status for contextual text, but do not gate risk visibility.
   const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
 
   useFocusEffect(
@@ -73,19 +73,42 @@ const PredictionScreen = ({ navigation }) => {
       if (result && result.assessment) {
         setAssessment(result.assessment);
 
-        // If initial assessment exists, try to load overall risk assessment
+        // Prefer lifestyle model risk output for the Assessment tab.
         try {
-          const overallResult = await getOverallRiskAssessment();
-          if (overallResult && overallResult.success && overallResult.data) {
-            setOverallRisk(overallResult.data);
+          const lifestyleResult = await getLifestyleRecommendations(30);
+          if (lifestyleResult && lifestyleResult.success && lifestyleResult.data) {
+            setOverallRisk(lifestyleResult.data);
+          } else {
+            // Fallback to comprehensive risk endpoint if lifestyle endpoint is unavailable.
+            const overallResult = await getOverallRiskAssessment();
+            if (overallResult && overallResult.success && overallResult.data) {
+              setOverallRisk(overallResult.data);
+            }
           }
         } catch (overallError) {
-          console.log('Overall risk not available yet:', overallError);
-          // Overall risk might not be available yet, that's okay
+          console.log('Lifestyle risk not available, trying comprehensive endpoint:', overallError);
+          try {
+            const overallResult = await getOverallRiskAssessment();
+            if (overallResult && overallResult.success && overallResult.data) {
+              setOverallRisk(overallResult.data);
+            }
+          } catch (fallbackError) {
+            console.log('Overall risk not available yet:', fallbackError);
+          }
         }
       } else {
         setAssessment(null);
-        setOverallRisk(null);
+        // Still try to load lifestyle risk output even if initial assessment is missing.
+        try {
+          const lifestyleResult = await getLifestyleRecommendations(30);
+          if (lifestyleResult && lifestyleResult.success && lifestyleResult.data) {
+            setOverallRisk(lifestyleResult.data);
+          } else {
+            setOverallRisk(null);
+          }
+        } catch (e) {
+          setOverallRisk(null);
+        }
       }
     } catch (error) {
       console.log('Error loading assessment:', error);
@@ -179,14 +202,35 @@ const PredictionScreen = ({ navigation }) => {
   const handleRefreshOverallRisk = async () => {
     try {
       setLoading(true);
-      const result = await refreshOverallRiskAssessment();
-      if (result && result.success && result.data) {
-        setOverallRisk(result.data);
-        Alert.alert('Success', 'Your comprehensive risk assessment has been updated.');
+      // Refresh by re-fetching lifestyle recommendations first.
+      let updated = false;
+
+      try {
+        const lifestyleResult = await getLifestyleRecommendations(30);
+        if (lifestyleResult && lifestyleResult.success && lifestyleResult.data) {
+          setOverallRisk(lifestyleResult.data);
+          updated = true;
+        }
+      } catch (lifestyleError) {
+        console.log('Lifestyle refresh failed, trying comprehensive refresh:', lifestyleError);
+      }
+
+      if (!updated) {
+        const result = await refreshOverallRiskAssessment();
+        if (result && result.success && result.data) {
+          setOverallRisk(result.data);
+          updated = true;
+        }
+      }
+
+      if (updated) {
+        Alert.alert('Success', 'Your risk assessment has been updated.');
+      } else {
+        Alert.alert('Notice', 'No updated risk data is available yet.');
       }
     } catch (error) {
       console.log('Error refreshing overall risk:', error);
-      Alert.alert('Error', 'Failed to refresh comprehensive assessment. Please try again.');
+      Alert.alert('Error', 'Failed to refresh risk assessment. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -650,6 +694,25 @@ const PredictionScreen = ({ navigation }) => {
       color: colors.secondary,
       lineHeight: 20,
     },
+    qualityRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8,
+      marginTop: 8,
+    },
+    qualityRowLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.text,
+      minWidth: 72,
+      marginTop: 1,
+    },
+    qualityRowValue: {
+      flex: 1,
+      fontSize: 12,
+      color: colors.secondary,
+      lineHeight: 18,
+    },
     // ---- Predictive Trend Card ----
     predictionSectionTitle: {
       fontSize: 18,
@@ -1053,6 +1116,36 @@ const PredictionScreen = ({ navigation }) => {
     },
   });
 
+  const trackerLabelMap = {
+    food: 'Food',
+    activity: 'Physical Activity',
+    alcohol: 'Alcohol',
+    sleep: 'Sleep',
+    smoking: 'Smoking',
+  };
+
+  const includedTrackerLabels = (overallRisk?.trackers_analyzed || [])
+    .map((key) => trackerLabelMap[key] || key)
+    .filter(Boolean);
+
+  const missingTrackerLabels = (overallRisk?.trackers_missing || [])
+    .map((key) => trackerLabelMap[key] || key)
+    .filter(Boolean);
+
+  const profileInputs = overallRisk?.model_inputs?.profile || {};
+  const hasAgeInput = profileInputs.age !== undefined && profileInputs.age !== null;
+  const hasBmiInput = profileInputs.bmi !== undefined && profileInputs.bmi !== null;
+
+  const includedProfileLabels = [
+    hasAgeInput ? `Age (${Number(profileInputs.age).toFixed(0)})` : null,
+    hasBmiInput ? `BMI (${Number(profileInputs.bmi).toFixed(1)})` : null,
+  ].filter(Boolean);
+
+  const missingProfileLabels = [
+    hasAgeInput ? null : 'Age',
+    hasBmiInput ? null : 'BMI',
+  ].filter(Boolean);
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
@@ -1083,41 +1176,36 @@ const PredictionScreen = ({ navigation }) => {
                       {isDiagnosed ? 'Health Summary' : 'Risk Assessment'}
                     </Text>
                   </View>
-                  {/* Risk Score Section - Only show for non-diagnosed users */}
-                  {!isDiagnosed && (
-                    <View style={styles.overallRiskScoreSection}>
-                      <View style={[styles.overallRiskScoreCircle, { borderColor: overallRisk.category_info.color }]}>
-                        <Text style={[styles.overallRiskScoreValue, { color: overallRisk.category_info.color }]}>
-                          {overallRisk.overall_risk_score.toFixed(1)}
-                        </Text>
-                        <Text style={styles.overallRiskScoreLabel}>/ 100</Text>
-                      </View>
-                      <View style={styles.overallRiskScoreInfo}>
-                        <View style={[styles.overallRiskBadge, { backgroundColor: overallRisk.category_info.color }]}>
-                          <Icon name={overallRisk.category_info.icon} size={16} color="#FFFFFF" />
-                          <Text style={styles.overallRiskBadgeText}>{overallRisk.category_info.title}</Text>
-                        </View>
-                        <Text style={[styles.overallRiskProbability, { color: colors.secondary }]}>
-                          {overallRisk.category_info.probability}
-                        </Text>
-                        <Text style={[styles.overallRiskMessage, { color: colors.secondary }]}>
-                          {overallRisk.category_info.message}
-                        </Text>
-                      </View>
+                  <View style={styles.overallRiskScoreSection}>
+                    <View style={[styles.overallRiskScoreCircle, { borderColor: overallRisk.category_info.color }]}>
+                      <Text style={[styles.overallRiskScoreValue, { color: overallRisk.category_info.color }]}>
+                        {overallRisk.overall_risk_score.toFixed(1)}
+                      </Text>
+                      <Text style={styles.overallRiskScoreLabel}>/ 100</Text>
                     </View>
-                  )}
-                  {!isDiagnosed && (
-                    <TouchableOpacity
-                      style={styles.refreshOverallButton}
-                      onPress={handleRefreshOverallRisk}
-                      activeOpacity={0.7}
-                    >
-                      <Icon name="refresh" size={18} color={colors.primary} />
-                      <Text style={styles.refreshOverallButtonText}>Refresh Assessment</Text>
-                    </TouchableOpacity>
-                  )}
+                    <View style={styles.overallRiskScoreInfo}>
+                      <View style={[styles.overallRiskBadge, { backgroundColor: overallRisk.category_info.color }]}>
+                        <Icon name={overallRisk.category_info.icon} size={16} color="#FFFFFF" />
+                        <Text style={styles.overallRiskBadgeText}>{overallRisk.category_info.title}</Text>
+                      </View>
+                      <Text style={[styles.overallRiskProbability, { color: colors.secondary }]}>
+                        {overallRisk.category_info.probability}
+                      </Text>
+                      <Text style={[styles.overallRiskMessage, { color: colors.secondary }]}>
+                        {overallRisk.category_info.message}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.refreshOverallButton}
+                    onPress={handleRefreshOverallRisk}
+                    activeOpacity={0.7}
+                  >
+                    <Icon name="refresh" size={18} color={colors.primary} />
+                    <Text style={styles.refreshOverallButtonText}>Refresh Assessment</Text>
+                  </TouchableOpacity>
                   {/* Risk Factor Breakdown - all tracked components, color-coded */}
-                  {!isDiagnosed && overallRisk.primary_risk_factors && overallRisk.primary_risk_factors.length > 0 && (
+                  {overallRisk.primary_risk_factors && overallRisk.primary_risk_factors.length > 0 && (
                     <View style={styles.riskFactorsSection}>
                       <Text style={styles.riskFactorsTitle}>Risk Factor Breakdown</Text>
                       {overallRisk.primary_risk_factors.map((factor, index) => {
@@ -1170,6 +1258,26 @@ const PredictionScreen = ({ navigation }) => {
                         <Text style={styles.dataQualityTitle}>Data Quality Notes</Text>
                       </View>
                       <Text style={styles.dataQualityText}>{overallRisk.data_quality_notes}</Text>
+
+                      <View style={styles.qualityRow}>
+                        <Text style={styles.qualityRowLabel}>Included</Text>
+                        <Text style={styles.qualityRowValue}>
+                          {[
+                            includedTrackerLabels.length ? `Trackers: ${includedTrackerLabels.join(', ')}` : null,
+                            includedProfileLabels.length ? `Profile: ${includedProfileLabels.join(', ')}` : null,
+                          ].filter(Boolean).join(' | ') || 'None'}
+                        </Text>
+                      </View>
+
+                      <View style={styles.qualityRow}>
+                        <Text style={styles.qualityRowLabel}>Missing</Text>
+                        <Text style={styles.qualityRowValue}>
+                          {[
+                            missingTrackerLabels.length ? `Trackers: ${missingTrackerLabels.join(', ')}` : null,
+                            missingProfileLabels.length ? `Profile: ${missingProfileLabels.join(', ')}` : null,
+                          ].filter(Boolean).join(' | ') || 'None'}
+                        </Text>
+                      </View>
                     </View>
                   )}
 
@@ -1214,8 +1322,8 @@ const PredictionScreen = ({ navigation }) => {
                         {/* Trend message */}
                         <Text style={styles.predictionMessage}>{trendPrediction.trend_message}</Text>
 
-                        {/* Forecast cards — hide raw risk scores for diagnosed users */}
-                        {!isDiagnosed && (forecast30 || forecast90) && (
+                        {/* Forecast cards */}
+                        {(forecast30 || forecast90) && (
                           <View style={styles.forecastRow}>
                             {forecast30 && (
                               <LinearGradient
@@ -1435,8 +1543,7 @@ const PredictionScreen = ({ navigation }) => {
           </>
         )}
 
-        {/* ===== Pre-Diabetes Risk Computation Table — only for non-diagnosed users ===== */}
-        {!isDiagnosed && (
+        {/* ===== Pre-Diabetes Risk Computation Table ===== */}
         <View style={styles.computationSection}>
           <TouchableOpacity
             style={styles.computationHeader}
@@ -1964,7 +2071,6 @@ const PredictionScreen = ({ navigation }) => {
             </View>
           )}
         </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );

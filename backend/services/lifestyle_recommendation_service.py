@@ -1085,13 +1085,12 @@ class LifestyleRecommendationService:
         risk_factors = []
         all_recommendations = []
         
-        # Weight each tracker's contribution
+        # Weight each model-supported tracker's contribution.
+        # Sleep and smoking are excluded from this implementation.
         weights = {
-            "food": 0.30,      # Diet is major factor
-            "activity": 0.25,  # Physical activity
-            "sleep": 0.20,     # Sleep patterns
-            "smoking": 0.15,   # Smoking status
-            "alcohol": 0.10    # Alcohol consumption
+            "food": 0.45,      # Diet is major factor
+            "activity": 0.35,  # Physical activity
+            "alcohol": 0.20    # Alcohol consumption
         }
         
         # Process food risk
@@ -1102,14 +1101,6 @@ class LifestyleRecommendationService:
             # Extract recommendations
             for rec in food_risk.get("recommendations", []):
                 all_recommendations.append({**rec, "tracker": "food"})
-        
-        # Process sleep risk
-        if sleep_risk and sleep_risk.get("risk_factors"):
-            trackers_with_data.append("sleep")
-            for factor in sleep_risk["risk_factors"]:
-                risk_factors.append({**factor, "tracker": "sleep"})
-            for rec in sleep_risk.get("recommendations", []):
-                all_recommendations.append({**rec, "tracker": "sleep"})
         
         # Process activity risk
         if activity_risk and activity_risk.get("risk_factors"):
@@ -1126,14 +1117,6 @@ class LifestyleRecommendationService:
                 risk_factors.append({**factor, "tracker": "alcohol"})
             for rec in alcohol_risk.get("recommendations", []):
                 all_recommendations.append({**rec, "tracker": "alcohol"})
-        
-        # Process smoking risk
-        if smoking_risk and smoking_risk.get("risk_factors"):
-            trackers_with_data.append("smoking")
-            for factor in smoking_risk["risk_factors"]:
-                risk_factors.append({**factor, "tracker": "smoking"})
-            for rec in smoking_risk.get("recommendations", []):
-                all_recommendations.append({**rec, "tracker": "smoking"})
         
         # Calculate weighted risk score
         if trackers_with_data:
