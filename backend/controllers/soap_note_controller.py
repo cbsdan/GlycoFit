@@ -75,6 +75,11 @@ def create_soap_note():
         consultation.status = Consultation.STATUS_COMPLETED
         consultation.actual_start_time = datetime.utcnow()
         consultation.actual_end_time = datetime.utcnow()
+        
+        consultation.source = 'physician'
+        consultation.source_id = str(physician._id)
+        current_user = g.current_user
+        consultation.source_name = f"Dr. {current_user.first_name} {current_user.last_name}".strip() if current_user else ""
 
         if mode == 'quick_vitals':
             consultation.soap_objective = {
@@ -232,7 +237,6 @@ def get_patient_soap_notes(patient_id):
         db = get_db()
 
         query = {
-            'physician_id': physician._id,
             'patient_id': ObjectId(patient_id),
             'consultation_mode': {'$in': ['quick_vitals', 'full']}
         }

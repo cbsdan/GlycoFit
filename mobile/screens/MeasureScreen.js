@@ -54,6 +54,14 @@ const MeasureScreen = ({ navigation }) => {
       color: '#9B59B6',
       action: () => navigation.navigate('AlcoholTracking'),
     },
+    {
+      id: 'blood-results',
+      title: 'Blood Results',
+      subtitle: 'Track FBS, OGTT, and HbA1c',
+      icon: 'test-tube',
+      color: '#E67E22',
+      action: () => navigation.navigate('BloodResult'),
+    },
   ];
 
   const getIconBackgroundStyle = (color) => ({
@@ -133,7 +141,7 @@ const MeasureScreen = ({ navigation }) => {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.header}>
-          <Text style={styles.title}>Lifetsyle Tracker</Text>
+          <Text style={styles.title}>Lifestyle Tracker</Text>
           <Text style={styles.subtitle}>
             Track your lifestyle to get better insights into your well-being.
           </Text>

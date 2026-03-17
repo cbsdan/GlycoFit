@@ -29,6 +29,7 @@ from controllers.patient_consultation_controller import (
     reschedule_patient_consultation,
     rate_consultation
 )
+from controllers.user_vitals_controller import log_user_vitals, get_user_vitals
 from middleware.firebase_auth import firebase_auth_required
 from flask import g
 
@@ -148,13 +149,35 @@ def get_appointment(appointment_id):
 
 @user_bp.route('/appointments/<appointment_id>/cancel', methods=['POST'])
 def cancel_appointment(appointment_id):
-    """Cancel an appointment"""
+    """Cancel appointment"""
     return cancel_patient_appointment(appointment_id)
 
 @user_bp.route('/appointments/<appointment_id>/reschedule', methods=['POST'])
 def reschedule_appointment(appointment_id):
-    """Reschedule an appointment"""
+    """Reschedule appointment"""
     return reschedule_patient_appointment(appointment_id)
+
+@user_bp.route('/vitals', methods=['POST'])
+def log_vitals():
+    """Log quick vitals by user"""
+    return log_user_vitals()
+
+@user_bp.route('/vitals', methods=['GET'])
+def get_vitals():
+    """Get quick vitals logged"""
+    return get_user_vitals()
+
+@user_bp.route('/vitals/<vital_id>', methods=['PUT'])
+def update_vitals(vital_id):
+    """Update a specific vital log"""
+    from controllers.user_vitals_controller import update_user_vital
+    return update_user_vital(vital_id)
+
+@user_bp.route('/vitals/<vital_id>', methods=['DELETE'])
+def delete_vitals(vital_id):
+    """Delete a specific vital log"""
+    from controllers.user_vitals_controller import delete_user_vital
+    return delete_user_vital(vital_id)
 
 # Prescription Management Routes for Patients
 @user_bp.route('/prescriptions', methods=['GET'])

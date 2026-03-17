@@ -40,11 +40,22 @@ class Consultation:
         
         # SOAP Note fields
         self.soap_subjective = ""   # Patient complaints / history
-        self.soap_objective = {}     # Vitals & physical exam findings
+        self.soap_objective = {
+            'fasting_blood_sugar': None,
+            'ogtt': None,
+            'hba1c': None,
+            'image_url': None,
+            'image_public_id': None
+        }     # Vitals & physical exam findings
         self.soap_assessment = ""   # Diagnosis
         self.soap_plan = ""         # Treatment / lifestyle advice
         self.soap_prescriptions = [] # Prescription list from plan
         self.consultation_mode = "full"  # 'quick_vitals' or 'full'
+        
+        # Extracted source info for quick vitals
+        self.source = "physician"  # 'physician' or 'user'
+        self.source_id = None      # ID of the user or physician who inputted it
+        self.source_name = ""      # Name of the user or physician who inputted it
         
         # Meeting platform details
         self.platform = self.PLATFORM_GOOGLE_MEET  # google_meet, zoom, other
@@ -87,6 +98,9 @@ class Consultation:
             'soap_plan': self.soap_plan,
             'soap_prescriptions': self.soap_prescriptions,
             'consultation_mode': self.consultation_mode,
+            'source': self.source,
+            'source_id': self.source_id,
+            'source_name': self.source_name,
             'platform': self.platform,
             'meeting_link': self.meeting_link,
             'meeting_password': self.meeting_password,
@@ -127,6 +141,11 @@ class Consultation:
         consultation.soap_plan = data.get('soap_plan', '')
         consultation.soap_prescriptions = data.get('soap_prescriptions', [])
         consultation.consultation_mode = data.get('consultation_mode', 'full')
+        
+        consultation.source = data.get('source', 'physician')
+        consultation.source_id = data.get('source_id')
+        consultation.source_name = data.get('source_name', '')
+        
         consultation.platform = data.get('platform', cls.PLATFORM_GOOGLE_MEET)
         consultation.meeting_link = data.get('meeting_link', '')
         consultation.meeting_password = data.get('meeting_password', '')
@@ -295,7 +314,7 @@ class Consultation:
         """Return consultation data"""
         return {
             'id': str(getattr(self, '_id', '')),
-            'physician_id': str(self.physician_id),
+            'physician_id': str(self.physician_id) if getattr(self, 'physician_id', None) else None,
             'patient_id': str(self.patient_id),
             'consultation_type': self.consultation_type,
             'scheduled_date': self.scheduled_date.isoformat() if self.scheduled_date else None,
@@ -314,6 +333,9 @@ class Consultation:
             'soap_plan': self.soap_plan,
             'soap_prescriptions': self.soap_prescriptions,
             'consultation_mode': self.consultation_mode,
+            'source': self.source,
+            'source_id': self.source_id,
+            'source_name': self.source_name,
             'platform': self.platform,
             'meeting_link': self.meeting_link,
             'meeting_password': self.meeting_password,

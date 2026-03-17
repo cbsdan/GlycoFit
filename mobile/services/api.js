@@ -3073,6 +3073,62 @@ api.getAlcoholPredictions = getAlcoholPredictions;
 api.getSmokingPredictions = getSmokingPredictions;
 
 // Make sure these lines exist at the bottom, BEFORE export default api;
+// Vitals endpoints
+const logVitals = async (data, isMultipart = false) => {
+  try {
+    const config = isMultipart ? {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    } : {};
+    const response = await api.post('/users/vitals', data, config);
+    return response.data;
+  } catch (error) {
+    console.error('Error logging vitals:', error);
+    throw error;
+  }
+};
+
+const getVitals = async () => {
+  try {
+    const response = await api.get('/users/vitals');
+    return response.data;
+  } catch (error) {
+    console.error('Error getting vitals:', error);
+    throw error;
+  }
+};
+
+const updateVital = async (id, data, isMultipart = false) => {
+  try {
+    const config = isMultipart ? {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    } : {};
+    const response = await api.put(`/users/vitals/${id}`, data, config);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating vital:', error);
+    throw error;
+  }
+};
+
+const deleteVital = async (id) => {
+  try {
+    const response = await api.delete(`/users/vitals/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting vital:', error);
+    throw error;
+  }
+};
+
+api.logVitals = logVitals;
+api.getVitals = getVitals;
+api.updateVital = updateVital;
+api.deleteVital = deleteVital;
+
 api.createStepBaseline = createStepBaseline;
 api.getStepBaseline = getStepBaseline;
 api.checkStepBaseline = checkStepBaseline;

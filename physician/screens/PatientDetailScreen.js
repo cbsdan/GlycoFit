@@ -13,6 +13,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Linking,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -238,6 +240,7 @@ export default function PatientDetailScreen({ route, navigation }) {
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [templateForm, setTemplateForm] = useState({ name: '', description: '', data: null, useCurrentForm: false });
+  const [viewerImage, setViewerImage] = useState(null);
 
   const filteredMeds = MEDICINES.filter((m) => {
     if (newRx.medication.length === 0) return false;
@@ -472,7 +475,7 @@ export default function PatientDetailScreen({ route, navigation }) {
         return obj.ogtt != null || obj.fasting_blood_sugar != null || obj.hba1c != null;
       })
       .sort((a,b) => new Date(a.created_at) - new Date(b.created_at))
-      .slice(-10); // recommended to only show the latest 10 data points on a mobile screen for readability
+      .slice(-7); // recommended to only show the latest 7 data points on a mobile screen for readability
       
     if (vitalsData.length < 2) return null;
 
@@ -688,12 +691,26 @@ export default function PatientDetailScreen({ route, navigation }) {
           </View>
           
           {/* X-Axis Labels */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: CHART_W, marginTop: 12 }}>
-            {labels.map((lbl, i) => (
-              <Text key={`lbl-${i}`} style={{ fontSize: 10, color: theme.secondary, width: 40, textAlign: 'center', marginLeft: -20 }}>
-                {lbl}
-              </Text>
-            ))}
+          <View style={{ position: 'relative', width: CHART_W, height: 20, marginTop: 12 }}>
+            {labels.map((lbl, i) => {
+              const isFirst = i === 0;
+              const isLast = i === labels.length - 1;
+              return (
+                <Text 
+                  key={`lbl-${i}`} 
+                  style={{ 
+                    position: 'absolute',
+                    left: isLast ? undefined : getX(i) - (isFirst ? 0 : 20),
+                    right: isLast ? 0 : undefined,
+                    textAlign: isLast ? 'right' : (isFirst ? 'left' : 'center'),
+                    width: 40,
+                    fontSize: 10, 
+                    color: theme.secondary 
+                  }}>
+                  {lbl}
+                </Text>
+              );
+            })}
           </View>
 
         </View>
@@ -1158,9 +1175,13 @@ export default function PatientDetailScreen({ route, navigation }) {
                     </TouchableOpacity>
                   </View>
                 </View>
-                <Text style={[styles.noteDate, { color: theme.secondary, marginBottom: 6 }]}>
+                <Text style={[styles.noteDate, { color: theme.secondary, marginBottom: 2 }]}>
                   {formatDateTime(note.created_at)}
                   {note.updated_at && note.updated_at !== note.created_at ? `  ·  Updated ${formatDateTime(note.updated_at)}` : ''}
+                </Text>
+                
+                <Text style={{ fontSize: 12, color: theme.secondary, fontStyle: 'italic', marginBottom: 8 }}>
+                  Logged by: {note.source === 'user' ? 'Patient' : (note.source_name || 'Physician')}
                 </Text>
 
                 {/* Always show vitals */}
@@ -1184,6 +1205,13 @@ export default function PatientDetailScreen({ route, navigation }) {
                     </View>
                   )}
                 </View>
+
+                {(obj.image_url || obj.proof_image) && (
+                  <TouchableOpacity style={styles.viewImageButton} onPress={() => setViewerImage(obj.image_url || obj.proof_image)}>
+                    <Ionicons name="image" size={16} color={theme.primary} />
+                    <Text style={styles.viewImageText}>View Proof Image</Text>
+                  </TouchableOpacity>
+                )}
 
                 {/* Summary: objective snippet, prescriptions summary, follow-up flag (only when not expanded) */}
                 {!isExpanded && (
@@ -1743,7 +1771,7 @@ export default function PatientDetailScreen({ route, navigation }) {
                   Video Consultation
                 </Text>
                 <Text style={[styles.historyDate, { color: theme.secondary }]}>
-                  {formatDateTime(consultation.scheduled_date)}
+                  {formatDate(consultation.scheduled_date)}
                 </Text>
               </View>
               <View style={[
@@ -1887,6 +1915,25 @@ export default function PatientDetailScreen({ route, navigation }) {
           <Text style={styles.sendMessageButtonText}>Send Message</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Image Viewer Modal */}
+      <Modal visible={!!viewerImage} transparent={true} animationType="fade">
+        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.9)' }]}>
+          <TouchableOpacity 
+            style={styles.closeImageModalButton} 
+            onPress={() => setViewerImage(null)}
+          >
+            <Ionicons name="close" size={30} color="#fff" />
+          </TouchableOpacity>
+          {viewerImage && (
+            <Image 
+              source={{ uri: viewerImage }} 
+              style={styles.fullScreenImage} 
+              resizeMode="contain" 
+            />
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2339,6 +2386,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  viewImageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 6,
+    borderWidth: 1,
+    borderRadius: 6,
+    gap: 4,
+    marginTop: 8,
+    alignSelf: 'flex-start',
+  },
+  viewImageText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   soapExpandedContent: {
     marginTop: 12,
     gap: 10,
@@ -2539,5 +2600,16 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  closeImageModalButton: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    zIndex: 1,
+    padding: 10,
+  },
+  fullScreenImage: {
+    width: '100%',
+    height: '80%',
   },
 });
