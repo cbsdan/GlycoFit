@@ -496,7 +496,7 @@ export const consultationAPI = {
 
   approve: async (id, data) => {
     try {
-      // data should contain: meeting_link, meeting_password (optional), platform, scheduled_date (optional), scheduled_time (optional)
+      // data may contain: scheduled_date (optional), scheduled_time (optional)
       const response = await api.post(`/physician/consultations/${id}/approve`, data);
       return response.data;
     } catch (error) {

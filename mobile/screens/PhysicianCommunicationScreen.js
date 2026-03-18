@@ -27,11 +27,12 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
   const [selectedTab, setSelectedTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  
+
   const [appointments, setAppointments] = useState([]);
-  const [prescriptions, setPrescriptions] = useState([]);
+  const [soapNotes, setSoapNotes] = useState([]);
+  const [soapLoading, setSoapLoading] = useState(false);
   const [consultations, setConsultations] = useState([]);
-  
+
   // Modal states for consultation request
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [requestDate, setRequestDate] = useState(new Date());
@@ -41,16 +42,40 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [requestLoading, setRequestLoading] = useState(false);
 
+  // Disconnect modal state
+  const [showDisconnectModal, setShowDisconnectModal] = useState(false);
+  const [disconnectLoading, setDisconnectLoading] = useState(false);
+
   useEffect(() => {
     loadData();
   }, []);
+
+  const physicianId = relationship?.physician?.id || relationship?.physician?._id;
+
+  const handleDisconnect = async () => {
+    try {
+      setDisconnectLoading(true);
+      const relationshipId = relationship?.relationship?.id || relationship?.relationship?._id;
+      const response = await api.disconnectPhysician(relationshipId);
+      if (response.success) {
+        toast.show('Disconnected from physician', 'success');
+        setShowDisconnectModal(false);
+        navigation.goBack();
+      }
+    } catch (error) {
+      console.error('Error disconnecting:', error);
+      toast.show('Failed to disconnect', 'error');
+    } finally {
+      setDisconnectLoading(false);
+    }
+  };
 
   const loadData = async () => {
     try {
       setLoading(true);
       await Promise.all([
         fetchAppointments(),
-        fetchPrescriptions(),
+        fetchSoapNotes(),
         fetchConsultations(),
       ]);
     } catch (error) {
@@ -58,6 +83,21 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
       toast.show('Failed to load data', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSoapNotes = async () => {
+    if (!physicianId) return;
+    try {
+      setSoapLoading(true);
+      const response = await api.getPhysicianSoapNotes(physicianId);
+      if (response.success) {
+        setSoapNotes(response.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching soap notes:', error);
+    } finally {
+      setSoapLoading(false);
     }
   };
 
@@ -78,16 +118,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
     }
   };
 
-  const fetchPrescriptions = async () => {
-    try {
-      const response = await api.getPrescriptions('active', relationship.physician.id || relationship.physician._id);
-      if (response.success) {
-        setPrescriptions(response.data);
-      }
-    } catch (error) {
-      console.error('Error fetching prescriptions:', error);
-    }
-  };
+
 
   const fetchConsultations = async () => {
     try {
@@ -100,6 +131,12 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
     }
   };
 
+  const TAB_CONFIG = [
+    { key: 'overview', icon: 'view-dashboard', label: 'Overview' },
+    { key: 'consultation', icon: 'stethoscope', label: 'Consultation' },
+    { key: 'Appointments', icon: 'calendar-clock', label: 'Appointments' },
+  ];
+
   const renderTabs = () => (
     <ScrollView
       horizontal
@@ -107,31 +144,27 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
       style={[styles.tabContainer, { backgroundColor: colors.card }]}
       contentContainerStyle={styles.tabContentContainer}
     >
-      {['overview', 'appointments', 'prescriptions', 'consultations'].map((tab) => (
+      {TAB_CONFIG.map(({ key, icon, label }) => (
         <TouchableOpacity
-          key={tab}
+          key={key}
           style={[
             styles.tab,
-            selectedTab === tab && { borderBottomColor: colors.primary, borderBottomWidth: 3 },
+            selectedTab === key && { borderBottomColor: colors.primary, borderBottomWidth: 3 },
           ]}
-          onPress={() => setSelectedTab(tab)}
+          onPress={() => setSelectedTab(key)}
         >
           <Icon
-            name={
-              tab === 'overview' ? 'view-dashboard' :
-              tab === 'appointments' ? 'calendar-clock' :
-              tab === 'prescriptions' ? 'pill' : 'video'
-            }
+            name={icon}
             size={20}
-            color={selectedTab === tab ? colors.primary : colors.secondary}
+            color={selectedTab === key ? colors.primary : colors.secondary}
           />
           <Text
             style={[
               styles.tabText,
-              { color: selectedTab === tab ? colors.primary : colors.secondary },
+              { color: selectedTab === key ? colors.primary : colors.secondary },
             ]}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {label}
           </Text>
         </TouchableOpacity>
       ))}
@@ -142,11 +175,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
     const upcomingAppointments = appointments.filter(
       apt => apt.status === 'pending' || apt.status === 'confirmed'
     ).slice(0, 3);
-    
-    const activePrescriptions = prescriptions.filter(
-      rx => rx.status === 'active'
-    );
-    
+
     const scheduledConsultations = consultations.filter(
       c => c.status === 'scheduled'
     ).slice(0, 3);
@@ -157,15 +186,15 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
         <View style={[styles.physicianCard, { backgroundColor: colors.card }]}>
           <View style={styles.physicianHeader}>
             <View style={styles.avatarContainer}>
-                {relationship.physician.user.avatar?.url ? (
+              {relationship.physician.user.avatar?.url ? (
                 <Image source={{ uri: relationship.physician.user.avatar.url }} style={styles.avatar} />
-                ) : (
+              ) : (
                 <View style={[styles.avatarPlaceholder, { backgroundColor: colors.primary }]}>
-                    <Text style={styles.avatarText}>
+                  <Text style={styles.avatarText}>
                     {relationship.physician.user.first_name[0]}{relationship.physician.user.last_name[0]}
-                    </Text>
+                  </Text>
                 </View>
-                )}
+              )}
             </View>
             <View style={styles.physicianInfo}>
               <Text style={[styles.physicianName, { color: colors.text }]}>
@@ -179,7 +208,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
               </Text>
             </View>
           </View>
-          
+
           <View style={styles.quickActions}>
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: colors.primary }]}
@@ -187,6 +216,14 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
             >
               <Icon name="chat" size={20} color="#FFFFFF" />
               <Text style={styles.actionButtonText}>Message</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: colors.error || '#E74C3C' }]}
+              onPress={() => setShowDisconnectModal(true)}
+            >
+              <Icon name="link-off" size={20} color="#FFFFFF" />
+              <Text style={styles.actionButtonText}>Disconnect</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -202,26 +239,17 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
               Upcoming
             </Text>
           </View>
-          
+
           <View style={[styles.statCard, { backgroundColor: colors.card }]}>
-            <Icon name="pill" size={32} color={colors.success} />
+            <Icon name="stethoscope" size={32} color={colors.success} />
             <Text style={[styles.statValue, { color: colors.text }]}>
-              {activePrescriptions.length}
+              {soapNotes.length}
             </Text>
             <Text style={[styles.statLabel, { color: colors.secondary }]}>
-              Active Rx
+              Consultations
             </Text>
           </View>
-          
-          <View style={[styles.statCard, { backgroundColor: colors.card }]}>
-            <Icon name="video" size={32} color={colors.info} />
-            <Text style={[styles.statValue, { color: colors.text }]}>
-              {scheduledConsultations.length}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.secondary }]}>
-              Scheduled
-            </Text>
-          </View>
+
         </View>
 
         {/* Recent Activity */}
@@ -263,51 +291,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
     );
   };
 
-  const renderAppointments = () => {
-    const upcoming = appointments.filter(apt => 
-      apt.status === 'pending' || apt.status === 'confirmed'
-    );
-    const past = appointments.filter(apt => 
-      apt.status === 'completed' || apt.status === 'cancelled'
-    );
 
-    return (
-      <View style={styles.tabContent}>
-        <TouchableOpacity
-          style={[styles.createButton, { backgroundColor: colors.primary }]}
-          onPress={() => {/* TODO: Navigate to create appointment */}}
-        >
-          <Icon name="calendar-plus" size={24} color="#FFFFFF" />
-          <Text style={styles.createButtonText}>Book New Appointment</Text>
-        </TouchableOpacity>
-
-        {upcoming.length > 0 && (
-          <>
-            <Text style={[styles.subsectionTitle, { color: colors.text }]}>Upcoming</Text>
-            {upcoming.map((apt) => renderAppointmentCard(apt))}
-          </>
-        )}
-
-        {past.length > 0 && (
-          <>
-            <Text style={[styles.subsectionTitle, { color: colors.text, marginTop: 20 }]}>
-              Past
-            </Text>
-            {past.map((apt) => renderAppointmentCard(apt))}
-          </>
-        )}
-
-        {appointments.length === 0 && (
-          <View style={styles.emptyState}>
-            <Icon name="calendar-blank" size={64} color={colors.secondary} />
-            <Text style={[styles.emptyText, { color: colors.secondary }]}>
-              No appointments yet
-            </Text>
-          </View>
-        )}
-      </View>
-    );
-  };
 
   const renderAppointmentCard = (apt) => (
     <View key={apt.id} style={[styles.card, { backgroundColor: colors.card }]}>
@@ -326,9 +310,9 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
           {
             backgroundColor:
               apt.status === 'confirmed' ? colors.success + '20' :
-              apt.status === 'pending' ? colors.warning + '20' :
-              apt.status === 'completed' ? colors.info + '20' :
-              colors.error + '20'
+                apt.status === 'pending' ? colors.warning + '20' :
+                  apt.status === 'completed' ? colors.info + '20' :
+                    colors.error + '20'
           }
         ]}>
           <Text style={[
@@ -336,27 +320,27 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
             {
               color:
                 apt.status === 'confirmed' ? colors.success :
-                apt.status === 'pending' ? colors.warning :
-                apt.status === 'completed' ? colors.info :
-                colors.error
+                  apt.status === 'pending' ? colors.warning :
+                    apt.status === 'completed' ? colors.info :
+                      colors.error
             }
           ]}>
             {apt.status}
           </Text>
         </View>
       </View>
-      
+
       {apt.reason && (
         <Text style={[styles.cardReason, { color: colors.text }]}>
           Reason: {apt.reason}
         </Text>
       )}
-      
+
       {(apt.status === 'pending' || apt.status === 'confirmed') && (
         <View style={styles.cardActions}>
           <TouchableOpacity
             style={[styles.cardButton, { borderColor: colors.primary }]}
-            onPress={() => {/* TODO: Reschedule */}}
+            onPress={() => {/* TODO: Reschedule */ }}
           >
             <Text style={[styles.cardButtonText, { color: colors.primary }]}>
               Reschedule
@@ -383,112 +367,190 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
     </View>
   );
 
-  const renderPrescriptions = () => {
-    const active = prescriptions.filter(rx => rx.status === 'active');
-    const inactive = prescriptions.filter(rx => rx.status !== 'active');
+  const renderConsultationNotes = () => {
+    if (soapLoading) {
+      return (
+        <View style={[styles.tabContent, { alignItems: 'center', paddingTop: 40 }]}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      );
+    }
+
+    if (soapNotes.length === 0) {
+      return (
+        <View style={styles.tabContent}>
+          <View style={styles.emptyState}>
+            <Icon name="stethoscope" size={64} color={colors.secondary} />
+            <Text style={[styles.emptyText, { color: colors.secondary }]}>
+              No consultation notes yet
+            </Text>
+            <Text style={[styles.emptySubtext, { color: colors.secondary }]}>
+              Your physician's SOAP notes will appear here
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
+    const VITALS_COLOR = '#00BCD4';
+    const SOAP_COLOR = colors.primary;
 
     return (
       <View style={styles.tabContent}>
-        {active.length > 0 && (
-          <>
-            <Text style={[styles.subsectionTitle, { color: colors.text }]}>Active</Text>
-            {active.map((rx) => renderPrescriptionCard(rx))}
-          </>
-        )}
+        {soapNotes.map((note) => {
+          const isVitals = note.consultation_mode === 'quick_vitals';
+          const accentColor = isVitals ? VITALS_COLOR : SOAP_COLOR;
 
-        {inactive.length > 0 && (
-          <>
-            <Text style={[styles.subsectionTitle, { color: colors.text, marginTop: 20 }]}>
-              Inactive
-            </Text>
-            {inactive.map((rx) => renderPrescriptionCard(rx))}
-          </>
-        )}
+          return (
+            <View
+              key={note.id}
+              style={[
+                styles.card,
+                {
+                  backgroundColor: colors.card,
+                  borderLeftWidth: 4,
+                  borderLeftColor: accentColor,
+                },
+              ]}
+            >
+              {/* Note Header */}
+              <View style={styles.cardHeader}>
+                <View
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    backgroundColor: accentColor + '18',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    marginRight: 2,
+                  }}
+                >
+                  <Icon
+                    name={isVitals ? 'heart-pulse' : 'stethoscope'}
+                    size={22}
+                    color={accentColor}
+                  />
+                </View>
+                <View style={[styles.cardHeaderText, { flex: 1 }]}>
+                  <Text style={[styles.cardTitle, { color: colors.text }]}>
+                    {isVitals ? 'Vitals Log' : 'Consultation Note'}
+                  </Text>
+                  <Text style={[styles.cardSubtitle, { color: colors.secondary }]}>
+                    {new Date(note.created_at).toLocaleDateString('en-US', {
+                      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+                    })}
+                  </Text>
+                </View>
+                {/* Type badge */}
+                <View
+                  style={{
+                    backgroundColor: accentColor + '18',
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: accentColor + '50',
+                    alignSelf: 'flex-start',
+                  }}
+                >
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: accentColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    {isVitals ? 'Vitals' : 'SOAP'}
+                  </Text>
+                </View>
+              </View>
 
-        {prescriptions.length === 0 && (
-          <View style={styles.emptyState}>
-            <Icon name="pill" size={64} color={colors.secondary} />
-            <Text style={[styles.emptyText, { color: colors.secondary }]}>
-              No prescriptions yet
-            </Text>
-          </View>
-        )}
+              {/* Quick Vitals */}
+              {isVitals && note.soap_objective && (
+                <View style={[styles.prescriptionDetails, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }]}>
+                  {note.soap_objective.fasting_blood_sugar != null && (
+                    <View style={styles.vitalRow}>
+                      <Icon name="water" size={14} color={VITALS_COLOR} style={{ marginRight: 6 }} />
+                      <Text style={[styles.detailText, { color: colors.text, flex: 1 }]}>
+                        Fasting Blood Sugar: <Text style={{ fontWeight: '700', color: VITALS_COLOR }}>{note.soap_objective.fasting_blood_sugar} mg/dL</Text>
+                      </Text>
+                    </View>
+                  )}
+                  {note.soap_objective.ogtt != null && (
+                    <View style={styles.vitalRow}>
+                      <Icon name="test-tube" size={14} color={VITALS_COLOR} style={{ marginRight: 6 }} />
+                      <Text style={[styles.detailText, { color: colors.text, flex: 1 }]}>
+                        OGTT: <Text style={{ fontWeight: '700', color: VITALS_COLOR }}>{note.soap_objective.ogtt} mg/dL</Text>
+                      </Text>
+                    </View>
+                  )}
+                  {note.soap_objective.hba1c != null && (
+                    <View style={styles.vitalRow}>
+                      <Icon name="percent" size={14} color={VITALS_COLOR} style={{ marginRight: 6 }} />
+                      <Text style={[styles.detailText, { color: colors.text, flex: 1 }]}>
+                        HbA1c: <Text style={{ fontWeight: '700', color: VITALS_COLOR }}>{note.soap_objective.hba1c}%</Text>
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Full SOAP */}
+              {note.consultation_mode === 'full' && (
+                <View style={[styles.prescriptionDetails, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }]}>
+                  {note.soap_subjective ? (
+                    <View style={{ marginBottom: 8 }}>
+                      <Text style={[styles.soapSectionLabel, { color: SOAP_COLOR }]}>Subjective</Text>
+                      <Text style={[styles.detailText, { color: colors.text }]}>{note.soap_subjective}</Text>
+                    </View>
+                  ) : null}
+                  {note.soap_objective?.physical_exam_findings ? (
+                    <View style={{ marginBottom: 8 }}>
+                      <Text style={[styles.soapSectionLabel, { color: SOAP_COLOR }]}>Objective</Text>
+                      <Text style={[styles.detailText, { color: colors.text }]}>{note.soap_objective.physical_exam_findings}</Text>
+                    </View>
+                  ) : null}
+                  {note.soap_assessment ? (
+                    <View style={{ marginBottom: 8 }}>
+                      <Text style={[styles.soapSectionLabel, { color: SOAP_COLOR }]}>Assessment</Text>
+                      <Text style={[styles.detailText, { color: colors.text }]}>{note.soap_assessment}</Text>
+                    </View>
+                  ) : null}
+                  {note.soap_plan ? (
+                    <View style={{ marginBottom: 8 }}>
+                      <Text style={[styles.soapSectionLabel, { color: SOAP_COLOR }]}>Plan</Text>
+                      <Text style={[styles.detailText, { color: colors.text }]}>{note.soap_plan}</Text>
+                    </View>
+                  ) : null}
+                  {note.soap_prescriptions && note.soap_prescriptions.length > 0 && (
+                    <View style={{ marginBottom: 8 }}>
+                      <Text style={[styles.soapSectionLabel, { color: SOAP_COLOR }]}>Prescriptions</Text>
+                      {note.soap_prescriptions.map((rx, idx) => (
+                        <Text key={idx} style={[styles.detailText, { color: colors.text }]}>
+                          • {rx.medication} — {rx.dosage}, {rx.frequency}{rx.duration ? `, ${rx.duration}` : ''}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+                  {note.follow_up_required && (
+                    <View style={[styles.statusBadge, { backgroundColor: colors.warning + '20', alignSelf: 'flex-start', marginTop: 4 }]}>
+                      <Text style={[styles.statusText, { color: colors.warning }]}>Follow-up Required</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          );
+        })}
       </View>
     );
   };
 
-  const renderPrescriptionCard = (rx) => (
-    <View key={rx.id} style={[styles.card, { backgroundColor: colors.card }]}>
-      <View style={styles.cardHeader}>
-        <Icon name="pill" size={24} color={colors.success} />
-        <View style={styles.cardHeaderText}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>
-            {rx.medication_name}
-          </Text>
-          <Text style={[styles.cardSubtitle, { color: colors.secondary }]}>
-            {rx.dosage} • {rx.frequency}
-          </Text>
-        </View>
-        <View style={[
-          styles.statusBadge,
-          { backgroundColor: rx.status === 'active' ? colors.success + '20' : colors.secondary + '20' }
-        ]}>
-          <Text style={[
-            styles.statusText,
-            { color: rx.status === 'active' ? colors.success : colors.secondary }
-          ]}>
-            {rx.status}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.prescriptionDetails}>
-        {rx.duration_days && (
-          <Text style={[styles.detailText, { color: colors.text }]}>
-            Duration: {rx.duration_days} days
-          </Text>
-        )}
-        {rx.refills_remaining !== null && (
-          <Text style={[styles.detailText, { color: colors.text }]}>
-            Refills remaining: {rx.refills_remaining}
-          </Text>
-        )}
-        {rx.instructions && (
-          <Text style={[styles.detailText, { color: colors.text }]}>
-            Instructions: {rx.instructions}
-          </Text>
-        )}
-      </View>
-
-      {rx.status === 'active' && rx.refills_remaining > 0 && (
-        <TouchableOpacity
-          style={[styles.refillButton, { backgroundColor: colors.primary }]}
-          onPress={async () => {
-            try {
-              await api.requestPrescriptionRefill(rx.id);
-              toast.show('Refill requested', 'success');
-              fetchPrescriptions();
-            } catch (error) {
-              toast.show(error.response?.data?.message || 'Failed to request refill', 'error');
-            }
-          }}
-        >
-          <Icon name="reload" size={20} color="#FFFFFF" />
-          <Text style={styles.refillButtonText}>Request Refill</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-
-  const renderConsultations = () => {
+  const renderHistory = () => {
     const pending = consultations.filter(c => c.status === 'pending');
     const approved = consultations.filter(c => c.status === 'approved' || c.status === 'scheduled');
-    const rejected = consultations.filter(c => c.status === 'rejected');
+    const cancelled = consultations.filter(c => c.status === 'cancelled');
     const completed = consultations.filter(c => c.status === 'completed');
+    const rejected = consultations.filter(c => c.status === 'rejected');
 
     const handleSubmitRequest = async () => {
       if (!requestReason.trim()) {
-        toast.show('Please enter a reason for consultation', 'error');
+        toast.show('Please enter a reason for appointment', 'error');
         return;
       }
 
@@ -499,17 +561,19 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
           minute: '2-digit',
           hour12: false
         });
-        
+
+        const pad = (n) => String(n).padStart(2, '0');
+        const localDateStr = `${requestDate.getFullYear()}-${pad(requestDate.getMonth() + 1)}-${pad(requestDate.getDate())}`;
         await api.createConsultation(
           relationship.physician.id || relationship.physician._id,
-          requestDate.toISOString(),
+          localDateStr,
           formattedTime,
-          'video',
+          'in-person',
           30,
           requestReason.trim(),
           ''
         );
-        
+
         toast.show('Consultation request sent!', 'success');
         setShowRequestModal(false);
         setRequestReason('');
@@ -550,14 +614,23 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
       });
     };
 
+    const hasActiveConsultation = pending.length > 0 || approved.length > 0;
+
     return (
       <View style={styles.tabContent}>
         <TouchableOpacity
-          style={[styles.createButton, { backgroundColor: colors.primary }]}
-          onPress={() => setShowRequestModal(true)}
+          style={[
+            styles.createButton,
+            { backgroundColor: hasActiveConsultation ? colors.secondary : colors.primary },
+          ]}
+          onPress={() => !hasActiveConsultation && setShowRequestModal(true)}
+          disabled={hasActiveConsultation}
+          activeOpacity={hasActiveConsultation ? 1 : 0.7}
         >
-          <Icon name="video-plus" size={24} color="#FFFFFF" />
-          <Text style={styles.createButtonText}>Request New Consultation</Text>
+          <Icon name="calendar-plus" size={24} color="#FFFFFF" />
+          <Text style={styles.createButtonText}>
+            {hasActiveConsultation ? 'Appointment Already Active' : 'Request New Appointment'}
+          </Text>
         </TouchableOpacity>
 
         {pending.length > 0 && (
@@ -571,10 +644,10 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
                   <Text style={styles.pendingBannerText}>AWAITING PHYSICIAN APPROVAL</Text>
                 </View>
                 <View style={styles.cardHeader}>
-                  <Icon name="clock-outline" size={24} color={colors.warning} />
+                  <Icon name="calendar-clock" size={24} color={colors.warning} />
                   <View style={styles.cardHeaderText}>
                     <Text style={[styles.cardTitle, { color: colors.text }]}>
-                      Video Consultation
+                      Appointment
                     </Text>
                     <Text style={[styles.cardSubtitle, { color: colors.secondary }]}>
                       {formatDate(c.scheduled_date)} at {formatTime(c.scheduled_date, c.scheduled_time)}
@@ -615,10 +688,10 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
             {approved.map((c) => (
               <View key={c.id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.success, borderWidth: 1 }]}>
                 <View style={styles.cardHeader}>
-                  <Icon name="video" size={24} color={colors.success} />
+                  <Icon name="calendar-clock" size={24} color={colors.success} />
                   <View style={styles.cardHeaderText}>
                     <Text style={[styles.cardTitle, { color: colors.text }]}>
-                      Video Consultation
+                      Appointment
                     </Text>
                     <Text style={[styles.cardSubtitle, { color: colors.secondary }]}>
                       {formatDate(c.scheduled_date)} at {formatTime(c.scheduled_date, c.scheduled_time)}
@@ -659,7 +732,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
 
                 <View style={styles.cardActions}>
                   <TouchableOpacity
-                    style={[styles.cardButton, { borderColor: colors.error }]}
+                    style={[styles.cardButton, { backgroundColor: colors.error, borderColor: "transparent" }]}
                     onPress={async () => {
                       try {
                         await api.cancelConsultation(c.id, 'Cancelled by patient');
@@ -670,7 +743,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
                       }
                     }}
                   >
-                    <Text style={[styles.cardButtonText, { color: colors.error }]}>Cancel</Text>
+                    <Text style={[styles.cardButtonText, { color: "#ffffff" }]}>Cancel</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -678,6 +751,44 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
           </>
         )}
 
+
+
+        {completed.length > 0 && (
+          <>
+            <Text style={[styles.subsectionTitle, { color: colors.text, marginTop: 20 }]}>
+              <Icon name="check-all" size={18} color={colors.info} /> Completed
+            </Text>
+            {completed.map((c) => renderConsultationCard(c))}
+          </>
+        )}
+        {cancelled.length > 0 && (
+          <>
+            <Text style={[styles.subsectionTitle, { color: colors.text, marginTop: 20 }]}>
+              <Icon name="cancel" size={18} color={colors.secondary} /> Cancelled
+            </Text>
+            {cancelled.map((c) => (
+              <View key={c.id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.secondary, borderWidth: 1, opacity: 0.7 }]}>
+                <View style={styles.cardHeader}>
+                  <Icon name="calendar-remove" size={24} color={colors.secondary} />
+                  <View style={styles.cardHeaderText}>
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>Appointment</Text>
+                    <Text style={[styles.cardSubtitle, { color: colors.secondary }]}>
+                      {formatDate(c.scheduled_date)}
+                    </Text>
+                  </View>
+                  <View style={[styles.statusBadge, { backgroundColor: colors.secondary + '20' }]}>
+                    <Text style={[styles.statusText, { color: colors.secondary }]}>CANCELLED</Text>
+                  </View>
+                </View>
+                {c.reason && (
+                  <Text style={[styles.cardReason, { color: colors.secondary }]}>
+                    Reason: {c.reason}
+                  </Text>
+                )}
+              </View>
+            ))}
+          </>
+        )}
         {rejected.length > 0 && (
           <>
             <Text style={[styles.subsectionTitle, { color: colors.text, marginTop: 20 }]}>
@@ -689,7 +800,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
                   <Icon name="close-circle" size={24} color={colors.error} />
                   <View style={styles.cardHeaderText}>
                     <Text style={[styles.cardTitle, { color: colors.text }]}>
-                      Video Consultation
+                      Appointment
                     </Text>
                     <Text style={[styles.cardSubtitle, { color: colors.secondary }]}>
                       {formatDate(c.scheduled_date)}
@@ -706,15 +817,6 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
                 )}
               </View>
             ))}
-          </>
-        )}
-
-        {completed.length > 0 && (
-          <>
-            <Text style={[styles.subsectionTitle, { color: colors.text, marginTop: 20 }]}>
-              <Icon name="check-all" size={18} color={colors.info} /> Completed
-            </Text>
-            {completed.map((c) => renderConsultationCard(c))}
           </>
         )}
 
@@ -741,7 +843,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
             <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: colors.text }]}>
-                  Request Consultation
+                  Request Appointment
                 </Text>
                 <TouchableOpacity onPress={() => setShowRequestModal(false)}>
                   <Icon name="close" size={24} color={colors.text} />
@@ -781,7 +883,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
                 </TouchableOpacity>
 
                 <Text style={[styles.modalLabel, { color: colors.text, marginTop: 16 }]}>
-                  Reason for Consultation *
+                  Reason for appointment *
                 </Text>
                 <TextInput
                   style={[
@@ -789,7 +891,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
                     styles.textArea,
                     { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }
                   ]}
-                  placeholder="Describe the reason for your consultation..."
+                  placeholder="Describe the reason for your appointment..."
                   placeholderTextColor={colors.secondary}
                   value={requestReason}
                   onChangeText={setRequestReason}
@@ -800,7 +902,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
                 <View style={[styles.infoBox, { backgroundColor: colors.info + '10' }]}>
                   <Icon name="information" size={20} color={colors.info} />
                   <Text style={[styles.infoText, { color: colors.info }]}>
-                    Your physician will review your request and provide a Google Meet link if approved.
+                    Your physician will review your request.
                   </Text>
                 </View>
 
@@ -837,6 +939,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
                 {Array.from({ length: 30 }, (_, i) => {
                   const date = new Date();
                   date.setDate(date.getDate() + i);
+                  date.setHours(12, 0, 0, 0);
                   return (
                     <TouchableOpacity
                       key={i}
@@ -883,25 +986,25 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
                 {['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
                   '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
                   '16:00', '16:30', '17:00', '17:30', '18:00'].map((time) => (
-                  <TouchableOpacity
-                    key={time}
-                    style={[
-                      styles.pickerItem,
-                      requestTime === time && { backgroundColor: colors.primary + '20' }
-                    ]}
-                    onPress={() => {
-                      setRequestTime(time);
-                      setShowTimePicker(false);
-                    }}
-                  >
-                    <Text style={[
-                      styles.pickerItemText,
-                      { color: requestTime === time ? colors.primary : colors.text }
-                    ]}>
-                      {time}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                    <TouchableOpacity
+                      key={time}
+                      style={[
+                        styles.pickerItem,
+                        requestTime === time && { backgroundColor: colors.primary + '20' }
+                      ]}
+                      onPress={() => {
+                        setRequestTime(time);
+                        setShowTimePicker(false);
+                      }}
+                    >
+                      <Text style={[
+                        styles.pickerItemText,
+                        { color: requestTime === time ? colors.primary : colors.text }
+                      ]}>
+                        {time}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
               </ScrollView>
               <TouchableOpacity
                 style={[styles.pickerCloseButton, { borderColor: colors.border }]}
@@ -919,10 +1022,10 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
   const renderConsultationCard = (consultation) => (
     <View key={consultation.id} style={[styles.card, { backgroundColor: colors.card }]}>
       <View style={styles.cardHeader}>
-        <Icon name="video" size={24} color={colors.info} />
+        <Icon name="calendar-clock" size={24} color={colors.info} />
         <View style={styles.cardHeaderText}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>
-            {consultation.consultation_type} Consultation
+            Appointment
           </Text>
           <Text style={[styles.cardSubtitle, { color: colors.secondary }]}>
             {new Date(consultation.scheduled_date).toLocaleString()}
@@ -933,8 +1036,8 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
           {
             backgroundColor:
               consultation.status === 'scheduled' ? colors.info + '20' :
-              consultation.status === 'completed' ? colors.success + '20' :
-              colors.secondary + '20'
+                consultation.status === 'completed' ? colors.success + '20' :
+                  colors.secondary + '20'
           }
         ]}>
           <Text style={[
@@ -942,8 +1045,8 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
             {
               color:
                 consultation.status === 'scheduled' ? colors.info :
-                consultation.status === 'completed' ? colors.success :
-                colors.secondary
+                  consultation.status === 'completed' ? colors.success :
+                    colors.secondary
             }
           ]}>
             {consultation.status}
@@ -960,7 +1063,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
       {consultation.status === 'scheduled' && consultation.meeting_url && (
         <TouchableOpacity
           style={[styles.joinButton, { backgroundColor: colors.success }]}
-          onPress={() => {/* TODO: Open meeting URL */}}
+          onPress={() => {/* TODO: Open meeting URL */ }}
         >
           <Icon name="video" size={20} color="#FFFFFF" />
           <Text style={styles.joinButtonText}>Join Video Call</Text>
@@ -971,7 +1074,7 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
         <View style={styles.cardActions}>
           <TouchableOpacity
             style={[styles.cardButton, { borderColor: colors.primary }]}
-            onPress={() => {/* TODO: Reschedule */}}
+            onPress={() => {/* TODO: Reschedule */ }}
           >
             <Text style={[styles.cardButtonText, { color: colors.primary }]}>
               Reschedule
@@ -994,18 +1097,6 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
             </Text>
           </TouchableOpacity>
         </View>
-      )}
-
-      {consultation.status === 'completed' && !consultation.patient_rating && (
-        <TouchableOpacity
-          style={[styles.rateButton, { borderColor: colors.primary }]}
-          onPress={() => {/* TODO: Rate consultation */}}
-        >
-          <Icon name="star-outline" size={20} color={colors.primary} />
-          <Text style={[styles.rateButtonText, { color: colors.primary }]}>
-            Rate Consultation
-          </Text>
-        </TouchableOpacity>
       )}
     </View>
   );
@@ -1044,10 +1135,58 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
         }
       >
         {selectedTab === 'overview' && renderOverview()}
-        {selectedTab === 'appointments' && renderAppointments()}
-        {selectedTab === 'prescriptions' && renderPrescriptions()}
-        {selectedTab === 'consultations' && renderConsultations()}
+        {selectedTab === 'consultation' && renderConsultationNotes()}
+        {selectedTab === 'Appointments' && renderHistory()}
       </ScrollView>
+
+      {/* Disconnect Confirmation Modal */}
+      <Modal
+        visible={showDisconnectModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDisconnectModal(false)}
+      >
+        <View style={styles.disconnectModalOverlay}>
+          <View style={[styles.disconnectModalContent, { backgroundColor: colors.card }]}>
+            <View style={[styles.disconnectIconContainer, { backgroundColor: (colors.error || '#E74C3C') + '15' }]}>
+              <Icon name="link-off" size={36} color={colors.error || '#E74C3C'} />
+            </View>
+            <Text style={[styles.disconnectModalTitle, { color: colors.text }]}>
+              Disconnect Physician?
+            </Text>
+            <Text style={[styles.disconnectModalMessage, { color: colors.secondary }]}>
+              Are you sure you want to disconnect from{' '}
+              <Text style={{ fontWeight: '700', color: colors.text }}>
+                Dr. {relationship.physician.user.first_name} {relationship.physician.user.last_name}
+              </Text>
+              ? You will lose access to your shared history and will need to send a new request to reconnect.
+            </Text>
+            <View style={styles.disconnectModalActions}>
+              <TouchableOpacity
+                style={[styles.disconnectCancelBtn, { borderColor: colors.border }]}
+                onPress={() => setShowDisconnectModal(false)}
+                disabled={disconnectLoading}
+              >
+                <Text style={[styles.disconnectCancelText, { color: colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.disconnectConfirmBtn, { backgroundColor: colors.error || '#E74C3C' }]}
+                onPress={handleDisconnect}
+                disabled={disconnectLoading}
+              >
+                {disconnectLoading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Icon name="link-off" size={18} color="#FFFFFF" />
+                    <Text style={styles.disconnectConfirmText}>Disconnect</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1120,7 +1259,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: 16,
   },
-   physicianHeader: {
+  physicianHeader: {
     flexDirection: 'row',
     marginBottom: 12,
   },
@@ -1183,7 +1322,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 10,
+    paddingHorizontal: 2,
     borderRadius: 10,
     gap: 8,
   },
@@ -1214,7 +1353,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 10,
     marginTop: 4,
   },
   section: {
@@ -1565,6 +1704,89 @@ const styles = StyleSheet.create({
   pickerCloseText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  // Disconnect Modal Styles
+  disconnectModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  disconnectModalContent: {
+    width: '100%',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+  },
+  disconnectIconContainer: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  disconnectModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  disconnectModalMessage: {
+    fontSize: 14,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  disconnectModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  disconnectCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disconnectCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  disconnectConfirmBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  disconnectConfirmText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  // Note card styles
+  vitalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  soapSectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 3,
   },
 });
 

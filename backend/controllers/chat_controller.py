@@ -78,8 +78,8 @@ def get_conversations():
         
         # Get user's MongoDB _id
         if user_role == 'physician':
-            # Get physician's user_id
-            physician = Physician.find_by_firebase_uid(firebase_user.get('uid'))
+            # Look up physician by the User._id (current_user is already resolved)
+            physician = Physician.find_by_user_id(current_user._id)
             if physician:
                 user_mongo_id = physician.user_id
             else:

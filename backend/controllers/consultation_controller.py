@@ -391,17 +391,10 @@ def get_pending_consultation_requests():
 
 
 def approve_consultation(consultation_id):
-    """Physician approves a consultation request with meeting details"""
+    """Physician approves a consultation request"""
     try:
         current_user = g.current_user
-        data = request.get_json()
-        
-        # Validate required fields
-        if 'meeting_link' not in data:
-            return jsonify({
-                'success': False,
-                'message': 'meeting_link is required'
-            }), 400
+        data = request.get_json() or {}
         
         physician = Physician.find_by_user_id(current_user._id)
         if not physician:
@@ -436,11 +429,8 @@ def approve_consultation(consultation_id):
         if 'scheduled_date' in data:
             scheduled_date = datetime.fromisoformat(data['scheduled_date'].replace('Z', '+00:00'))
         
-        # Approve the consultation
+        # Approve the consultation (no meeting link required)
         consultation.approve(
-            meeting_link=data['meeting_link'],
-            meeting_password=data.get('meeting_password', ''),
-            platform=data.get('platform', 'google_meet'),
             scheduled_date=scheduled_date,
             scheduled_time=data.get('scheduled_time')
         )

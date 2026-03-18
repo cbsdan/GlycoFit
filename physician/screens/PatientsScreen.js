@@ -8,12 +8,14 @@ import {
   TextInput,
   ActivityIndicator,
   RefreshControl,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
-import { patientAPI } from '../services/api';
+import { patientAPI, consultationAPI, chatService, soapNoteAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 
 export default function PatientsScreen() {
@@ -26,6 +28,16 @@ export default function PatientsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [activePatients, setActivePatients] = useState([]);
   const [patientRequests, setPatientRequests] = useState([]);
+  const [patientMetrics, setPatientMetrics] = useState({});
+
+  // Schedule modal state (Accept patient + schedule appointment)
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [schedulingPatient, setSchedulingPatient] = useState(null);
+  const [scheduleDate, setScheduleDate] = useState(new Date());
+  const [scheduleTime, setScheduleTime] = useState('09:00');
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [showDatePickerPS, setShowDatePickerPS] = useState(false);
+  const [showTimePickerPS, setShowTimePickerPS] = useState(false);
 
   useEffect(() => {
     fetchPatients();
@@ -45,6 +57,60 @@ export default function PatientsScreen() {
 
       if (requestsRes.success) {
         setPatientRequests(requestsRes.data);
+      }
+
+      // Fetch per-patient metrics (non-fatal)
+      try {
+        const patients = patientsRes.success ? (patientsRes.data || []) : [];
+
+        const [soapResultsArr, consultRes, convRes] = await Promise.all([
+          Promise.all(
+            patients.map((p) =>
+              soapNoteAPI.getByPatient(p._id || p.id).catch(() => ({ count: 0 }))
+            )
+          ),
+          consultationAPI.getAll(),
+          chatService.getConversations(),
+        ]);
+
+        const metricsMap = {};
+
+        // Count SOAP notes per patient_id
+        patients.forEach((p, idx) => {
+          const pid = p._id || p.id;
+          if (pid) {
+            if (!metricsMap[pid]) metricsMap[pid] = { consultationCount: 0, unreadCount: 0, pendingAppts: 0 };
+            metricsMap[pid].consultationCount = soapResultsArr[idx]?.count ?? 0;
+          }
+        });
+
+        // Count pending appointments per patient_id
+        if (consultRes?.data) {
+          consultRes.data.forEach((c) => {
+            const pid = c.patient_id;
+            if (pid) {
+              if (!metricsMap[pid]) metricsMap[pid] = { consultationCount: 0, unreadCount: 0, pendingAppts: 0 };
+              if ((c.status || '').toLowerCase() === 'pending') {
+                metricsMap[pid].pendingAppts += 1;
+              }
+            }
+          });
+        }
+
+        // Map unread message count per patient_id
+        if (convRes?.conversations) {
+          convRes.conversations.forEach((conv) => {
+            const pid = conv.patient_id;
+            if (pid) {
+              if (!metricsMap[pid]) metricsMap[pid] = { consultationCount: 0, unreadCount: 0, pendingAppts: 0 };
+              metricsMap[pid].unreadCount = conv.unread_count || 0;
+            }
+          });
+        }
+
+        setPatientMetrics(metricsMap);
+      } catch (metricsError) {
+        console.warn('Failed to load patient metrics:', metricsError);
       }
     } catch (error) {
       console.error('Error fetching patients:', error);
@@ -73,16 +139,44 @@ export default function PatientsScreen() {
     }
   };
 
-  const handleDeclineRequest = async (requestId) => {
+  const handleScheduleRequest = (patient) => {
+    setSchedulingPatient(patient);
+    setScheduleDate(new Date());
+    setScheduleTime('09:00');
+    setShowScheduleModal(true);
+  };
+
+  const submitScheduleRequest = async () => {
     try {
-      const response = await patientAPI.declineRequest(requestId);
-      if (response.success) {
-        showToast('Patient request declined', 'success');
-        fetchPatients();
+      setScheduleLoading(true);
+      const requestId = schedulingPatient._id || schedulingPatient.id;
+
+      // Accept the patient connection first
+      const acceptRes = await patientAPI.acceptRequest(requestId);
+      if (!acceptRes.success) {
+        showToast(acceptRes.message || 'Failed to accept patient', 'error');
+        return;
       }
+
+      // Create a consultation with the chosen date/time
+      const patientUserId = schedulingPatient.patient?._id || schedulingPatient.patient?.id;
+      await consultationAPI.create({
+        patient_id: patientUserId,
+        scheduled_date: scheduleDate.toISOString(),
+        scheduled_time: scheduleTime,
+        consultation_type: 'in-person',
+        duration_minutes: 30,
+        reason: 'Initial consultation',
+      });
+
+      showToast('Patient accepted and appointment scheduled', 'success');
+      setShowScheduleModal(false);
+      fetchPatients();
     } catch (error) {
-      console.error('Error declining request:', error);
-      showToast('Failed to decline request', 'error');
+      console.error('Error scheduling appointment:', error);
+      showToast('Failed to schedule appointment', 'error');
+    } finally {
+      setScheduleLoading(false);
     }
   };
 
@@ -97,7 +191,7 @@ export default function PatientsScreen() {
     } else {
       patientName = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
     }
-    
+
     const matchesSearch = patientName.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesTab =
       selectedTab === 'all' ||
@@ -128,289 +222,420 @@ export default function PatientsScreen() {
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         {/* Search Bar */}
         <View style={styles.searchContainer}>
-        <View
-          style={[
-            styles.searchBar,
-            { backgroundColor: theme.surface, borderColor: theme.border },
-          ]}
-        >
-          <Ionicons name="search" size={20} color={theme.secondary} />
-          <TextInput
-            style={[styles.searchInput, { color: theme.text }]}
-            placeholder="Search patients..."
-            placeholderTextColor={theme.secondary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
+          <View
+            style={[
+              styles.searchBar,
+              { backgroundColor: theme.surface, borderColor: theme.border },
+            ]}
+          >
+            <Ionicons name="search" size={20} color={theme.secondary} />
+            <TextInput
+              style={[styles.searchInput, { color: theme.text }]}
+              placeholder="Search patients..."
+              placeholderTextColor={theme.secondary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </View>
         </View>
-      </View>
 
-      {/* Tab Selector */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            selectedTab === 'all' && {
-              borderBottomColor: theme.primary,
-              borderBottomWidth: 2,
-            },
-          ]}
-          onPress={() => setSelectedTab('all')}
-        >
-          <Text
+        {/* Tab Selector */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
             style={[
-              styles.tabText,
-              {
-                color: selectedTab === 'all' ? theme.primary : theme.secondary,
+              styles.tab,
+              selectedTab === 'all' && {
+                borderBottomColor: theme.primary,
+                borderBottomWidth: 2,
               },
             ]}
+            onPress={() => setSelectedTab('all')}
           >
-            All Patients
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            selectedTab === 'active' && {
-              borderBottomColor: theme.primary,
-              borderBottomWidth: 2,
-            },
-          ]}
-          onPress={() => setSelectedTab('active')}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              {
-                color: selectedTab === 'active' ? theme.primary : theme.secondary,
-              },
-            ]}
-          >
-            Active
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            selectedTab === 'requests' && {
-              borderBottomColor: theme.primary,
-              borderBottomWidth: 2,
-            },
-          ]}
-          onPress={() => setSelectedTab('requests')}
-        >
-          <View style={styles.tabWithBadge}>
             <Text
               style={[
                 styles.tabText,
                 {
-                  color:
-                    selectedTab === 'requests' ? theme.primary : theme.secondary,
+                  color: selectedTab === 'all' ? theme.primary : theme.secondary,
                 },
               ]}
             >
-              Requests
+              All Patients
             </Text>
-            {patientRequests.length > 0 && (
-              <View
-                style={[styles.badge, { backgroundColor: theme.error }]}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.tab,
+              selectedTab === 'active' && {
+                borderBottomColor: theme.primary,
+                borderBottomWidth: 2,
+              },
+            ]}
+            onPress={() => setSelectedTab('active')}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                {
+                  color: selectedTab === 'active' ? theme.primary : theme.secondary,
+                },
+              ]}
+            >
+              Active
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.tab,
+              selectedTab === 'requests' && {
+                borderBottomColor: theme.primary,
+                borderBottomWidth: 2,
+              },
+            ]}
+            onPress={() => setSelectedTab('requests')}
+          >
+            <View style={styles.tabWithBadge}>
+              <Text
+                style={[
+                  styles.tabText,
+                  {
+                    color:
+                      selectedTab === 'requests' ? theme.primary : theme.secondary,
+                  },
+                ]}
               >
-                <Text style={styles.badgeText}>{patientRequests.length}</Text>
-              </View>
+                Requests
+              </Text>
+              {patientRequests.length > 0 && (
+                <View
+                  style={[styles.badge, { backgroundColor: theme.error }]}
+                >
+                  <Text style={styles.badgeText}>{patientRequests.length}</Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Patient List */}
+        <ScrollView
+          style={styles.listContainer}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        >
+          {filteredPatients.length === 0 ? (
+            <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, ...theme.shadow }]}>
+              <Ionicons name="people-outline" size={64} color={theme.secondary} />
+              <Text style={[styles.emptyStateText, { color: theme.text }]}>
+                {selectedTab === 'all' ? 'No patients yet' :
+                  selectedTab === 'active' ? 'No active patients' :
+                    'No pending requests'}
+              </Text>
+              <Text style={[styles.emptyStateSubtext, { color: theme.secondary }]}>
+                {selectedTab === 'requests'
+                  ? 'Patient requests will appear here'
+                  : 'Start connecting with patients to see them here'}
+              </Text>
+            </View>
+          ) : (
+            filteredPatients.map((patient) =>
+              patient.status === 'request' ? (
+                <TouchableOpacity
+                  key={patient.id}
+                  style={[
+                    styles.patientCard,
+                    {
+                      backgroundColor: theme.card,
+                      borderColor: theme.border,
+                      ...theme.shadow,
+                    },
+                  ]}
+                >
+                  <View style={styles.requestHeader}>
+                    <View
+                      style={[
+                        styles.avatar,
+                        { backgroundColor: theme.primary + '20' },
+                      ]}
+                    >
+                      <Text style={[styles.avatarText, { color: theme.primary }]}>
+                        {patient.patient?.first_name?.charAt(0) || '?'}
+                      </Text>
+                    </View>
+                    <View style={styles.patientInfo}>
+                      <Text style={[styles.patientName, { color: theme.text }]}>
+                        {patient.patient ? `${patient.patient.first_name} ${patient.patient.last_name}` : 'Unknown'}
+                      </Text>
+                      <Text
+                        style={[styles.patientDetails, { color: theme.secondary }]}
+                      >
+                        {patient.patient?.email || 'No email'}
+                      </Text>
+                      <Text
+                        style={[styles.requestTime, { color: theme.secondary }]}
+                      >
+                        Requested {patient.request_date ? new Date(patient.request_date).toLocaleDateString() : 'Unknown'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.requestActions}>
+                    <TouchableOpacity
+                      style={[
+                        styles.acceptButton,
+                        { backgroundColor: theme.success },
+                      ]}
+                      onPress={() => handleAcceptRequest(patient._id || patient.id)}
+                    >
+                      <Text style={styles.actionButtonText}>Accept</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.declineButton, { borderColor: theme.primary }]}
+                      onPress={() => handleScheduleRequest(patient)}
+                    >
+                      <Ionicons name="calendar-outline" size={14} color={theme.primary} style={{ marginRight: 4 }} />
+                      <Text style={[styles.declineText, { color: theme.primary }]}>
+                        Schedule
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  key={patient.id}
+                  style={[
+                    styles.patientCard,
+                    {
+                      backgroundColor: theme.card,
+                      borderColor: theme.border,
+                      ...theme.shadow,
+                    },
+                  ]}
+                  onPress={() => navigation.navigate('PatientDetail', {
+                    patient: patient,
+                    relationship: {
+                      id: patient.relationship?.id || patient.relationship_id || patient._id,
+                      patient: patient,
+                      acceptance_date: patient.relationship?.acceptance_date,
+                    }
+                  })}
+                >
+                  <View style={styles.cardHeader}>
+                    <View
+                      style={[
+                        styles.avatar,
+                        { backgroundColor: theme.primary + '20' },
+                      ]}
+                    >
+                      <Text style={[styles.avatarText, { color: theme.primary }]}>
+                        {patient.first_name?.charAt(0) || '?'}
+                      </Text>
+                    </View>
+                    <View style={styles.patientInfo}>
+                      <Text style={[styles.patientName, { color: theme.text }]}>
+                        {`${patient.first_name || ''} ${patient.last_name || ''}`.trim() || 'Unknown'}
+                      </Text>
+                      <Text
+                        style={[styles.patientDetails, { color: theme.secondary }]}
+                      >
+                        {patient.email || 'No email'}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.chatButton, { backgroundColor: theme.primary }]}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        navigation.navigate('PatientChat', {
+                          patient: patient,
+                          relationship: {
+                            id: patient.relationship?.id || patient.relationship_id || patient._id,
+                            patient: patient,
+                          }
+                        });
+                      }}
+                    >
+                      <Ionicons name="chatbubble-ellipses" size={18} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.metricsContainer}>
+                    <View style={styles.metric}>
+                      <Ionicons name="calendar" size={16} color={theme.secondary} />
+                      <Text style={[styles.metricLabel, { color: theme.secondary }]}>
+                        Consultations
+                      </Text>
+                      <Text style={[styles.metricValue, { color: theme.text }]}>
+                        {patientMetrics[patient._id || patient.id]?.consultationCount ?? '-'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.metric}>
+                      <Ionicons name="chatbubbles" size={16} color={theme.secondary} />
+                      <Text style={[styles.metricLabel, { color: theme.secondary }]}>
+                        Unread Msgs
+                      </Text>
+                      <Text style={[styles.metricValue, { color: theme.text }]}>
+                        {patientMetrics[patient._id || patient.id]?.unreadCount ?? '-'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.metric}>
+                      <Ionicons name="calendar-outline" size={16} color={theme.warning} />
+                      <Text style={[styles.metricLabel, { color: theme.secondary }]}>
+                        Pending Appts
+                      </Text>
+                      <Text style={[styles.metricValue, { color: (patientMetrics[patient._id || patient.id]?.pendingAppts ?? 0) > 0 ? theme.warning : theme.text }]}>
+                        {patientMetrics[patient._id || patient.id]?.pendingAppts ?? 0}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* View Details indicator */}
+                  <View style={styles.viewDetailsContainer}>
+                    <Text style={[styles.viewDetailsText, { color: theme.primary }]}>Tap to view details</Text>
+                    <Ionicons name="chevron-forward" size={16} color={theme.primary} />
+                  </View>
+                </TouchableOpacity>
+              )
+            ))}
+        </ScrollView>
+      </View>
+      {/* ── Schedule Request Modal ── */}
+      <Modal
+        visible={showScheduleModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowScheduleModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Schedule Appointment</Text>
+              <TouchableOpacity onPress={() => setShowScheduleModal(false)}>
+                <Ionicons name="close" size={24} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+
+            {schedulingPatient && (
+              <ScrollView style={styles.modalBody}>
+                <Text style={[styles.modalSubtitle, { color: theme.secondary }]}>
+                  Patient: {schedulingPatient.patient?.first_name} {schedulingPatient.patient?.last_name}
+                </Text>
+
+                <Text style={[styles.modalLabel, { color: theme.text, marginTop: 12 }]}>Appointment Date</Text>
+                <TouchableOpacity
+                  style={[styles.dateButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                  onPress={() => setShowDatePickerPS(true)}
+                >
+                  <Ionicons name="calendar" size={20} color={theme.primary} />
+                  <Text style={[styles.dateButtonText, { color: theme.text }]}>
+                    {scheduleDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                  </Text>
+                </TouchableOpacity>
+
+                <Text style={[styles.modalLabel, { color: theme.text, marginTop: 16 }]}>Appointment Time</Text>
+                <TouchableOpacity
+                  style={[styles.dateButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                  onPress={() => setShowTimePickerPS(true)}
+                >
+                  <Ionicons name="time-outline" size={20} color={theme.primary} />
+                  <Text style={[styles.dateButtonText, { color: theme.text }]}>{scheduleTime}</Text>
+                </TouchableOpacity>
+
+                <View style={[styles.scheduleInfoBox, { backgroundColor: theme.primary + '12', borderColor: theme.primary + '40' }]}>
+                  <Ionicons name="information-circle" size={18} color={theme.primary} />
+                  <Text style={[styles.scheduleInfoText, { color: theme.text }]}>
+                    Accepting this patient and scheduling their first appointment.
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.submitButton, { backgroundColor: theme.primary }]}
+                  onPress={submitScheduleRequest}
+                  disabled={scheduleLoading}
+                >
+                  {scheduleLoading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Icon name="calendar-check" size={20} color="#FFFFFF" />
+                      <Text style={styles.submitButtonText}>Accept & Schedule</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </ScrollView>
             )}
           </View>
-        </TouchableOpacity>
-      </View>
+        </View>
+      </Modal>
 
-      {/* Patient List */}
-      <ScrollView 
-        style={styles.listContainer}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+      {/* Date Picker for Schedule Modal */}
+      <Modal
+        visible={showDatePickerPS}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDatePickerPS(false)}
       >
-        {filteredPatients.length === 0 ? (
-          <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, ...theme.shadow }]}>
-            <Ionicons name="people-outline" size={64} color={theme.secondary} />
-            <Text style={[styles.emptyStateText, { color: theme.text }]}>
-              {selectedTab === 'all' ? 'No patients yet' : 
-               selectedTab === 'active' ? 'No active patients' : 
-               'No pending requests'}
-            </Text>
-            <Text style={[styles.emptyStateSubtext, { color: theme.secondary }]}>
-              {selectedTab === 'requests' 
-                ? 'Patient requests will appear here'
-                : 'Start connecting with patients to see them here'}
-            </Text>
-          </View>
-        ) : (
-          filteredPatients.map((patient) =>
-          patient.status === 'request' ? (
-            <TouchableOpacity
-              key={patient.id}
-              style={[
-                styles.patientCard,
-                {
-                  backgroundColor: theme.card,
-                  borderColor: theme.border,
-                  ...theme.shadow,
-                },
-              ]}
-            >
-              <View style={styles.requestHeader}>
-                <View
-                  style={[
-                    styles.avatar,
-                    { backgroundColor: theme.primary + '20' },
-                  ]}
-                >
-                  <Text style={[styles.avatarText, { color: theme.primary }]}>
-                    {patient.patient?.first_name?.charAt(0) || '?'}
-                  </Text>
-                </View>
-                <View style={styles.patientInfo}>
-                  <Text style={[styles.patientName, { color: theme.text }]}>
-                    {patient.patient ? `${patient.patient.first_name} ${patient.patient.last_name}` : 'Unknown'}
-                  </Text>
-                  <Text
-                    style={[styles.patientDetails, { color: theme.secondary }]}
-                  >
-                    {patient.patient?.email || 'No email'}
-                  </Text>
-                  <Text
-                    style={[styles.requestTime, { color: theme.secondary }]}
-                  >
-                    Requested {patient.request_date ? new Date(patient.request_date).toLocaleDateString() : 'Unknown'}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.requestActions}>
-                <TouchableOpacity
-                  style={[
-                    styles.acceptButton,
-                    { backgroundColor: theme.success },
-                  ]}
-                  onPress={() => handleAcceptRequest(patient._id || patient.id)}
-                >
-                  <Text style={styles.actionButtonText}>Accept</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.declineButton, { borderColor: theme.error }]}
-                  onPress={() => handleDeclineRequest(patient._id || patient.id)}
-                >
-                  <Text style={[styles.declineText, { color: theme.error }]}>
-                    Decline
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              key={patient.id}
-              style={[
-                styles.patientCard,
-                {
-                  backgroundColor: theme.card,
-                  borderColor: theme.border,
-                  ...theme.shadow,
-                },
-              ]}
-              onPress={() => navigation.navigate('PatientDetail', {
-                patient: patient,
-                relationship: {
-                  id: patient.relationship?.id || patient.relationship_id || patient._id,
-                  patient: patient,
-                  acceptance_date: patient.relationship?.acceptance_date,
-                }
-              })}
-            >
-              <View style={styles.cardHeader}>
-                <View
-                  style={[
-                    styles.avatar,
-                    { backgroundColor: theme.primary + '20' },
-                  ]}
-                >
-                  <Text style={[styles.avatarText, { color: theme.primary }]}>
-                    {patient.first_name?.charAt(0) || '?'}
-                  </Text>
-                </View>
-                <View style={styles.patientInfo}>
-                  <Text style={[styles.patientName, { color: theme.text }]}>
-                    {`${patient.first_name || ''} ${patient.last_name || ''}`.trim() || 'Unknown'}
-                  </Text>
-                  <Text
-                    style={[styles.patientDetails, { color: theme.secondary }]}
-                  >
-                    {patient.email || 'No email'}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={[styles.chatButton, { backgroundColor: theme.primary }]}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    navigation.navigate('PatientChat', {
-                      patient: patient,
-                      relationship: {
-                        id: patient.relationship?.id || patient.relationship_id || patient._id,
-                        patient: patient,
-                      }
-                    });
-                  }}
-                >
-                  <Ionicons name="chatbubble-ellipses" size={18} color="#FFFFFF" />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.metricsContainer}>
-                <View style={styles.metric}>
-                  <Ionicons name="water" size={16} color={theme.secondary} />
-                  <Text style={[styles.metricLabel, { color: theme.secondary }]}>
-                    Glucose
-                  </Text>
-                  <Text
+        <View style={styles.pickerOverlay}>
+          <View style={[styles.pickerContent, { backgroundColor: theme.card }]}>
+            <Text style={[styles.pickerTitle, { color: theme.text }]}>Select Date</Text>
+            <ScrollView style={styles.pickerScroll}>
+              {Array.from({ length: 60 }, (_, i) => {
+                const date = new Date();
+                date.setDate(date.getDate() + i);
+                return (
+                  <TouchableOpacity
+                    key={i}
                     style={[
-                      styles.metricValue,
-                      { color: getGlucoseColor(patient.health_info?.glucose_level || 0) },
+                      styles.pickerItem,
+                      scheduleDate.toDateString() === date.toDateString() && { backgroundColor: theme.primary + '20' },
                     ]}
+                    onPress={() => { setScheduleDate(date); setShowDatePickerPS(false); }}
                   >
-                    {patient.health_info?.glucose_level || 0} mg/dL
-                  </Text>
-                </View>
-
-                <View style={styles.metric}>
-                  <Ionicons name="medkit" size={16} color={theme.secondary} />
-                  <Text style={[styles.metricLabel, { color: theme.secondary }]}>
-                    Medications
-                  </Text>
-                  <Text style={[styles.metricValue, { color: theme.text }]}>
-                    {patient.health_info?.medications || 0} active
-                  </Text>
-                </View>
-
-                <View style={styles.metric}>
-                  <Ionicons name="time" size={16} color={theme.secondary} />
-                  <Text style={[styles.metricLabel, { color: theme.secondary }]}>
-                    Last Visit
-                  </Text>
-                  <Text style={[styles.metricValue, { color: theme.text }]}>
-                    {patient.health_info?.last_visit ? new Date(patient.health_info.last_visit).toLocaleDateString() : 'Never'}
-                  </Text>
-                </View>
-              </View>
-              
-              {/* View Details indicator */}
-              <View style={styles.viewDetailsContainer}>
-                <Text style={[styles.viewDetailsText, { color: theme.primary }]}>Tap to view details</Text>
-                <Ionicons name="chevron-forward" size={16} color={theme.primary} />
-              </View>
+                    <Text style={[styles.pickerItemText, { color: scheduleDate.toDateString() === date.toDateString() ? theme.primary : theme.text }]}>
+                      {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity style={[styles.pickerCloseButton, { borderColor: theme.border }]} onPress={() => setShowDatePickerPS(false)}>
+              <Text style={[styles.pickerCloseText, { color: theme.text }]}>Cancel</Text>
             </TouchableOpacity>
-          )
-        ))}
-      </ScrollView>
-      </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Time Picker for Schedule Modal */}
+      <Modal
+        visible={showTimePickerPS}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTimePickerPS(false)}
+      >
+        <View style={styles.pickerOverlay}>
+          <View style={[styles.pickerContent, { backgroundColor: theme.card }]}>
+            <Text style={[styles.pickerTitle, { color: theme.text }]}>Select Time</Text>
+            <ScrollView style={styles.pickerScroll}>
+              {['07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30',
+                '12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00'].map((time) => (
+                <TouchableOpacity
+                  key={time}
+                  style={[styles.pickerItem, scheduleTime === time && { backgroundColor: theme.primary + '20' }]}
+                  onPress={() => { setScheduleTime(time); setShowTimePickerPS(false); }}
+                >
+                  <Text style={[styles.pickerItemText, { color: scheduleTime === time ? theme.primary : theme.text }]}>{time}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={[styles.pickerCloseButton, { borderColor: theme.border }]} onPress={() => setShowTimePickerPS(false)}>
+              <Text style={[styles.pickerCloseText, { color: theme.text }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -514,7 +739,7 @@ const styles = StyleSheet.create({
   },
   metricsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-evenly',
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: '#E0E0E0',
@@ -595,5 +820,122 @@ const styles = StyleSheet.create({
   viewDetailsText: {
     fontSize: 13,
     fontWeight: '500',
+  },
+  // Schedule modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  modalBody: {
+    maxHeight: 400,
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 8,
+  },
+  dateButtonText: {
+    fontSize: 15,
+    flex: 1,
+  },
+  scheduleInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 8,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  scheduleInfoText: {
+    fontSize: 13,
+    flex: 1,
+    lineHeight: 18,
+  },
+  submitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 10,
+    marginTop: 12,
+    gap: 8,
+  },
+  submitButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  pickerContent: {
+    borderRadius: 16,
+    padding: 20,
+    maxHeight: 400,
+  },
+  pickerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  pickerScroll: {
+    maxHeight: 280,
+  },
+  pickerItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  pickerItemText: {
+    fontSize: 15,
+    textAlign: 'center',
+  },
+  pickerCloseButton: {
+    marginTop: 8,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  pickerCloseText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

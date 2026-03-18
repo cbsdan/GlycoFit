@@ -229,7 +229,6 @@ export default function ProfileScreen() {
       title: 'Account',
       items: [
         { icon: 'person-outline', label: 'Edit Profile', action: handleEditProfile },
-        { icon: 'lock-closed-outline', label: 'Change Password', action: () => {} },
       ],
     },
     {
@@ -237,16 +236,6 @@ export default function ProfileScreen() {
       items: [
         { icon: 'notifications-outline', label: 'Push Notifications', action: handleNotificationToggle, toggle: true, value: notificationsEnabled },
         { icon: 'moon-outline', label: 'Dark Mode', action: toggleTheme, toggle: true, value: isDarkMode },
-        { icon: 'language-outline', label: 'Language', action: () => {} },
-        { icon: 'shield-checkmark-outline', label: 'Privacy', action: () => {} },
-      ],
-    },
-    {
-      title: 'Support',
-      items: [
-        { icon: 'help-circle-outline', label: 'Help & Support', action: () => {} },
-        { icon: 'document-text-outline', label: 'Terms & Conditions', action: () => {} },
-        { icon: 'information-circle-outline', label: 'About', action: () => {} },
       ],
     },
   ];

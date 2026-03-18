@@ -3133,6 +3133,17 @@ api.createStepBaseline = createStepBaseline;
 api.getStepBaseline = getStepBaseline;
 api.checkStepBaseline = checkStepBaseline;
 api.updateStepBaseline = updateStepBaseline;
- 
+
+// Physician SOAP notes (read-only for patients)
+const getPhysicianSoapNotes = async (physicianId) => {
+  try {
+    const response = await api.get(`/users/physician-soap-notes?physician_id=${physicianId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching physician soap notes:', error);
+    throw error;
+  }
+};
+api.getPhysicianSoapNotes = getPhysicianSoapNotes;
 
 export default api;

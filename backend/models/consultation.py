@@ -352,13 +352,9 @@ class Consultation:
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
-    def approve(self, meeting_link, meeting_password="", platform="google_meet", scheduled_date=None, scheduled_time=None):
-        """Physician approves the consultation request with meeting details"""
+    def approve(self, scheduled_date=None, scheduled_time=None):
+        """Physician approves the consultation request"""
         self.status = self.STATUS_APPROVED
-        self.platform = platform
-        self.meeting_link = meeting_link
-        self.meeting_url = meeting_link  # Keep legacy field in sync
-        self.meeting_password = meeting_password
         self.approved_at = datetime.utcnow()
         if scheduled_date:
             self.scheduled_date = scheduled_date

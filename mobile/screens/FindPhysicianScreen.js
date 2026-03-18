@@ -26,11 +26,11 @@ const FindPhysicianScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTab, setSelectedTab] = useState('all'); // all, my-physician, pending
-  
+
   const [allPhysicians, setAllPhysicians] = useState([]);
   const [myPhysicians, setMyPhysicians] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
-  
+
   const [selectedPhysician, setSelectedPhysician] = useState(null);
   const [requestModalVisible, setRequestModalVisible] = useState(false);
   const [requestReason, setRequestReason] = useState('');
@@ -160,7 +160,7 @@ const FindPhysicianScreen = ({ navigation }) => {
 
   const handleSendConsultationRequest = async () => {
     if (!consultationReason.trim()) {
-      toast.error('Please enter a reason for consultation');
+      toast.error('Please enter a reason for appointment');
       return;
     }
 
@@ -168,17 +168,17 @@ const FindPhysicianScreen = ({ navigation }) => {
       setSendingConsultation(true);
       // Use 'id' instead of '_id' - the API returns 'id' from to_safe_dict
       const physicianId = consultationPhysician?.physician?.id || consultationPhysician?.physician?._id;
-      
+
       console.log('=== CONSULTATION DEBUG ===');
       console.log('consultationPhysician:', JSON.stringify(consultationPhysician, null, 2));
       console.log('physicianId:', physicianId);
       console.log('=== END DEBUG ===');
-      
+
       if (!physicianId) {
         toast.error('Unable to find physician ID');
         return;
       }
-      
+
       await api.createConsultation(
         physicianId,
         consultationDate.toISOString(),
@@ -188,7 +188,7 @@ const FindPhysicianScreen = ({ navigation }) => {
         consultationReason.trim(),
         ''
       );
-      
+
       toast.success('Consultation request sent!');
       setConsultationModalVisible(false);
       setConsultationReason('');
@@ -208,7 +208,7 @@ const FindPhysicianScreen = ({ navigation }) => {
 
   const getFilteredPhysicians = () => {
     if (!searchQuery) return allPhysicians;
-    
+
     const query = searchQuery.toLowerCase();
     return allPhysicians.filter(physician => {
       const fullName = `${physician.user.first_name} ${physician.user.last_name}`.toLowerCase();
@@ -219,19 +219,19 @@ const FindPhysicianScreen = ({ navigation }) => {
 
   const renderPhysicianCard = (physician) => {
     // Check if this physician is in myPhysicians or pendingRequests
-    const relationshipItem = myPhysicians.find(p => 
-      p.physician.id === physician.id || 
+    const relationshipItem = myPhysicians.find(p =>
+      p.physician.id === physician.id ||
       p.physician._id === physician.id ||
       p.physician.id === physician._id ||
       p.physician._id === physician._id
     );
-    const pendingItem = pendingRequests.find(p => 
-      p.physician.id === physician.id || 
+    const pendingItem = pendingRequests.find(p =>
+      p.physician.id === physician.id ||
       p.physician._id === physician.id ||
       p.physician.id === physician._id ||
       p.physician._id === physician._id
     );
-    
+
     const isActive = !!relationshipItem;
     const isPending = !!pendingItem;
     const hasRelationship = isActive || isPending;
@@ -263,7 +263,7 @@ const FindPhysicianScreen = ({ navigation }) => {
             <Text style={[styles.physicianSpecialization, { color: theme.secondary }]}>
               {physician.specialization}
             </Text>
-            
+
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
                 <Icon name="star" size={14} color="#F39C12" />
@@ -313,14 +313,14 @@ const FindPhysicianScreen = ({ navigation }) => {
               <Text style={styles.requestButtonText}>Send Request</Text>
             </TouchableOpacity>
           )}
-          
+
           {isPending && (
             <View style={[styles.statusBadge, { backgroundColor: '#F39C12' }]}>
               <Icon name="clock-outline" size={16} color="#FFFFFF" />
               <Text style={styles.statusText}>Request Pending</Text>
             </View>
           )}
-          
+
           {isActive && (
             <>
               <View style={[styles.statusBadge, { backgroundColor: '#27AE60', marginBottom: 10 }]}>
@@ -349,7 +349,7 @@ const FindPhysicianScreen = ({ navigation }) => {
                   }}
                 >
                   <Icon name="video-plus" size={18} color="#FFFFFF" />
-                  <Text style={styles.quickActionText}>Request Consultation</Text>
+                  <Text style={styles.quickActionText}>Request Appointment</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -394,7 +394,7 @@ const FindPhysicianScreen = ({ navigation }) => {
               Connected since {new Date(relationship.acceptance_date).toLocaleDateString()}
             </Text>
           </View>
-          
+
           <Icon name="chevron-right" size={24} color={theme.secondary} />
         </View>
 
@@ -419,7 +419,7 @@ const FindPhysicianScreen = ({ navigation }) => {
             }}
           >
             <Icon name="video-plus" size={18} color="#FFFFFF" />
-            <Text style={styles.quickActionText}>Request Consultation</Text>
+            <Text style={styles.quickActionText}>Request Appointment</Text>
           </TouchableOpacity>
         </View>
 
@@ -702,7 +702,7 @@ const FindPhysicianScreen = ({ navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Request Consultation</Text>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Request Appointment</Text>
               <TouchableOpacity onPress={() => setConsultationModalVisible(false)}>
                 <Icon name="close" size={24} color={theme.text} />
               </TouchableOpacity>
@@ -747,10 +747,10 @@ const FindPhysicianScreen = ({ navigation }) => {
                 </Text>
               </TouchableOpacity>
 
-              <Text style={[styles.label, { color: theme.text, marginTop: 16 }]}>Reason for Consultation *</Text>
+              <Text style={[styles.label, { color: theme.text, marginTop: 16 }]}>Reason for Appointment *</Text>
               <TextInput
                 style={[styles.textArea, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                placeholder="Describe the reason for your consultation..."
+                placeholder="Describe the reason for your appointment..."
                 placeholderTextColor={theme.secondary}
                 multiline
                 numberOfLines={4}
@@ -761,7 +761,7 @@ const FindPhysicianScreen = ({ navigation }) => {
               <View style={[styles.infoBox, { backgroundColor: theme.info + '15' }]}>
                 <Icon name="information" size={20} color={theme.info || '#3498DB'} />
                 <Text style={[styles.infoText, { color: theme.info || '#3498DB' }]}>
-                  Your physician will review your request and provide a Google Meet link if approved.
+                  Your physician will review your request.
                 </Text>
               </View>
 
@@ -844,25 +844,25 @@ const FindPhysicianScreen = ({ navigation }) => {
               {['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
                 '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
                 '16:00', '16:30', '17:00', '17:30', '18:00'].map((time) => (
-                <TouchableOpacity
-                  key={time}
-                  style={[
-                    styles.pickerItem,
-                    consultationTime === time && { backgroundColor: theme.primary + '20' }
-                  ]}
-                  onPress={() => {
-                    setConsultationTime(time);
-                    setShowTimePicker(false);
-                  }}
-                >
-                  <Text style={[
-                    styles.pickerItemText,
-                    { color: consultationTime === time ? theme.primary : theme.text }
-                  ]}>
-                    {time}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                  <TouchableOpacity
+                    key={time}
+                    style={[
+                      styles.pickerItem,
+                      consultationTime === time && { backgroundColor: theme.primary + '20' }
+                    ]}
+                    onPress={() => {
+                      setConsultationTime(time);
+                      setShowTimePicker(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.pickerItemText,
+                      { color: consultationTime === time ? theme.primary : theme.text }
+                    ]}>
+                      {time}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
             </ScrollView>
             <TouchableOpacity
               style={[styles.pickerCloseButton, { borderColor: theme.border }]}

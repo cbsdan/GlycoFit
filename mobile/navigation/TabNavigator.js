@@ -10,6 +10,9 @@ import HomeScreen from '../screens/HomeScreen';
 import MeasureScreen from '../screens/MeasureScreen';
 import PredictionScreen from '../screens/PredictionScreen';
 import FindPhysicianScreen from '../screens/FindPhysicianScreen';
+import PhysicianCommunicationScreen from '../screens/PhysicianCommunicationScreen';
+import { ActivityIndicator, View } from 'react-native';
+import api from '../services/api';
 import SettingsScreen from '../screens/SettingsScreen';
 import StepCounterScreen from '../screens/StepCounterScreen';
 import FoodScannerScreen from '../screens/FoodScannerScreen';
@@ -63,6 +66,54 @@ const SettingsStack = () => {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="SettingsMain" component={SettingsScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
+    </Stack.Navigator>
+  );
+};
+
+// Physician Router - checks if patient has an active physician and routes accordingly
+const PhysicianRouter = ({ navigation }) => {
+  const [status, setStatus] = React.useState('loading'); // 'loading' | 'no-physician'
+
+  React.useEffect(() => {
+    const checkPhysician = async () => {
+      try {
+        const response = await api.getMyPhysician();
+        if (response.success) {
+          const activePhysicians = (response.data || []).filter(
+            item => item.relationship.status === 'active'
+          );
+          if (activePhysicians.length > 0) {
+            // Replace the router screen so back button doesn't return to this router
+            navigation.replace('PhysicianCommunication', { relationship: activePhysicians[0] });
+            return; // stay in 'loading' state — component will unmount during replace
+          }
+        }
+      } catch (error) {
+        console.error('Error checking physician:', error);
+      }
+      setStatus('no-physician');
+    };
+    checkPhysician();
+  }, []);
+
+  if (status === 'loading') {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  // No active physician - show FindPhysicianScreen
+  return <FindPhysicianScreen navigation={navigation} route={{ params: {} }} />;
+};
+
+// Physician Stack Navigator
+const PhysicianStack = () => {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="PhysicianRouter" component={PhysicianRouter} />
+      <Stack.Screen name="PhysicianCommunication" component={PhysicianCommunicationScreen} />
     </Stack.Navigator>
   );
 };
@@ -125,7 +176,7 @@ const TabNavigator = () => {
       />
       <Tab.Screen 
         name="FindPhysician" 
-        component={FindPhysicianScreen}
+        component={PhysicianStack}
         options={{
           title: 'Physician',
         }}

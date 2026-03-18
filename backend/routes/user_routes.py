@@ -29,6 +29,7 @@ from controllers.patient_consultation_controller import (
     reschedule_patient_consultation,
     rate_consultation
 )
+from controllers.soap_note_controller import get_my_soap_notes_from_physician
 from controllers.user_vitals_controller import log_user_vitals, get_user_vitals
 from middleware.firebase_auth import firebase_auth_required
 from flask import g
@@ -225,6 +226,12 @@ def reschedule_consultation(consultation_id):
 def rate_consultation_route(consultation_id):
     """Rate a completed consultation"""
     return rate_consultation(consultation_id)
+
+# Physician SOAP Notes (read-only for patients)
+@user_bp.route('/physician-soap-notes', methods=['GET'])
+def get_physician_soap_notes():
+    """Get SOAP notes written by a specific physician for the current patient (patient-facing, read-only)"""
+    return get_my_soap_notes_from_physician()
 
 # FCM Token Management Routes
 @user_bp.route('/fcm-token', methods=['POST'])

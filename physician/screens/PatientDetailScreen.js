@@ -20,7 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
-import { patientAPI, soapNoteAPI, physicianAPI } from '../services/api';
+import { patientAPI, soapNoteAPI, physicianAPI, consultationAPI } from '../services/api';
 import MEDICINES from '../assets/medicines.json';
 
 const { width } = Dimensions.get('window');
@@ -215,6 +215,17 @@ export default function PatientDetailScreen({ route, navigation }) {
   const [patientData, setPatientData] = useState(null);
   const [selectedTab, setSelectedTab] = useState('overview');
 
+  // Appointments state
+  const [appointments, setAppointments] = useState([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(false);
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [selectedAppt, setSelectedAppt] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [customDate, setCustomDate] = useState('');
+  const [customTime, setCustomTime] = useState('');
+  const [apptActionLoading, setApptActionLoading] = useState(false);
+
   // SOAP / Consultation state
   const [soapNotes, setSoapNotes] = useState([]);
   const [soapLoading, setSoapLoading] = useState(false);
@@ -267,9 +278,81 @@ export default function PatientDetailScreen({ route, navigation }) {
     }
   }, [patient]);
 
+  const fetchAppointments = useCallback(async () => {
+    try {
+      setAppointmentsLoading(true);
+      const patientId = patient.id || patient._id;
+      const response = await consultationAPI.getAll({ patient_id: patientId });
+      if (response.success) {
+        setAppointments(response.data || []);
+      }
+    } catch (e) {
+      console.error('Error fetching appointments:', e);
+    } finally {
+      setAppointmentsLoading(false);
+    }
+  }, [patient]);
+
+  const openApproveModal = (appt) => {
+    setSelectedAppt(appt);
+    setCustomDate(appt.preferred_date || appt.scheduled_date || '');
+    setCustomTime(appt.preferred_time || appt.scheduled_time || '');
+    setShowApproveModal(true);
+  };
+
+  const openRejectModal = (appt) => {
+    setSelectedAppt(appt);
+    setRejectReason('');
+    setShowRejectModal(true);
+  };
+
+  const handleApproveAppt = async () => {
+    if (!selectedAppt) return;
+    try {
+      setApptActionLoading(true);
+      const payload = {};
+      if (customDate) payload.scheduled_date = customDate;
+      if (customTime) payload.scheduled_time = customTime;
+      const res = await consultationAPI.approve(selectedAppt.id, payload);
+      if (res.success) {
+        showToast('Appointment approved!', 'success');
+        setShowApproveModal(false);
+        fetchAppointments();
+      } else {
+        showToast(res.message || 'Failed to approve', 'error');
+      }
+    } catch (e) {
+      console.error('Error approving appointment:', e);
+      showToast('Failed to approve appointment', 'error');
+    } finally {
+      setApptActionLoading(false);
+    }
+  };
+
+  const handleRejectAppt = async () => {
+    if (!selectedAppt) return;
+    try {
+      setApptActionLoading(true);
+      const res = await consultationAPI.reject(selectedAppt.id, rejectReason);
+      if (res.success) {
+        showToast('Appointment rejected', 'success');
+        setShowRejectModal(false);
+        fetchAppointments();
+      } else {
+        showToast(res.message || 'Failed to reject', 'error');
+      }
+    } catch (e) {
+      console.error('Error rejecting appointment:', e);
+      showToast('Failed to reject appointment', 'error');
+    } finally {
+      setApptActionLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchPatientDetails();
     fetchSoapNotes();
+    fetchAppointments();
   }, []);
 
   const fetchTemplates = async () => {
@@ -290,7 +373,7 @@ export default function PatientDetailScreen({ route, navigation }) {
       setLoading(true);
       const patientId = patient.id || patient._id;
       const response = await patientAPI.getPatientDetails(patientId);
-      
+
       if (response.success) {
         const normalizedData = {
           ...response.data,
@@ -474,16 +557,16 @@ export default function PatientDetailScreen({ route, navigation }) {
         const obj = note.soap_objective || {};
         return obj.ogtt != null || obj.fasting_blood_sugar != null || obj.hba1c != null;
       })
-      .sort((a,b) => new Date(a.created_at) - new Date(b.created_at))
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
       .slice(-7); // recommended to only show the latest 7 data points on a mobile screen for readability
-      
+
     if (vitalsData.length < 2) return null;
 
     const labels = vitalsData.map(node => {
       const d = new Date(node.created_at);
-      return `${d.getMonth()+1}/${d.getDate()}`;
+      return `${d.getMonth() + 1}/${d.getDate()}`;
     });
-    
+
     let lastFbs = 0;
     const fbsData = vitalsData.map(note => {
       let val = Number(note.soap_objective?.fasting_blood_sugar);
@@ -513,7 +596,7 @@ export default function PatientDetailScreen({ route, navigation }) {
     if (!dataObj) return null;
 
     const { vitalsData, labels, fbsData, ogttData, hba1cData } = dataObj;
-    
+
     if (vitalsData.length === 0) return null;
 
     const CHART_H = 160;
@@ -543,7 +626,7 @@ export default function PatientDetailScreen({ route, navigation }) {
       if (vitalsData.length <= 1) return CHART_W / 2;
       return (index / (vitalsData.length - 1)) * CHART_W;
     };
-    
+
     const getY = (val, bounds) => {
       if (!val) return CHART_H;
       return CHART_H - ((val - bounds.min) / bounds.range) * CHART_H;
@@ -582,10 +665,10 @@ export default function PatientDetailScreen({ route, navigation }) {
     const renderPoints = (data, color, labelColor, bounds, isDecimal = false, offset = { dx: -20, dy: -20 }) => {
       // Only show up to 5 point labels across the graph evenly distributed regardless of total size.
       const labelInterval = Math.max(1, Math.floor((data.length - 1) / 4));
-      
+
       return data.map((val, i) => {
         const isLabelVisible = i % labelInterval === 0 || i === data.length - 1;
-        
+
         return (
           <View key={`point-${i}`}>
             <View
@@ -603,7 +686,7 @@ export default function PatientDetailScreen({ route, navigation }) {
               }}
             />
             {isLabelVisible && val > 0 && (
-              <Text 
+              <Text
                 style={{
                   position: 'absolute',
                   left: getX(i) + offset.dx,
@@ -628,7 +711,7 @@ export default function PatientDetailScreen({ route, navigation }) {
       <View style={{ marginBottom: 16 }}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Vitals History</Text>
         <View style={[styles.card, { backgroundColor: theme.card, paddingVertical: 20, paddingHorizontal: 16, alignItems: 'center' }]}>
-          
+
           {/* Legend */}
           <View style={{ width: '100%', marginBottom: 20 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16 }}>
@@ -678,34 +761,34 @@ export default function PatientDetailScreen({ route, navigation }) {
                 }}
               />
             ))}
-            
+
             {/* Lines */}
             {renderLine(fbsData, theme.error, fbsBounds)}
             {renderLine(ogttData, theme.primary, ogttBounds)}
             {renderLine(hba1cData, theme.success, hba1cBounds)}
-            
+
             {/* Points over lines - Stagger offsets to avoid overlapping */}
             {renderPoints(fbsData, theme.error, theme.error, fbsBounds, false, { dx: -20, dy: -22 })}
             {renderPoints(ogttData, theme.primary, theme.primary, ogttBounds, false, { dx: 6, dy: -6 })}
             {renderPoints(hba1cData, theme.success, theme.success, hba1cBounds, true, { dx: -20, dy: 8 })}
           </View>
-          
+
           {/* X-Axis Labels */}
           <View style={{ position: 'relative', width: CHART_W, height: 20, marginTop: 12 }}>
             {labels.map((lbl, i) => {
               const isFirst = i === 0;
               const isLast = i === labels.length - 1;
               return (
-                <Text 
-                  key={`lbl-${i}`} 
-                  style={{ 
+                <Text
+                  key={`lbl-${i}`}
+                  style={{
                     position: 'absolute',
                     left: isLast ? undefined : getX(i) - (isFirst ? 0 : 20),
                     right: isLast ? 0 : undefined,
                     textAlign: isLast ? 'right' : (isFirst ? 'left' : 'center'),
                     width: 40,
-                    fontSize: 10, 
-                    color: theme.secondary 
+                    fontSize: 10,
+                    color: theme.secondary
                   }}>
                   {lbl}
                 </Text>
@@ -719,7 +802,7 @@ export default function PatientDetailScreen({ route, navigation }) {
   };
 
   const renderOverview = () => (
-    <ScrollView 
+    <ScrollView
       style={styles.tabContent}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
@@ -745,9 +828,9 @@ export default function PatientDetailScreen({ route, navigation }) {
             )}
           </View>
         </View>
-        
+
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        
+
         <View style={styles.infoRow}>
           <View style={styles.infoItem}>
             <Ionicons name="calendar-outline" size={18} color={theme.secondary} />
@@ -761,7 +844,7 @@ export default function PatientDetailScreen({ route, navigation }) {
 
       {/* Health Overview - Comprehensive Health Tracking */}
       <Text style={[styles.sectionTitle, { color: theme.text }]}>Health Overview</Text>
-      
+
       {/* Diabetes Assessment */}
       <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
         <View style={styles.trackingHeader}>
@@ -771,10 +854,10 @@ export default function PatientDetailScreen({ route, navigation }) {
         <View style={styles.trackingContent}>
           <View style={styles.trackingRow}>
             <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Risk Level:</Text>
-            <Text style={[styles.trackingValue, { 
-              color: trackingData.diabetes_assessment?.risk_level === 'low' ? theme.success : 
-                     trackingData.diabetes_assessment?.risk_level === 'moderate' ? theme.warning : 
-                     trackingData.diabetes_assessment?.risk_level === 'high' ? theme.error : theme.secondary
+            <Text style={[styles.trackingValue, {
+              color: trackingData.diabetes_assessment?.risk_level === 'low' ? theme.success :
+                trackingData.diabetes_assessment?.risk_level === 'moderate' ? theme.warning :
+                  trackingData.diabetes_assessment?.risk_level === 'high' ? theme.error : theme.secondary
             }]}>
               {trackingData.diabetes_assessment?.risk_level?.toUpperCase() || 'N/A'}
             </Text>
@@ -812,12 +895,6 @@ export default function PatientDetailScreen({ route, navigation }) {
               <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Category:</Text>
               <Text style={[styles.trackingValue, { color: theme.text }]}>
                 {trackingData.food_tracker.risk_category || 'N/A'}
-              </Text>
-            </View>
-            <View style={styles.trackingRow}>
-              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Meals Analyzed:</Text>
-              <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.food_tracker.meals_analyzed !== null && trackingData.food_tracker.meals_analyzed !== undefined ? `${trackingData.food_tracker.meals_analyzed} (last 7 days)` : 'N/A'}
               </Text>
             </View>
           </View>
@@ -908,8 +985,8 @@ export default function PatientDetailScreen({ route, navigation }) {
               <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Status:</Text>
               <Text style={[styles.trackingValue, { color: theme.text }]}>
                 {trackingData.smoking_intake.smoking_status === 'never' ? 'Never Smoked' :
-                 trackingData.smoking_intake.smoking_status === 'former' ? 'Former Smoker' : 
-                 trackingData.smoking_intake.smoking_status === 'current' ? 'Current Smoker' : 'N/A'}
+                  trackingData.smoking_intake.smoking_status === 'former' ? 'Former Smoker' :
+                    trackingData.smoking_intake.smoking_status === 'current' ? 'Current Smoker' : 'N/A'}
               </Text>
             </View>
             {trackingData.smoking_intake.smoking_status === 'current' && (
@@ -1045,7 +1122,7 @@ export default function PatientDetailScreen({ route, navigation }) {
 
   const handleEditNote = (note) => {
     setEditingNote(note);
-      if (note.consultation_mode === 'quick_vitals') {
+    if (note.consultation_mode === 'quick_vitals') {
       const obj = note.soap_objective || {};
       setVitalsForm({
         ogtt: obj.ogtt != null ? String(obj.ogtt) : '',
@@ -1179,7 +1256,7 @@ export default function PatientDetailScreen({ route, navigation }) {
                   {formatDateTime(note.created_at)}
                   {note.updated_at && note.updated_at !== note.created_at ? `  ·  Updated ${formatDateTime(note.updated_at)}` : ''}
                 </Text>
-                
+
                 <Text style={{ fontSize: 12, color: theme.secondary, fontStyle: 'italic', marginBottom: 8 }}>
                   Logged by: {note.source === 'user' ? 'Patient' : (note.source_name || 'Physician')}
                 </Text>
@@ -1240,7 +1317,7 @@ export default function PatientDetailScreen({ route, navigation }) {
                       onPress={() => setExpandedNoteId(isExpanded ? null : note.id)}
                     >
                       <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={theme.primary} />
-                      <Text style={[styles.viewSoapBtnText, { color: theme.primary }]}> 
+                      <Text style={[styles.viewSoapBtnText, { color: theme.primary }]}>
                         {isExpanded ? 'Hide Consultation' : 'View Consultation'}
                       </Text>
                     </TouchableOpacity>
@@ -1303,8 +1380,8 @@ export default function PatientDetailScreen({ route, navigation }) {
 
       {/* ===== QUICK VITALS MODAL ===== */}
       <Modal visible={showVitalsModal} transparent animationType="slide">
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
         >
           <View style={styles.modalOverlay}>
@@ -1520,8 +1597,8 @@ export default function PatientDetailScreen({ route, navigation }) {
 
       {/* ===== FULL SOAP MODAL ===== */}
       <Modal visible={showSoapModal} transparent animationType="slide">
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
         >
           <View style={styles.modalOverlay}>
@@ -1709,137 +1786,234 @@ export default function PatientDetailScreen({ route, navigation }) {
     </View>
   );
 
-  const renderMedications = () => (
-    <ScrollView 
-      style={styles.tabContent}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    >
-      <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
-        <View style={styles.cardHeader}>
-          <Ionicons name="medkit" size={24} color={theme.primary} />
-          <Text style={[styles.cardTitle, { color: theme.text }]}>Active Prescriptions</Text>
-        </View>
-        
-        {(data.prescriptions && data.prescriptions.length > 0) ? (
-          data.prescriptions.map((rx, index) => (
-            <View key={rx.id || index} style={[styles.medicationItem, { borderBottomColor: theme.border }]}>
-              <View style={styles.medicationInfo}>
-                <Text style={[styles.medicationName, { color: theme.text }]}>{rx.medication_name}</Text>
-                <Text style={[styles.medicationDosage, { color: theme.secondary }]}>
-                  {rx.dosage} - {rx.frequency}
-                </Text>
-                <Text style={[styles.medicationDate, { color: theme.secondary }]}>
-                  Started: {formatDate(rx.start_date)}
-                </Text>
-              </View>
-              <View style={[styles.statusBadge, { backgroundColor: theme.success + '20' }]}>
-                <Text style={[styles.statusText, { color: theme.success }]}>Active</Text>
+  const getApptStatusColor = (status) => {
+    switch ((status || '').toLowerCase()) {
+      case 'approved': return theme.success;
+      case 'pending': return theme.warning;
+      case 'rejected': case 'cancelled': return theme.error;
+      case 'completed': return theme.primary;
+      default: return theme.secondary;
+    }
+  };
+
+  const renderAppointments = () => {
+    return (
+      <View style={{ flex: 1 }}>
+        <ScrollView
+          style={styles.tabContent}
+          refreshControl={<RefreshControl refreshing={appointmentsLoading} onRefresh={fetchAppointments} />}
+        >
+
+          {appointmentsLoading && appointments.length === 0 ? (
+            <ActivityIndicator size="small" color={theme.primary} style={{ marginTop: 24 }} />
+          ) : appointments.length === 0 ? (
+            <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
+              <View style={styles.emptyState}>
+                <Ionicons name="calendar-outline" size={48} color={theme.secondary} />
+                <Text style={[styles.emptyText, { color: theme.secondary }]}>No appointments found</Text>
               </View>
             </View>
-          ))
-        ) : (
-          <View style={styles.emptyState}>
-            <Ionicons name="document-text-outline" size={48} color={theme.secondary} />
-            <Text style={[styles.emptyText, { color: theme.secondary }]}>No active prescriptions</Text>
-          </View>
-        )}
-      </View>
-      <View style={{ height: 30 }} />
-    </ScrollView>
-  );
+          ) : (
+            appointments.map((appt, index) => {
+              const isPending = (appt.status || '').toLowerCase() === 'pending';
+              const statusColor = getApptStatusColor(appt.status);
+              const scheduledDate = appt.scheduled_date || appt.preferred_date || appt.date;
+              const scheduledTime = appt.scheduled_time || appt.preferred_time;
+              return (
+                <View
+                  key={appt.id || appt._id || index}
+                  style={[
+                    styles.card,
+                    { backgroundColor: theme.card, ...theme.shadow },
+                    isPending && { borderLeftWidth: 4, borderLeftColor: theme.warning },
+                  ]}
+                >
+                  {/* Header: type label + status badge */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="calendar" size={18} color={theme.primary} />
+                      <Text style={[styles.soapSectionLabel, { color: theme.primary, marginBottom: 0 }]}>
+                         Appointment
+                      </Text>
+                    </View>
+                    <View style={[styles.noteTypeBadge, { backgroundColor: statusColor + '20' }]}>
+                      <Text style={[styles.noteTypeBadgeText, { color: statusColor }]}>
+                        {(appt.status || 'Unknown').charAt(0).toUpperCase() + (appt.status || 'Unknown').slice(1)}
+                      </Text>
+                    </View>
+                  </View>
 
-  const renderHistory = () => (
-    <ScrollView 
-      style={styles.tabContent}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    >
-      {/* Consultations History */}
-      <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
-        <View style={styles.cardHeader}>
-          <Ionicons name="videocam" size={24} color={theme.primary} />
-          <Text style={[styles.cardTitle, { color: theme.text }]}>Consultations</Text>
-        </View>
-        
-        {(data.consultations && data.consultations.length > 0) ? (
-          data.consultations.slice(0, 5).map((consultation, index) => (
-            <View key={consultation.id || index} style={[styles.historyItem, { borderBottomColor: theme.border }]}>
-              <View style={styles.historyIcon}>
-                <Ionicons name="videocam-outline" size={20} color={theme.primary} />
-              </View>
-              <View style={styles.historyInfo}>
-                <Text style={[styles.historyTitle, { color: theme.text }]}>
-                  Video Consultation
+                {/* Requested date/time */}
+                {appt.preferred_date && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <Ionicons name="calendar-outline" size={14} color={theme.secondary} />
+                    <Text style={{ fontSize: 13, color: theme.secondary }}>
+                      Requested: {formatDate(appt.preferred_date)}{appt.preferred_time ? ` at ${appt.preferred_time}` : ''}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Scheduled date/time (after approval) */}
+                {scheduledDate && scheduledDate !== appt.preferred_date && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <Ionicons name="time-outline" size={14} color={theme.success} />
+                    <Text style={{ fontSize: 13, color: theme.success }}>
+                      Scheduled: {formatDate(scheduledDate)}{scheduledTime ? ` at ${scheduledTime}` : ''}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Reason */}
+                {appt.reason && (
+                  <View style={{ marginTop: 6 }}>
+                    <Text style={[styles.smallLabel, { color: theme.secondary }]}>Reason</Text>
+                    <Text style={[styles.smallText, { color: theme.text }]} numberOfLines={2}>{appt.reason}</Text>
+                  </View>
+                )}
+
+                {/* Notes */}
+                {appt.notes && (
+                  <View style={{ marginTop: 6 }}>
+                    <Text style={[styles.smallLabel, { color: theme.secondary }]}>Notes</Text>
+                    <Text style={[styles.smallText, { color: theme.text }]} numberOfLines={2}>{appt.notes}</Text>
+                  </View>
+                )}
+
+                <Text style={{ fontSize: 11, color: theme.secondary, marginTop: 8, fontStyle: 'italic' }}>
+                  Requested {formatDateTime(appt.created_at)}
                 </Text>
-                <Text style={[styles.historyDate, { color: theme.secondary }]}>
-                  {formatDate(consultation.scheduled_date)}
-                </Text>
+
+                {/* Action buttons for pending appointments */}
+                {isPending && (
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                        backgroundColor: theme.success, paddingVertical: 10, borderRadius: 10, gap: 6,
+                      }}
+                      onPress={() => openApproveModal(appt)}
+                    >
+                      <Ionicons name="checkmark-circle" size={18} color="#FFF" />
+                      <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 14 }}>Approve</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                        backgroundColor: theme.error, paddingVertical: 10, borderRadius: 10, gap: 6,
+                      }}
+                      onPress={() => openRejectModal(appt)}
+                    >
+                      <Ionicons name="close-circle" size={18} color="#FFF" />
+                      <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 14 }}>Reject</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
-              <View style={[
-                styles.statusBadge, 
-                { backgroundColor: consultation.status === 'completed' ? theme.success + '20' : theme.warning + '20' }
-              ]}>
-                <Text style={[
-                  styles.statusText, 
-                  { color: consultation.status === 'completed' ? theme.success : theme.warning }
-                ]}>
-                  {consultation.status}
-                </Text>
+            );
+          })
+        )}
+
+        <View style={{ height: 80 }} />
+      </ScrollView>
+
+      {/* ===== APPROVE MODAL ===== */}
+      <Modal visible={showApproveModal} transparent animationType="slide">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Approve Appointment</Text>
+                <TouchableOpacity onPress={() => setShowApproveModal(false)}>
+                  <Ionicons name="close" size={24} color={theme.secondary} />
+                </TouchableOpacity>
               </View>
+
+              <ScrollView style={styles.modalBody}>
+                <Text style={{ fontSize: 13, color: theme.secondary, marginBottom: 16 }}>
+                  Confirm or adjust the scheduled date and time before approving.
+                </Text>
+
+                <Text style={[styles.inputLabel, { color: theme.secondary }]}>Date (YYYY-MM-DD)</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                  placeholder="e.g. 2026-03-25"
+                  placeholderTextColor={theme.secondary}
+                  value={customDate}
+                  onChangeText={setCustomDate}
+                />
+
+                <Text style={[styles.inputLabel, { color: theme.secondary }]}>Time (HH:MM)</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                  placeholder="e.g. 10:00"
+                  placeholderTextColor={theme.secondary}
+                  value={customTime}
+                  onChangeText={setCustomTime}
+                />
+              </ScrollView>
+
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, { backgroundColor: theme.success, opacity: apptActionLoading ? 0.6 : 1 }]}
+                onPress={handleApproveAppt}
+                disabled={apptActionLoading}
+              >
+                {apptActionLoading
+                  ? <ActivityIndicator color="#FFF" />
+                  : <Text style={styles.modalSubmitBtnText}>Confirm Approval</Text>
+                }
+              </TouchableOpacity>
             </View>
-          ))
-        ) : (
-          <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={48} color={theme.secondary} />
-            <Text style={[styles.emptyText, { color: theme.secondary }]}>No consultation history</Text>
           </View>
-        )}
-      </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
-      {/* Appointments History */}
-      <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow, marginTop: 16 }]}>
-        <View style={styles.cardHeader}>
-          <Ionicons name="calendar" size={24} color={theme.success} />
-          <Text style={[styles.cardTitle, { color: theme.text }]}>Appointments</Text>
-        </View>
-        
-        {(data.appointments && data.appointments.length > 0) ? (
-          data.appointments.slice(0, 5).map((apt, index) => (
-            <View key={apt.id || index} style={[styles.historyItem, { borderBottomColor: theme.border }]}>
-              <View style={styles.historyIcon}>
-                <Ionicons name="location-outline" size={20} color={theme.success} />
+      {/* ===== REJECT MODAL ===== */}
+      <Modal visible={showRejectModal} transparent animationType="slide">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Reject Appointment</Text>
+                <TouchableOpacity onPress={() => setShowRejectModal(false)}>
+                  <Ionicons name="close" size={24} color={theme.secondary} />
+                </TouchableOpacity>
               </View>
-              <View style={styles.historyInfo}>
-                <Text style={[styles.historyTitle, { color: theme.text }]}>
-                  {apt.type || 'In-Person Visit'}
+
+              <ScrollView style={styles.modalBody}>
+                <Text style={{ fontSize: 13, color: theme.secondary, marginBottom: 16 }}>
+                  Optionally provide a reason so the patient knows why it was rejected.
                 </Text>
-                <Text style={[styles.historyDate, { color: theme.secondary }]}>
-                  {formatDateTime(apt.date)}
-                </Text>
-              </View>
-              <View style={[
-                styles.statusBadge, 
-                { backgroundColor: apt.status === 'completed' ? theme.success + '20' : theme.primary + '20' }
-              ]}>
-                <Text style={[
-                  styles.statusText, 
-                  { color: apt.status === 'completed' ? theme.success : theme.primary }
-                ]}>
-                  {apt.status}
-                </Text>
-              </View>
+
+                <Text style={[styles.inputLabel, { color: theme.secondary }]}>Reason (optional)</Text>
+                <TextInput
+                  style={[styles.textArea, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                  placeholder="e.g. Slot unavailable, please re-schedule..."
+                  placeholderTextColor={theme.secondary}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                  value={rejectReason}
+                  onChangeText={setRejectReason}
+                />
+              </ScrollView>
+
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, { backgroundColor: theme.error, opacity: apptActionLoading ? 0.6 : 1 }]}
+                onPress={handleRejectAppt}
+                disabled={apptActionLoading}
+              >
+                {apptActionLoading
+                  ? <ActivityIndicator color="#FFF" />
+                  : <Text style={styles.modalSubmitBtnText}>Reject Appointment</Text>
+                }
+              </TouchableOpacity>
             </View>
-          ))
-        ) : (
-          <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={48} color={theme.secondary} />
-            <Text style={[styles.emptyText, { color: theme.secondary }]}>No appointment history</Text>
           </View>
-        )}
-      </View>
-
-      <View style={{ height: 30 }} />
-    </ScrollView>
-  );
+        </KeyboardAvoidingView>
+      </Modal>
+    </View>
+    );
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
@@ -1851,7 +2025,7 @@ export default function PatientDetailScreen({ route, navigation }) {
         <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
           {`${data.first_name || ''} ${data.last_name || ''}`.trim() || 'Patient Details'}
         </Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.chatIconButton}
           onPress={() => navigation.navigate('PatientChat', { patient: data, relationship })}
         >
@@ -1861,12 +2035,12 @@ export default function PatientDetailScreen({ route, navigation }) {
 
       {/* Tab Selector */}
       <View style={[styles.tabContainer, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-        <ScrollView 
-          horizontal 
+        <ScrollView
+          horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.tabScrollContent}
         >
-          {['overview', 'consultations', 'medications', 'history'].map((tab) => (
+          {['overview', 'consultations', 'appointments'].map((tab) => (
             <TouchableOpacity
               key={tab}
               style={[
@@ -1875,23 +2049,23 @@ export default function PatientDetailScreen({ route, navigation }) {
               ]}
               onPress={() => setSelectedTab(tab)}
             >
-            <Ionicons
-              name={
-                tab === 'overview' ? 'person' :
-                tab === 'consultations' ? 'clipboard' :
-                tab === 'medications' ? 'medkit' : 'time'
-              }
-              size={18}
-              color={selectedTab === tab ? theme.primary : theme.secondary}
-            />
-            <Text
-              style={[
-                styles.tabText,
-                { color: selectedTab === tab ? theme.primary : theme.secondary },
-              ]}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </Text>
+              <Ionicons
+                name={
+                  tab === 'overview' ? 'person' :
+                    tab === 'consultations' ? 'clipboard' :
+                      tab === 'appointments' ? 'calendar' : 'time'
+                }
+                size={18}
+                color={selectedTab === tab ? theme.primary : theme.secondary}
+              />
+              <Text
+                style={[
+                  styles.tabText,
+                  { color: selectedTab === tab ? theme.primary : theme.secondary },
+                ]}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -1901,13 +2075,12 @@ export default function PatientDetailScreen({ route, navigation }) {
       <View style={{ flex: 1 }}>
         {selectedTab === 'overview' && renderOverview()}
         {selectedTab === 'consultations' && renderConsultations()}
-        {selectedTab === 'medications' && renderMedications()}
-        {selectedTab === 'history' && renderHistory()}
+        {selectedTab === 'appointments' && renderAppointments()}
       </View>
 
       {/* Fixed Bottom Send Message Button */}
       <View style={[styles.fixedBottomBar, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.sendMessageButton, { backgroundColor: theme.primary }]}
           onPress={() => navigation.navigate('PatientChat', { patient: data, relationship })}
         >
@@ -1919,17 +2092,17 @@ export default function PatientDetailScreen({ route, navigation }) {
       {/* Image Viewer Modal */}
       <Modal visible={!!viewerImage} transparent={true} animationType="fade">
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.9)' }]}>
-          <TouchableOpacity 
-            style={styles.closeImageModalButton} 
+          <TouchableOpacity
+            style={styles.closeImageModalButton}
             onPress={() => setViewerImage(null)}
           >
             <Ionicons name="close" size={30} color="#fff" />
           </TouchableOpacity>
           {viewerImage && (
-            <Image 
-              source={{ uri: viewerImage }} 
-              style={styles.fullScreenImage} 
-              resizeMode="contain" 
+            <Image
+              source={{ uri: viewerImage }}
+              style={styles.fullScreenImage}
+              resizeMode="contain"
             />
           )}
         </View>
@@ -2263,7 +2436,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   soapActionBtnText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
   templatePickerContent: {

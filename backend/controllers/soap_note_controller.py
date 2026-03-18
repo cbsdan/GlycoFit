@@ -227,7 +227,7 @@ def delete_soap_note(note_id):
 
 def get_patient_soap_notes(patient_id):
     """
-    Get all SOAP consultation notes for a specific patient (physician scoped).
+    Get SOAP consultation notes for a specific patient, scoped to the current physician only.
     Returns notes sorted by date descending.
     """
     try:
@@ -238,6 +238,7 @@ def get_patient_soap_notes(patient_id):
 
         query = {
             'patient_id': ObjectId(patient_id),
+            'physician_id': physician._id,  # Scoped to this physician only
             'consultation_mode': {'$in': ['quick_vitals', 'full']}
         }
 
@@ -259,4 +260,52 @@ def get_patient_soap_notes(patient_id):
 
     except Exception as e:
         logging.error(f"Error fetching SOAP notes: {str(e)}")
+        return jsonify({'success': False, 'message': 'Failed to get notes'}), 500
+
+
+def get_my_soap_notes_from_physician():
+    """
+    Patient-facing endpoint: get SOAP notes written by a specific physician for the current patient.
+    Query param: physician_id (required)
+    Returns notes sorted by date descending.
+    """
+    try:
+        from flask import request as flask_request
+        from config.database import get_db
+
+        current_user = g.current_user
+        physician_id_str = flask_request.args.get('physician_id')
+        if not physician_id_str:
+            return jsonify({'success': False, 'message': 'physician_id query param is required'}), 400
+
+        try:
+            physician_oid = ObjectId(physician_id_str)
+        except Exception:
+            return jsonify({'success': False, 'message': 'Invalid physician_id'}), 400
+
+        db = get_db()
+        query = {
+            'patient_id': current_user._id,
+            'physician_id': physician_oid,
+            'consultation_mode': {'$in': ['quick_vitals', 'full']}
+        }
+
+        notes_data = list(
+            db.consultations.find(query).sort('created_at', -1).limit(50)
+        )
+
+        results = []
+        for doc in notes_data:
+            consultation = Consultation.from_dict(doc)
+            consultation._id = doc['_id']
+            results.append(consultation.to_safe_dict())
+
+        return jsonify({
+            'success': True,
+            'data': results,
+            'count': len(results)
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Error fetching patient soap notes from physician: {str(e)}")
         return jsonify({'success': False, 'message': 'Failed to get notes'}), 500

@@ -8,7 +8,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HomeScreen from '../screens/HomeScreen';
 import PatientsScreen from '../screens/PatientsScreen';
 import ConsultationsScreen from '../screens/ConsultationsScreen';
-import ScheduleScreen from '../screens/ScheduleScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
@@ -51,42 +50,38 @@ export default function TabNavigator() {
           fontSize: 12,
           fontWeight: '600',
         },
-        headerShown: false,
       })}
     >
-      <Tab.Screen 
-        name="Home" 
+      <Tab.Screen
+        name="Home"
         component={HomeScreen}
         options={{
           title: 'Dashboard',
+          headerShown: false,
         }}
       />
-      <Tab.Screen 
-        name="Patients" 
+      <Tab.Screen
+        name="Patients"
         component={PatientsScreen}
         options={{
           title: 'My Patients',
+          headerShown: false,
         }}
       />
-      <Tab.Screen 
-        name="Consultations" 
+      <Tab.Screen
+        name="Schedule"
         component={ConsultationsScreen}
         options={{
-          title: 'Telehealth',
+          title: 'Appointments',
+          headerShown: false,
         }}
       />
-      <Tab.Screen 
-        name="Schedule" 
-        component={ScheduleScreen}
-        options={{
-          title: 'Schedule',
-        }}
-      />
-      <Tab.Screen 
-        name="Profile" 
+      <Tab.Screen
+        name="Profile"
         component={ProfileScreen}
         options={{
           title: 'Profile',
+          headerShown: false,
         }}
       />
     </Tab.Navigator>
