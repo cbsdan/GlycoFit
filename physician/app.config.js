@@ -37,7 +37,9 @@ export default ({ config }) => {
           "android": {
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
-            "buildToolsVersion": "35.0.0"
+            "buildToolsVersion": "35.0.0",
+            "androidGradlePluginVersion": "8.7.3",
+            "kotlinVersion": "2.0.21"
           }
         }
       ]
