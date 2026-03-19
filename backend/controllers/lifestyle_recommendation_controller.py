@@ -369,8 +369,18 @@ def get_unified_recommendations():
                 'duration_days': current_pattern.get('duration_days', 0)
             }
 
+        diagnosis_status = (_user_field(user, 'diagnosis_status', '') or '').strip().lower()
+        has_food_data = bool(trackers_data.get('food', {}).get('has_data'))
+        has_activity_data = bool(trackers_data.get('activity', {}).get('has_data'))
+        is_untested_user = not (has_food_data and has_activity_data)
+        should_use_lifestyle_model = diagnosis_status == 'prediabetes' or is_untested_user
+
         ml_service = get_lifestyle_ml_service()
-        model_prediction = ml_service.predict(ml_inputs) if ml_service.is_initialized else None
+        model_prediction = (
+            ml_service.predict(ml_inputs)
+            if should_use_lifestyle_model and ml_service.is_initialized
+            else None
+        )
 
         # Keep recommendation aggregation from current rule-based service, but limited to model trackers.
         food_risk_data = trackers_data.get('food', {}).get('predictions') if trackers_data.get('food', {}).get('has_data') else None
@@ -536,6 +546,13 @@ def get_unified_recommendations():
                 'trackers_analyzed': overall_assessment['trackers_analyzed'],
                 'trackers_missing': overall_assessment['trackers_missing'],
                 'model_prediction': model_prediction,
+                'model_used': bool(model_prediction),
+                'model_eligibility': {
+                    'diagnosis_status': diagnosis_status or 'unknown',
+                    'is_untested_user': is_untested_user,
+                    'should_use_model': should_use_lifestyle_model,
+                    'policy': 'Lifestyle ML model is used only for untested or prediabetic users.'
+                },
                 'model_inputs': {
                     'profile': {
                         'age': ml_inputs.get('profile', {}).get('age'),
