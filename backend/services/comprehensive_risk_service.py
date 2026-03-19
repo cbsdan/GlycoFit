@@ -10,6 +10,8 @@ See COMPREHENSIVE_DIABETES_RISK_ASSESSMENT.md for full documentation and researc
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 import logging
+import json
+import random
 from config.database import get_db
 from models.overall_risk_assessment import OverallRiskAssessment, RiskCategory
 from models.diabetes_assessment import DiabetesAssessment
@@ -19,6 +21,7 @@ from models.step_tracking import StepMetrics, StepRiskAssessment
 from models.smoking_tracking import SmokingMetrics, SmokingRiskAssessment
 from models.alcohol_intake import AlcoholMetrics, AlcoholBaseline, AlcoholRiskAssessment, AlcoholRiskCategory
 from services.food_tracking_service import FoodTrackingService
+from services.groq_service import get_groq_service
 from bson import ObjectId
 
 logger = logging.getLogger(__name__)
@@ -1062,11 +1065,49 @@ class ComprehensiveRiskService:
                 current_score = self._calculate_overall_score(component_scores)
 
             # Analyse per-component trends
-            component_trends = self._analyse_component_trends(components, component_scores)
+            all_component_trends = self._analyse_component_trends(components, component_scores)
+
+            # Keep trajectory aligned with trained lifestyle model inputs only.
+            # Exclude sleep and smoking from trend computation/output.
+            model_components = ['food', 'steps', 'alcohol']
+            component_trends = {
+                key: all_component_trends.get(key, {
+                    'direction': 'no_data',
+                    'current_score': 0,
+                    'change': 0,
+                    'description': f'{key.title()} tracking not started',
+                    'has_data': False,
+                })
+                for key in model_components
+            }
 
             # Aggregate into an overall trajectory score
             # +100 = fully improving, -100 = fully declining, 0 = stable
             trajectory_score = self._compute_trajectory_score(component_trends)
+
+            # Do not output improving/declining/stable when no model-aligned inputs
+            # (activity, alcohol, diet) are available yet.
+            has_trend_inputs = any(
+                component_trends.get(k, {}).get('has_data', False)
+                for k in ('steps', 'alcohol', 'food')
+            )
+
+            if not has_trend_inputs:
+                return {
+                    'status': 'no_data',
+                    'trajectory_score': 0.0,
+                    'current_risk_score': current_score,
+                    'current_risk_category': OverallRiskAssessment.classify_risk_category(current_score),
+                    'forecast': None,
+                    'component_trends': component_trends,
+                    'driving_factors': [],
+                    'trend_message': 'No trajectory output yet. Log activity, alcohol, and diet entries to unlock trend analysis.',
+                    'prediction_basis': 'lifestyle_analysis',
+                    'confidence': 'preliminary',
+                    'model_components': ['food', 'activity', 'alcohol'],
+                    'excluded_components': ['sleep', 'smoking'],
+                    'ai_recommendations': []
+                }
 
             # Determine status label
             if trajectory_score >= 8:
@@ -1103,6 +1144,16 @@ class ComprehensiveRiskService:
             # Human-readable message
             trend_message = self._build_trend_message(status, trajectory_score, change_per_30d, component_trends)
 
+            # AI-personalized recommendations with AHA-only references.
+            user = components.get('user')
+            ai_recommendations = self._generate_ai_trend_recommendations(
+                user=user,
+                component_trends=component_trends,
+                status=status,
+                current_score=current_score,
+                current_category=OverallRiskAssessment.classify_risk_category(current_score)
+            )
+
             return {
                 'status': status,
                 'trajectory_score': round(trajectory_score, 1),
@@ -1128,7 +1179,10 @@ class ComprehensiveRiskService:
                 'driving_factors': driving_factors,
                 'trend_message': trend_message,
                 'prediction_basis': 'lifestyle_analysis',
-                'confidence': confidence
+                'confidence': confidence,
+                'model_components': ['food', 'activity', 'alcohol'],
+                'excluded_components': ['sleep', 'smoking'],
+                'ai_recommendations': ai_recommendations
             }
 
         except Exception as e:
@@ -1337,6 +1391,7 @@ class ComprehensiveRiskService:
             direction = 'stable'
             description = 'Dietary pattern is stable'
             change = 0.0
+            has_food_trend_data = days_analyzed > 0
 
             if days_analyzed > 0:
                 diff = daily_log_risk - baseline_risk
@@ -1360,13 +1415,14 @@ class ComprehensiveRiskService:
                         description = 'Dietary risk is moderate and stable'
             else:
                 description = 'Diet tracked only via baseline questionnaire'
+                direction = 'no_data'
 
             trends['food'] = {
                 'direction': direction,
                 'current_score': component_scores.get('food', {}).get('raw_score', 0),
                 'change': change,
                 'description': description,
-                'has_data': True
+                'has_data': has_food_trend_data
             }
         else:
             trends['food'] = {
@@ -1385,15 +1441,11 @@ class ComprehensiveRiskService:
         Positive = improving (risk decreasing), Negative = declining.
         Range: -100 to +100
         """
-        # Weights proportional to the modifiable-factor slice of WEIGHTS:
-        #   food=0.12, steps=0.10, smoking=0.07, sleep=0.06, alcohol=0.04 → total 0.39
-        #   Normalised: food=0.31, steps=0.26, smoking=0.18, sleep=0.15, alcohol=0.10
+        # Model-aligned weights (same lifestyle grouping used in assessment model path).
         component_weights = {
-            'food':    0.31,
-            'steps':   0.26,
-            'smoking': 0.18,
-            'sleep':   0.15,
-            'alcohol': 0.10,
+            'food':    0.45,
+            'steps':   0.35,
+            'alcohol': 0.20,
         }
         direction_values = {
             'improving': 1.0,
@@ -1466,10 +1518,10 @@ class ComprehensiveRiskService:
     ) -> str:
         """Determine prediction confidence based on data availability."""
         trackers_with_data = sum(
-            1 for k in ('sleep', 'steps', 'smoking', 'alcohol', 'food')
+            1 for k in ('steps', 'alcohol', 'food')
             if component_trends.get(k, {}).get('has_data', False)
         )
-        if trackers_with_data >= 4:
+        if trackers_with_data >= 3:
             return 'high'
         elif trackers_with_data >= 2:
             return 'moderate'
@@ -1483,8 +1535,9 @@ class ComprehensiveRiskService:
         Tells the user WHY the predicted value is higher or lower than their current score.
         """
         label_map = {
-            'sleep': 'Sleep', 'steps': 'Activity',
-            'smoking': 'Smoking', 'alcohol': 'Alcohol', 'food': 'Diet',
+            'steps': 'Activity',
+            'alcohol': 'Alcohol',
+            'food': 'Diet',
         }
         improving = [
             label_map.get(k, k) for k, v in component_trends.items()
@@ -1561,8 +1614,203 @@ class ComprehensiveRiskService:
         else:
             return (
                 "Your diabetes risk is currently stable. "
-                "Small improvements to sleep, activity, or diet can shift the trajectory in your favour."
+                "Small improvements to activity, alcohol habits, or diet can shift the trajectory in your favour."
             )
+
+    def _generate_ai_trend_recommendations(
+        self,
+        user: Any,
+        component_trends: Dict[str, Any],
+        status: str,
+        current_score: float,
+        current_category: str,
+    ) -> List[Dict[str, str]]:
+        """Generate concise personalized recommendations using Groq with AHA-only references."""
+        fallback_pool = [
+            {
+                'recommendation': 'Increase moderate physical activity to at least 150 minutes per week and break up prolonged sitting.',
+                'rationale': 'Regular activity improves insulin sensitivity and supports cardiometabolic health.',
+                'reference_title': 'American Heart Association: American Heart Association Recommendations for Physical Activity in Adults',
+                'reference_url': 'https://www.heart.org/en/healthy-living/fitness/fitness-basics/aha-recs-for-physical-activity-in-adults',
+            },
+            {
+                'recommendation': 'Follow a heart-healthy eating pattern with fewer sugary drinks and refined carbs, and more vegetables, whole grains, and lean proteins.',
+                'rationale': 'Diet quality strongly influences long-term diabetes and cardiovascular risk.',
+                'reference_title': 'American Heart Association: Healthy Eating',
+                'reference_url': 'https://www.heart.org/en/healthy-living/healthy-eating',
+            },
+            {
+                'recommendation': 'If you drink alcohol, keep intake low and avoid binge episodes.',
+                'rationale': 'Lower alcohol exposure helps avoid risk spikes in glucose and cardiometabolic outcomes.',
+                'reference_title': 'American Heart Association: Drinking Alcohol and Heart Health',
+                'reference_url': 'https://www.heart.org/en/healthy-living/healthy-eating/eat-smart/nutrition-basics/alcohol-and-heart-health',
+            },
+            {
+                'recommendation': 'Swap at least one sugar-sweetened drink today with water or an unsweetened beverage.',
+                'rationale': 'Small daily substitutions can lower total sugar and calorie load over time.',
+                'reference_title': 'American Heart Association: Added Sugars',
+                'reference_url': 'https://www.heart.org/en/healthy-living/healthy-eating/eat-smart/sugar/added-sugars',
+            },
+            {
+                'recommendation': 'Use a simple plate method at your next meals: half vegetables, one-quarter lean protein, one-quarter whole grains.',
+                'rationale': 'Structured meal balance helps control energy intake and improve diet quality.',
+                'reference_title': 'American Heart Association: Healthy Eating',
+                'reference_url': 'https://www.heart.org/en/healthy-living/healthy-eating',
+            },
+            {
+                'recommendation': 'Schedule short movement breaks every hour during sedentary periods.',
+                'rationale': 'Frequent movement interruptions reduce prolonged inactivity burden.',
+                'reference_title': 'American Heart Association: American Heart Association Recommendations for Physical Activity in Adults',
+                'reference_url': 'https://www.heart.org/en/healthy-living/fitness/fitness-basics/aha-recs-for-physical-activity-in-adults',
+            },
+        ]
+
+        def _build_fallback() -> List[Dict[str, str]]:
+            # Rotate deterministic fallback picks by date/status so outputs don't look static.
+            seed_basis = f"{status}:{current_category}:{datetime.utcnow().strftime('%Y-%m-%d')}"
+            rng = random.Random(seed_basis)
+            picks = fallback_pool.copy()
+            rng.shuffle(picks)
+            return picks[:3]
+
+        try:
+            groq_service = get_groq_service()
+            if not groq_service or not groq_service.is_ready():
+                return _build_fallback()
+
+            diagnosis = getattr(user, 'diagnosis_status', 'not_diagnosed') if user else 'not_diagnosed'
+            user_age = getattr(user, 'age', None) if user else None
+            user_bmi = getattr(user, 'bmi', None) if user else None
+            if user_bmi is None and user:
+                user_bmi = getattr(user, 'body_mass_index', None)
+            user_sex = getattr(user, 'sex', None) if user else None
+
+            phenotype_flags = []
+            try:
+                age_num = float(user_age) if user_age is not None else None
+            except Exception:
+                age_num = None
+            try:
+                bmi_num = float(user_bmi) if user_bmi is not None else None
+            except Exception:
+                bmi_num = None
+
+            # Filipino-relevant risk context:
+            # risk can remain elevated despite younger age or "normal" BMI due to diet pattern.
+            if age_num is not None and age_num < 40 and bmi_num is not None and bmi_num < 23:
+                phenotype_flags.append('young_or_lean_but_metabolic_risk_possible')
+            if bmi_num is not None and bmi_num >= 23:
+                phenotype_flags.append('asian_bmi_threshold_overweight_risk')
+
+            trend_lines = []
+            for k in ('food', 'steps', 'alcohol'):
+                t = component_trends.get(k, {})
+                if t.get('has_data'):
+                    trend_lines.append(f"{k}: {t.get('description', 'stable')}")
+                else:
+                    trend_lines.append(f"{k}: no recent data")
+
+            style_options = [
+                'direct and actionable',
+                'supportive and coaching-oriented',
+                'metric-focused and concise',
+                'habit-first with immediate next step',
+            ]
+            style_seed = f"{diagnosis}:{status}:{current_score:.1f}:{datetime.utcnow().strftime('%Y%m%d%H')}"
+            style_rng = random.Random(style_seed)
+            selected_style = style_rng.choice(style_options)
+
+            prompt = (
+                "Create exactly 3 personalized diabetes-lifestyle recommendations for this user. "
+                "Use only these factors: food, physical activity, alcohol. "
+                "Do NOT mention sleep or smoking. "
+                "Each recommendation must include one American Heart Association reference URL only (heart.org).\n\n"
+                "Tailor recommendations to Philippine demographic realities: high intake patterns of white rice/refined carbs, salty/processed foods, "
+                "sweetened beverages, and high-sodium condiments can elevate risk even in younger or normal-BMI users.\n"
+                "Include practical examples suitable for a Filipino context when relevant (e.g., portioning rice, reducing sweet drinks, choosing lower-sodium viands), "
+                "while still grounding guidance in AHA principles and references.\n"
+                "Consider all possible situations based on provided profile/trends: young-fit but dietary risk, higher BMI, low activity, moderate/high alcohol, and missing logs.\n\n"
+                f"Writing style: {selected_style}.\n"
+                "Make each recommendation linguistically distinct from the others (different opening verb and sentence pattern).\n"
+                f"User diagnosis_status: {diagnosis}\n"
+                f"User age: {user_age}\n"
+                f"User bmi: {user_bmi}\n"
+                f"User sex: {user_sex}\n"
+                f"Phenotype flags: {', '.join(phenotype_flags) if phenotype_flags else 'none'}\n"
+                f"Current risk score: {current_score:.1f}\n"
+                f"Current risk category: {current_category}\n"
+                f"Trend status: {status}\n"
+                f"Component trends: {' | '.join(trend_lines)}\n\n"
+                "Return strict JSON array with 3 objects, each object has keys: "
+                "recommendation, rationale, reference_title, reference_url. "
+                "No markdown, no extra text."
+            )
+
+            completion = groq_service.client.chat.completions.create(
+                model='llama-3.1-8b-instant',
+                messages=[
+                    {
+                        'role': 'system',
+                        'content': (
+                            'You are a clinical lifestyle assistant. Only use American Heart Association references. '
+                            'Output valid JSON only. Avoid duplicate recommendations.'
+                        ),
+                    },
+                    {'role': 'user', 'content': prompt},
+                ],
+                temperature=0.8,
+                max_tokens=700,
+                top_p=1,
+            )
+
+            raw = (completion.choices[0].message.content or '').strip()
+            start = raw.find('[')
+            end = raw.rfind(']')
+            if start == -1 or end == -1 or end <= start:
+                return _build_fallback()
+
+            parsed = json.loads(raw[start:end + 1])
+            if not isinstance(parsed, list) or not parsed:
+                return _build_fallback()
+
+            cleaned = []
+            seen_norm = set()
+            for item in parsed[:3]:
+                if not isinstance(item, dict):
+                    continue
+                ref_url = str(item.get('reference_url', '')).strip()
+                if 'heart.org' not in ref_url:
+                    continue
+                recommendation = str(item.get('recommendation', '')).strip()
+                if not recommendation:
+                    continue
+                norm = recommendation.lower().strip(' .!')
+                if norm in seen_norm:
+                    continue
+                seen_norm.add(norm)
+                cleaned.append({
+                    'recommendation': recommendation,
+                    'rationale': str(item.get('rationale', '')).strip(),
+                    'reference_title': str(item.get('reference_title', 'American Heart Association')).strip(),
+                    'reference_url': ref_url,
+                })
+
+            # Backfill if AI returned duplicates/invalid rows.
+            if len(cleaned) < 3:
+                for item in _build_fallback():
+                    norm = item['recommendation'].lower().strip(' .!')
+                    if norm in seen_norm:
+                        continue
+                    cleaned.append(item)
+                    seen_norm.add(norm)
+                    if len(cleaned) >= 3:
+                        break
+
+            return cleaned if cleaned else _build_fallback()
+
+        except Exception as e:
+            self.logger.warning(f"Groq recommendation generation failed, using fallback: {str(e)}")
+            return _build_fallback()
 
 
 # Global service instance

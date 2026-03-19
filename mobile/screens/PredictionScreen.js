@@ -123,6 +123,14 @@ const PredictionScreen = ({ navigation }) => {
     if (!trendPrediction) return null;
     const { status } = trendPrediction;
     switch (status) {
+      case 'no_data':
+        return {
+          label: 'NO DATA',
+          icon: 'chart-line-variant',
+          color: '#7F8C8D',
+          gradient: ['#95A5A6', '#7F8C8D'],
+          badgeText: 'Add Logs to Start',
+        };
       case 'improving':
         return {
           label: 'IMPROVING',
@@ -1146,6 +1154,12 @@ const PredictionScreen = ({ navigation }) => {
     hasBmiInput ? null : 'BMI',
   ].filter(Boolean);
 
+  const diagnosisStatus = (user?.diagnosis_status || '').toLowerCase();
+  const isType2User = diagnosisStatus === 'type2_diabetes';
+  const modelUsed = overallRisk?.model_used;
+  const modelEligible = overallRisk?.model_eligibility?.should_use_model;
+  const hideLifestyleModelOutput = isType2User && (modelUsed === false || modelEligible === false);
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
@@ -1173,29 +1187,41 @@ const PredictionScreen = ({ navigation }) => {
                   <View style={styles.overallRiskHeader}>
                     <Icon name="chart-line" size={20} color={colors.primary} />
                     <Text style={styles.overallRiskHeaderText}>
-                      {isDiagnosed ? 'Health Summary' : 'Risk Assessment'}
+                      {hideLifestyleModelOutput ? 'Maintenance Summary' : (isDiagnosed ? 'Health Summary' : 'Risk Assessment')}
                     </Text>
                   </View>
-                  <View style={styles.overallRiskScoreSection}>
-                    <View style={[styles.overallRiskScoreCircle, { borderColor: overallRisk.category_info.color }]}>
-                      <Text style={[styles.overallRiskScoreValue, { color: overallRisk.category_info.color }]}>
-                        {overallRisk.overall_risk_score.toFixed(1)}
-                      </Text>
-                      <Text style={styles.overallRiskScoreLabel}>/ 100</Text>
-                    </View>
-                    <View style={styles.overallRiskScoreInfo}>
-                      <View style={[styles.overallRiskBadge, { backgroundColor: overallRisk.category_info.color }]}>
-                        <Icon name={overallRisk.category_info.icon} size={16} color="#FFFFFF" />
-                        <Text style={styles.overallRiskBadgeText}>{overallRisk.category_info.title}</Text>
+                  {!hideLifestyleModelOutput ? (
+                    <View style={styles.overallRiskScoreSection}>
+                      <View style={[styles.overallRiskScoreCircle, { borderColor: overallRisk.category_info.color }]}>
+                        <Text style={[styles.overallRiskScoreValue, { color: overallRisk.category_info.color }]}>
+                          {overallRisk.overall_risk_score.toFixed(1)}
+                        </Text>
+                        <Text style={styles.overallRiskScoreLabel}>/ 100</Text>
                       </View>
-                      <Text style={[styles.overallRiskProbability, { color: colors.secondary }]}>
-                        {overallRisk.category_info.probability}
-                      </Text>
-                      <Text style={[styles.overallRiskMessage, { color: colors.secondary }]}>
-                        {overallRisk.category_info.message}
+                      <View style={styles.overallRiskScoreInfo}>
+                        <View style={[styles.overallRiskBadge, { backgroundColor: overallRisk.category_info.color }]}>
+                          <Icon name={overallRisk.category_info.icon} size={16} color="#FFFFFF" />
+                          <Text style={styles.overallRiskBadgeText}>{overallRisk.category_info.title}</Text>
+                        </View>
+                        <Text style={[styles.overallRiskProbability, { color: colors.secondary }]}>
+                          {overallRisk.category_info.probability}
+                        </Text>
+                        <Text style={[styles.overallRiskMessage, { color: colors.secondary }]}>
+                          {overallRisk.category_info.message}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.dataQualitySection}>
+                      <View style={styles.dataQualityHeader}>
+                        <Icon name="shield-heart-outline" size={18} color={colors.secondary} />
+                        <Text style={styles.dataQualityTitle}>Maintenance Mode</Text>
+                      </View>
+                      <Text style={styles.dataQualityText}>
+                        Because your profile is set to Type 2 Diabetes, the lifestyle ML risk score is disabled for this view. Focus on keeping your daily lifestyle factors as controlled as possible.
                       </Text>
                     </View>
-                  </View>
+                  )}
                   <TouchableOpacity
                     style={styles.refreshOverallButton}
                     onPress={handleRefreshOverallRisk}
@@ -1205,7 +1231,7 @@ const PredictionScreen = ({ navigation }) => {
                     <Text style={styles.refreshOverallButtonText}>Refresh Assessment</Text>
                   </TouchableOpacity>
                   {/* Risk Factor Breakdown - all tracked components, color-coded */}
-                  {overallRisk.primary_risk_factors && overallRisk.primary_risk_factors.length > 0 && (
+                  {!hideLifestyleModelOutput && overallRisk.primary_risk_factors && overallRisk.primary_risk_factors.length > 0 && (
                     <View style={styles.riskFactorsSection}>
                       <Text style={styles.riskFactorsTitle}>Risk Factor Breakdown</Text>
                       {overallRisk.primary_risk_factors.map((factor, index) => {
@@ -1290,14 +1316,26 @@ const PredictionScreen = ({ navigation }) => {
                       <Text style={styles.trendLoadingText}>Analysing your lifestyle trends…</Text>
                     </View>
                   ) : trendPrediction ? (() => {
+                    if (trendPrediction.status === 'no_data') {
+                      return (
+                        <View style={styles.trendLoadingBox}>
+                          <Icon name="chart-line-variant" size={32} color={colors.secondary} />
+                          <Text style={[styles.trendLoadingText, { textAlign: 'center' }]}>
+                            No trajectory output yet. Log activity, alcohol, and diet entries to unlock trend analysis.
+                          </Text>
+                        </View>
+                      );
+                    }
+
                     const tc = getTrendConfig();
                     const forecast30 = trendPrediction.forecast?.days_30;
                     const forecast90 = trendPrediction.forecast?.days_90;
                     const componentTrends = trendPrediction.component_trends || {};
                     const drivingFactors = trendPrediction.driving_factors || [];
-                    const componentKeys = ['sleep', 'steps', 'smoking', 'alcohol', 'food'];
+                    const aiRecommendations = trendPrediction.ai_recommendations || [];
+                    const componentKeys = ['steps', 'alcohol', 'food'];
                     const componentLabels = {
-                      sleep: 'Sleep', steps: 'Activity', smoking: 'Smoking',
+                      steps: 'Activity',
                       alcohol: 'Alcohol', food: 'Diet',
                     };
 
@@ -1406,6 +1444,28 @@ const PredictionScreen = ({ navigation }) => {
                                 <Text style={styles.drivingFactorText}>
                                   <Text style={{ fontWeight: '600' }}>{f.factor_name}: </Text>
                                   {f.description}
+                                </Text>
+                              </View>
+                            ))}
+                          </>
+                        )}
+
+                        {aiRecommendations.length > 0 && (
+                          <>
+                            <View style={[styles.predictionDivider, { marginTop: 4 }]} />
+                            <Text style={styles.drivingFactorsTitle}>Personalized Recommendations (AHA)</Text>
+                            {aiRecommendations.map((rec, idx) => (
+                              <View key={idx} style={styles.drivingFactorItem}>
+                                <View style={[styles.drivingFactorDot, { backgroundColor: colors.primary }]} />
+                                <Text style={styles.drivingFactorText}>
+                                  <Text style={{ fontWeight: '600', color: colors.text }}>
+                                    {rec.recommendation}
+                                  </Text>
+                                  {'\n'}{rec.rationale}
+                                  {'\n'}
+                                  <Text style={{ fontStyle: 'italic' }}>
+                                    Source: {rec.reference_title}
+                                  </Text>
                                 </Text>
                               </View>
                             ))}
