@@ -172,12 +172,8 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
   );
 
   const renderOverview = () => {
-    const upcomingAppointments = appointments.filter(
-      apt => apt.status === 'pending' || apt.status === 'confirmed'
-    ).slice(0, 3);
-
-    const scheduledConsultations = consultations.filter(
-      c => c.status === 'scheduled'
+    const upcomingAppointments = consultations.filter(
+      c => c.status === 'pending' || c.status === 'approved' || c.status === 'scheduled'
     ).slice(0, 3);
 
     return (
@@ -258,29 +254,32 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
               Upcoming Appointments
             </Text>
-            {upcomingAppointments.map((apt) => (
+            {upcomingAppointments.map((c) => (
               <TouchableOpacity
-                key={apt.id}
+                key={c.id}
                 style={[styles.listItem, { borderBottomColor: colors.border }]}
               >
                 <Icon name="calendar" size={24} color={colors.primary} />
                 <View style={styles.listItemContent}>
                   <Text style={[styles.listItemTitle, { color: colors.text }]}>
-                    {apt.appointment_type}
+                    {c.reason || 'Appointment'}
                   </Text>
                   <Text style={[styles.listItemSubtitle, { color: colors.secondary }]}>
-                    {new Date(apt.appointment_date).toLocaleString()}
+                    {c.scheduled_date
+                      ? new Date(c.scheduled_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+                      : 'N/A'}
+                    {c.scheduled_time ? ` at ${c.scheduled_time}` : ''}
                   </Text>
                 </View>
                 <View style={[
                   styles.statusBadge,
-                  { backgroundColor: apt.status === 'confirmed' ? colors.success + '20' : colors.warning + '20' }
+                  { backgroundColor: c.status === 'approved' ? colors.success + '20' : colors.warning + '20' }
                 ]}>
                   <Text style={[
                     styles.statusText,
-                    { color: apt.status === 'confirmed' ? colors.success : colors.warning }
+                    { color: c.status === 'approved' ? colors.success : colors.warning }
                   ]}>
-                    {apt.status}
+                    {c.status}
                   </Text>
                 </View>
               </TouchableOpacity>

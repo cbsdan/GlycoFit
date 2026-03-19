@@ -46,17 +46,25 @@ export default function HomeScreen() {
       const [statsRes, requestsRes, patientsRes, appointmentsRes] = await Promise.all([
         physicianAPI.getStats(),
         patientAPI.getRequests(),
-        patientAPI.getPatients(),
+        patientAPI.getPatients(null, 'active'),
         appointmentAPI.getAll({ date: new Date().toISOString() }),
       ]);
 
+      const activePatientsCount = patientsRes.success ? patientsRes.data.length : 0;
       if (statsRes.success) {
         setStats({
-          totalPatients: statsRes.data.total_patients || 0,
-          activePatients: statsRes.data.active_patients || 0,
+          totalPatients: activePatientsCount,
+          activePatients: activePatientsCount,
           pendingRequests: statsRes.data.pending_requests || 0,
           todayAppointments: statsRes.data.today_appointments || 0,
         });
+      } else {
+        setStats(prev => ({
+          ...prev,
+          totalPatients: activePatientsCount,
+          activePatients: activePatientsCount,
+          pendingRequests: requestsRes.success ? requestsRes.data.length : prev.pendingRequests,
+        }));
       }
 
       if (requestsRes.success) {

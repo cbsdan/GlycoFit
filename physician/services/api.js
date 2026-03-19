@@ -415,9 +415,11 @@ export const patientAPI = {
     }
   },
 
-  getPatients: async (search) => {
+  getPatients: async (search, status) => {
     try {
-      const params = search ? { search } : {};
+      const params = {};
+      if (search) params.search = search;
+      if (status) params.status = status;
       const response = await api.get('/physician/patients', { params });
       return response.data;
     } catch (error) {
@@ -496,7 +498,7 @@ export const consultationAPI = {
 
   approve: async (id, data) => {
     try {
-      // data may contain: scheduled_date (optional), scheduled_time (optional)
+      // data should contain: meeting_link, meeting_password (optional), platform, scheduled_date (optional), scheduled_time (optional)
       const response = await api.post(`/physician/consultations/${id}/approve`, data);
       return response.data;
     } catch (error) {

@@ -341,7 +341,38 @@ def get_patient_details(patient_id):
             logging.warning(f"Error fetching health data for patient {patient_id}: {str(health_error)}")
         
         patient_data['health_data'] = health_data
-        
+
+        # ========== BIOMETRICS ==========
+        height = getattr(patient, 'height', None)   # centimetres
+        weight = getattr(patient, 'weight', None)   # kilograms
+        bio_age = getattr(patient, 'age', None)
+        bio_sex = getattr(patient, 'sex', None)
+        diagnosis_status = getattr(patient, 'diagnosis_status', None)
+
+        bmi = None
+        bmi_category = None
+        if height and weight and height > 0:
+            height_m = height / 100.0
+            bmi = round(weight / (height_m ** 2), 1)
+            if bmi < 18.5:
+                bmi_category = 'Underweight'
+            elif bmi < 23.0:
+                bmi_category = 'Normal'
+            elif bmi < 27.5:
+                bmi_category = 'Overweight'
+            else:
+                bmi_category = 'Obese'
+
+        patient_data['biometrics'] = {
+            'age': bio_age,
+            'sex': bio_sex,
+            'height': height,
+            'weight': weight,
+            'bmi': bmi,
+            'bmi_category': bmi_category,
+            'diagnosis_status': diagnosis_status,
+        }
+
         # Get health info summary
         patient_data['health_info'] = {
             'glucose_level': health_data.get('latest_glucose'),
@@ -400,7 +431,8 @@ def get_patient_details(patient_id):
                     'probability': prediction.get('probability'),
                     'percentage': prediction.get('percentage'),
                     'confidence': prediction.get('confidence'),
-                    'last_updated': init_assess.get('updatedAt').isoformat() if init_assess.get('updatedAt') else None
+                    'last_updated': init_assess.get('updatedAt').isoformat() if init_assess.get('updatedAt') else None,
+                    'answers': init_assess.get('answers', {}),
                 }
             else:
                 patient_data['tracking_data']['diabetes_assessment'] = {'has_data': False}
@@ -494,6 +526,78 @@ def get_patient_details(patient_id):
                 }
             else:
                 patient_data['tracking_data']['alcohol_intake'] = {'has_data': False}
+
+            # ========== BASELINE DATA ==========
+            # Sleep baseline
+            try:
+                sleep_bl = safe_dict(SleepBaseline.find_by_user_id(resolved_mongo_id))
+                if sleep_bl and 'sleep_tracking' in patient_data['tracking_data']:
+                    patient_data['tracking_data']['sleep_tracking']['baseline'] = {
+                        'usual_bedtime': sleep_bl.get('usual_bedtime'),
+                        'usual_wake_time': sleep_bl.get('usual_wake_time'),
+                        'avg_sleep_hours': sleep_bl.get('baseline_avg_sleep_hours'),
+                        'nights_6h_plus_per_week': sleep_bl.get('baseline_nights_6h_plus_per_week'),
+                        'bedtime_consistency': sleep_bl.get('baseline_bedtime_consistency'),
+                    }
+            except Exception:
+                pass
+
+            # Step baseline
+            try:
+                step_bl = safe_dict(StepBaseline.find_by_user_id(resolved_mongo_id))
+                if step_bl and 'step_counter' in patient_data['tracking_data']:
+                    patient_data['tracking_data']['step_counter']['baseline'] = {
+                        'avg_daily_steps': step_bl.get('baseline_avg_daily_steps'),
+                        'activity_level': step_bl.get('baseline_activity_level'),
+                        'days_active_per_week': step_bl.get('baseline_days_active_per_week'),
+                        'exercise_minutes_per_week': step_bl.get('baseline_exercise_minutes_per_week'),
+                        'work_type': step_bl.get('baseline_work_type'),
+                    }
+            except Exception:
+                pass
+
+            # Smoking baseline
+            try:
+                from models.smoking_tracking import SmokingBaseline
+                smoking_bl = safe_dict(SmokingBaseline.find_by_user(resolved_mongo_id))
+                if smoking_bl and 'smoking_intake' in patient_data['tracking_data']:
+                    patient_data['tracking_data']['smoking_intake']['baseline'] = {
+                        'smoking_status': smoking_bl.get('smoking_status'),
+                        'years_smoked': smoking_bl.get('years_smoked'),
+                        'typical_cigarettes_per_day': smoking_bl.get('typical_cigarettes_per_day'),
+                        'quit_date': smoking_bl.get('quit_date'),
+                        'start_smoking_age': smoking_bl.get('start_smoking_age'),
+                    }
+            except Exception:
+                pass
+
+            # Alcohol baseline (dedicated fetch for baseline sub-object)
+            try:
+                alc_bl = safe_dict(AlcoholBaseline.find_by_user_id(resolved_mongo_id))
+                if alc_bl and 'alcohol_intake' in patient_data['tracking_data']:
+                    patient_data['tracking_data']['alcohol_intake']['baseline'] = {
+                        'drinking_days_per_week': alc_bl.get('baseline_drinking_days_per_week'),
+                        'drinks_per_occasion': alc_bl.get('baseline_drinks_per_occasion'),
+                        'binge_frequency_per_month': alc_bl.get('baseline_binge_frequency_per_month'),
+                        'drinking_pattern': alc_bl.get('drinking_pattern'),
+                        'years_at_current_pattern': alc_bl.get('years_at_current_pattern'),
+                        'drinks_with_meals': alc_bl.get('drinks_with_meals'),
+                        'baseline_drinks_per_week': alc_bl.get('baseline_drinks_per_week'),
+                    }
+            except Exception:
+                pass
+
+            # Food baseline (responses)
+            try:
+                db = get_db()
+                food_bl = db.food_baseline_assessments.find_one({'user_id': ObjectId(resolved_mongo_id)})
+                if food_bl and 'food_tracker' in patient_data['tracking_data']:
+                    patient_data['tracking_data']['food_tracker']['baseline'] = {
+                        'responses': food_bl.get('responses', {}),
+                        'baseline_risk_score': food_bl.get('baseline_risk_score'),
+                    }
+            except Exception:
+                pass
 
         except Exception as e:
             logging.error(f"Error fetching tracking data comprehensively: {str(e)}", exc_info=True)

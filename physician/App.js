@@ -171,15 +171,16 @@ const setupFCMWithAuth = async (isAuthenticated) => {
     return null;
   }
 
-  // Check if user has enabled notifications in settings
+  // Only proceed if user has explicitly enabled notifications
   try {
     const notificationsEnabled = await AsyncStorage.getItem('@notifications_enabled');
-    if (notificationsEnabled === 'false') {
-      console.log('Notifications disabled by user in settings');
+    if (notificationsEnabled !== 'true') {
+      console.log('Notifications not explicitly enabled by user, skipping FCM setup');
       return null;
     }
   } catch (error) {
     console.log('Error checking notification preference:', error);
+    return null;
   }
 
   const hasPermission = await requestUserPermission();

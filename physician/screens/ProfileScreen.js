@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   RefreshControl,
   Modal,
   Alert,
+  Linking,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -36,9 +38,21 @@ export default function ProfileScreen() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [isTogglingNotifications, setIsTogglingNotifications] = useState(false);
+  const pendingPermissionCheck = useRef(false);
 
   useEffect(() => {
     loadNotificationPreference();
+  }, []);
+
+  // Re-sync permission state when user returns from device Settings
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active' && pendingPermissionCheck.current) {
+        pendingPermissionCheck.current = false;
+        loadNotificationPreference();
+      }
+    });
+    return () => subscription.remove();
   }, []);
 
   useEffect(() => {
@@ -47,10 +61,28 @@ export default function ProfileScreen() {
 
   const loadNotificationPreference = async () => {
     try {
-      const enabled = await AsyncStorage.getItem(NOTIFICATIONS_ENABLED_KEY);
-      if (enabled !== null) {
-        setNotificationsEnabled(enabled === 'true');
+      const authStatus = await messaging().hasPermission();
+      const notDetermined = authStatus === messaging.AuthorizationStatus.NOT_DETERMINED;
+      const authorized =
+        authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+        authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+      if (notDetermined) {
+        // Never been asked — show toggle as OFF, don't store anything yet
+        setNotificationsEnabled(false);
+        return;
       }
+
+      if (!authorized) {
+        // Explicitly denied by user or system
+        setNotificationsEnabled(false);
+        await AsyncStorage.setItem(NOTIFICATIONS_ENABLED_KEY, 'false');
+        return;
+      }
+
+      // System permission is granted — use stored preference
+      const stored = await AsyncStorage.getItem(NOTIFICATIONS_ENABLED_KEY);
+      setNotificationsEnabled(stored !== 'false');
     } catch (error) {
       console.log('Error loading notification preference:', error);
     }
@@ -63,20 +95,57 @@ export default function ProfileScreen() {
     
     try {
       if (value) {
-        // Enable notifications
-        const authStatus = await messaging().requestPermission();
-        const enabled =
-          authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-          authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+        // Pre-check the current permission status
+        const currentStatus = await messaging().hasPermission();
+        const notDetermined = currentStatus === messaging.AuthorizationStatus.NOT_DETERMINED;
+        const alreadyAuthorized =
+          currentStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+          currentStatus === messaging.AuthorizationStatus.PROVISIONAL;
 
-        if (enabled) {
+        if (alreadyAuthorized) {
+          // System already granted — just register the token
           const token = await getToken(messaging());
           await physicianAPI.saveFCMToken(token);
           await AsyncStorage.setItem(NOTIFICATIONS_ENABLED_KEY, 'true');
           setNotificationsEnabled(true);
           toast.success('Notifications enabled');
+        } else if (notDetermined) {
+          // Never asked before — show the system dialog
+          const authStatus = await messaging().requestPermission();
+          const enabled =
+            authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+            authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+          if (enabled) {
+            const token = await getToken(messaging());
+            await physicianAPI.saveFCMToken(token);
+            await AsyncStorage.setItem(NOTIFICATIONS_ENABLED_KEY, 'true');
+            setNotificationsEnabled(true);
+            toast.success('Notifications enabled');
+          } else {
+            // User denied in the dialog
+            await AsyncStorage.setItem(NOTIFICATIONS_ENABLED_KEY, 'false');
+            pendingPermissionCheck.current = true;
+            Alert.alert(
+              'Notifications Disabled',
+              'You denied notification permission. You can enable it anytime from your device settings.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Open Settings', onPress: () => Linking.openSettings() },
+              ]
+            );
+          }
         } else {
-          toast.error('Notification permission denied');
+          // DENIED — system won't show dialog, must go to device settings
+          pendingPermissionCheck.current = true;
+          Alert.alert(
+            'Notifications Blocked',
+            'Notification permission is blocked. Please enable it from your device settings.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            ]
+          );
         }
       } else {
         // Disable notifications

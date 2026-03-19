@@ -1,7 +1,7 @@
 const environments = {
   development: {
     // deviceLocal: "https://glycofit.onrender.com/api/v1",
-    deviceLocal: "http://192.168.68.106:4000/api/v1",
+    deviceLocal: "http://192.168.9.175:4000/api/v1",
   },
   production: "https://glycofit.onrender.com/api/v1",
 };

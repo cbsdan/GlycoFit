@@ -23,11 +23,13 @@ export default function PatientsScreen() {
   const { colors: theme } = useTheme();
   const { showToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTab, setSelectedTab] = useState('all'); // all, active, requests
+  const [selectedTab, setSelectedTab] = useState('all'); // all, active, requests, rejected, disconnected
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activePatients, setActivePatients] = useState([]);
   const [patientRequests, setPatientRequests] = useState([]);
+  const [rejectedPatients, setRejectedPatients] = useState([]);
+  const [disconnectedPatients, setDisconnectedPatients] = useState([]);
   const [patientMetrics, setPatientMetrics] = useState({});
 
   // Schedule modal state (Accept patient + schedule appointment)
@@ -46,17 +48,37 @@ export default function PatientsScreen() {
   const fetchPatients = async () => {
     try {
       setLoading(true);
-      const [patientsRes, requestsRes] = await Promise.all([
-        patientAPI.getPatients(),
+      const [patientsRes, requestsRes, rejectedRes, disconnectedRes] = await Promise.all([
+        patientAPI.getPatients(null, 'active'),
         patientAPI.getRequests(),
+        patientAPI.getPatients(null, 'declined'),
+        patientAPI.getPatients(null, 'inactive'),
       ]);
 
+      const dedup = (arr) => {
+        const seen = new Set();
+        return arr.filter(p => {
+          const id = p._id || p.id;
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
+      };
+
       if (patientsRes.success) {
-        setActivePatients(patientsRes.data);
+        setActivePatients(dedup(patientsRes.data));
       }
 
       if (requestsRes.success) {
-        setPatientRequests(requestsRes.data);
+        setPatientRequests(dedup(requestsRes.data));
+      }
+
+      if (rejectedRes.success) {
+        setRejectedPatients(dedup(rejectedRes.data));
+      }
+
+      if (disconnectedRes.success) {
+        setDisconnectedPatients(dedup(disconnectedRes.data));
       }
 
       // Fetch per-patient metrics (non-fatal)
@@ -180,13 +202,20 @@ export default function PatientsScreen() {
     }
   };
 
-  const allPatients = [...activePatients.map(p => ({ ...p, status: 'active' })), ...patientRequests.map(r => ({ ...r, status: 'request' }))];
+  const allPatients = [
+    ...activePatients.map(p => ({ ...p, _listStatus: 'active' })),
+    ...patientRequests.map(r => ({ ...r, _listStatus: 'request' })),
+    ...rejectedPatients.map(p => ({ ...p, _listStatus: 'rejected' })),
+    ...disconnectedPatients.map(p => ({ ...p, _listStatus: 'disconnected' })),
+  ];
 
   const filteredPatients = allPatients.filter((patient) => {
-    // For requests: patient.patient has the user data
+    // For requests/rejected/disconnected: patient.patient has the user data
     // For active: patient has the user data directly
     let patientName = '';
-    if (patient.status === 'request' && patient.patient) {
+    if (patient._listStatus === 'request' && patient.patient) {
+      patientName = `${patient.patient.first_name || ''} ${patient.patient.last_name || ''}`.trim();
+    } else if ((patient._listStatus === 'rejected' || patient._listStatus === 'disconnected') && patient.patient) {
       patientName = `${patient.patient.first_name || ''} ${patient.patient.last_name || ''}`.trim();
     } else {
       patientName = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
@@ -194,9 +223,12 @@ export default function PatientsScreen() {
 
     const matchesSearch = patientName.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesTab =
-      selectedTab === 'all' ||
-      (selectedTab === 'active' && patient.status === 'active') ||
-      (selectedTab === 'requests' && patient.status === 'request');
+      selectedTab === 'all'
+        ? patient._listStatus === 'active' || patient._listStatus === 'request'
+        : (selectedTab === 'active' && patient._listStatus === 'active') ||
+          (selectedTab === 'requests' && patient._listStatus === 'request') ||
+          (selectedTab === 'rejected' && patient._listStatus === 'rejected') ||
+          (selectedTab === 'disconnected' && patient._listStatus === 'disconnected');
     return matchesSearch && matchesTab;
   });
 
@@ -240,7 +272,12 @@ export default function PatientsScreen() {
         </View>
 
         {/* Tab Selector */}
-        <View style={styles.tabContainer}>
+        <View style={styles.tabWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabContainer}
+        >
           <TouchableOpacity
             style={[
               styles.tab,
@@ -254,12 +291,10 @@ export default function PatientsScreen() {
             <Text
               style={[
                 styles.tabText,
-                {
-                  color: selectedTab === 'all' ? theme.primary : theme.secondary,
-                },
+                { color: selectedTab === 'all' ? theme.primary : theme.secondary },
               ]}
             >
-              All Patients
+              All
             </Text>
           </TouchableOpacity>
 
@@ -276,9 +311,7 @@ export default function PatientsScreen() {
             <Text
               style={[
                 styles.tabText,
-                {
-                  color: selectedTab === 'active' ? theme.primary : theme.secondary,
-                },
+                { color: selectedTab === 'active' ? theme.primary : theme.secondary },
               ]}
             >
               Active
@@ -299,23 +332,73 @@ export default function PatientsScreen() {
               <Text
                 style={[
                   styles.tabText,
-                  {
-                    color:
-                      selectedTab === 'requests' ? theme.primary : theme.secondary,
-                  },
+                  { color: selectedTab === 'requests' ? theme.primary : theme.secondary },
                 ]}
               >
                 Requests
               </Text>
               {patientRequests.length > 0 && (
-                <View
-                  style={[styles.badge, { backgroundColor: theme.error }]}
-                >
+                <View style={[styles.badge, { backgroundColor: theme.error }]}>
                   <Text style={styles.badgeText}>{patientRequests.length}</Text>
                 </View>
               )}
             </View>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.tab,
+              selectedTab === 'rejected' && {
+                borderBottomColor: theme.error,
+                borderBottomWidth: 2,
+              },
+            ]}
+            onPress={() => setSelectedTab('rejected')}
+          >
+            <View style={styles.tabWithBadge}>
+              <Text
+                style={[
+                  styles.tabText,
+                  { color: selectedTab === 'rejected' ? theme.error : theme.secondary },
+                ]}
+              >
+                Rejected
+              </Text>
+              {rejectedPatients.length > 0 && (
+                <View style={[styles.badge, { backgroundColor: theme.error }]}>
+                  <Text style={styles.badgeText}>{rejectedPatients.length}</Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.tab,
+              selectedTab === 'disconnected' && {
+                borderBottomColor: theme.secondary,
+                borderBottomWidth: 2,
+              },
+            ]}
+            onPress={() => setSelectedTab('disconnected')}
+          >
+            <View style={styles.tabWithBadge}>
+              <Text
+                style={[
+                  styles.tabText,
+                  { color: selectedTab === 'disconnected' ? theme.secondary : theme.secondary },
+                ]}
+              >
+                Disconnected
+              </Text>
+              {disconnectedPatients.length > 0 && (
+                <View style={[styles.badge, { backgroundColor: theme.secondary }]}>
+                  <Text style={styles.badgeText}>{disconnectedPatients.length}</Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        </ScrollView>
         </View>
 
         {/* Patient List */}
@@ -327,90 +410,170 @@ export default function PatientsScreen() {
         >
           {filteredPatients.length === 0 ? (
             <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, ...theme.shadow }]}>
-              <Ionicons name="people-outline" size={64} color={theme.secondary} />
+              <Ionicons
+                name={
+                  selectedTab === 'rejected' ? 'close-circle-outline' :
+                  selectedTab === 'disconnected' ? 'link-outline' : 'people-outline'
+                }
+                size={64}
+                color={theme.secondary}
+              />
               <Text style={[styles.emptyStateText, { color: theme.text }]}>
                 {selectedTab === 'all' ? 'No patients yet' :
                   selectedTab === 'active' ? 'No active patients' :
-                    'No pending requests'}
+                  selectedTab === 'requests' ? 'No pending requests' :
+                  selectedTab === 'rejected' ? 'No rejected patients' :
+                  'No disconnected patients'}
               </Text>
               <Text style={[styles.emptyStateSubtext, { color: theme.secondary }]}>
-                {selectedTab === 'requests'
-                  ? 'Patient requests will appear here'
-                  : 'Start connecting with patients to see them here'}
+                {selectedTab === 'requests' ? 'Patient requests will appear here' :
+                  selectedTab === 'rejected' ? 'Declined patient requests will appear here' :
+                  selectedTab === 'disconnected' ? 'Patients who disconnected will appear here' :
+                  'Start connecting with patients to see them here'}
               </Text>
             </View>
           ) : (
-            filteredPatients.map((patient) =>
-              patient.status === 'request' ? (
-                <TouchableOpacity
-                  key={patient.id}
-                  style={[
-                    styles.patientCard,
-                    {
-                      backgroundColor: theme.card,
-                      borderColor: theme.border,
-                      ...theme.shadow,
-                    },
-                  ]}
-                >
-                  <View style={styles.requestHeader}>
-                    <View
-                      style={[
-                        styles.avatar,
-                        { backgroundColor: theme.primary + '20' },
-                      ]}
-                    >
-                      <Text style={[styles.avatarText, { color: theme.primary }]}>
-                        {patient.patient?.first_name?.charAt(0) || '?'}
-                      </Text>
+            filteredPatients.map((patient) => {
+              if (patient._listStatus === 'request') {
+                return (
+                  <TouchableOpacity
+                    key={`request-${patient._id || patient.id}`}
+                    style={[
+                      styles.patientCard,
+                      { backgroundColor: theme.card, borderColor: theme.border, ...theme.shadow },
+                    ]}
+                  >
+                    <View style={styles.requestHeader}>
+                      <View style={[styles.avatar, { backgroundColor: theme.primary + '20' }]}>
+                        <Text style={[styles.avatarText, { color: theme.primary }]}>
+                          {patient.patient?.first_name?.charAt(0) || '?'}
+                        </Text>
+                      </View>
+                      <View style={styles.patientInfo}>
+                        <Text style={[styles.patientName, { color: theme.text }]}>
+                          {patient.patient ? `${patient.patient.first_name} ${patient.patient.last_name}` : 'Unknown'}
+                        </Text>
+                        <Text style={[styles.patientDetails, { color: theme.secondary }]}>
+                          {patient.patient?.email || 'No email'}
+                        </Text>
+                        <Text style={[styles.requestTime, { color: theme.secondary }]}>
+                          Requested {patient.request_date ? new Date(patient.request_date).toLocaleDateString() : 'Unknown'}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={styles.patientInfo}>
-                      <Text style={[styles.patientName, { color: theme.text }]}>
-                        {patient.patient ? `${patient.patient.first_name} ${patient.patient.last_name}` : 'Unknown'}
-                      </Text>
-                      <Text
-                        style={[styles.patientDetails, { color: theme.secondary }]}
+                    <View style={styles.requestActions}>
+                      <TouchableOpacity
+                        style={[styles.acceptButton, { backgroundColor: theme.success }]}
+                        onPress={() => handleAcceptRequest(patient._id || patient.id)}
                       >
-                        {patient.patient?.email || 'No email'}
-                      </Text>
-                      <Text
-                        style={[styles.requestTime, { color: theme.secondary }]}
+                        <Text style={styles.actionButtonText}>Accept</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.declineButton, { borderColor: theme.primary }]}
+                        onPress={() => handleScheduleRequest(patient)}
                       >
-                        Requested {patient.request_date ? new Date(patient.request_date).toLocaleDateString() : 'Unknown'}
+                        <Ionicons name="calendar-outline" size={14} color={theme.primary} style={{ marginRight: 4 }} />
+                        <Text style={[styles.declineText, { color: theme.primary }]}>Schedule</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }
+
+              if (patient._listStatus === 'rejected') {
+                const name = patient.patient
+                  ? `${patient.patient.first_name || ''} ${patient.patient.last_name || ''}`.trim()
+                  : `${patient.first_name || ''} ${patient.last_name || ''}`.trim() || 'Unknown';
+                const email = patient.patient?.email || patient.email || 'No email';
+                const initial = (patient.patient?.first_name || patient.first_name || '?').charAt(0);
+                return (
+                  <View
+                    key={`rejected-${patient._id || patient.id}`}
+                    style={[
+                      styles.patientCard,
+                      {
+                        backgroundColor: theme.card,
+                        borderColor: theme.error + '60',
+                        borderWidth: 1,
+                        opacity: 0.85,
+                        ...theme.shadow,
+                      },
+                    ]}
+                  >
+                    <View style={styles.requestHeader}>
+                      <View style={[styles.avatar, { backgroundColor: theme.error + '18' }]}>
+                        <Text style={[styles.avatarText, { color: theme.error }]}>{initial}</Text>
+                      </View>
+                      <View style={styles.patientInfo}>
+                        <Text style={[styles.patientName, { color: theme.text }]}>{name}</Text>
+                        <Text style={[styles.patientDetails, { color: theme.secondary }]}>{email}</Text>
+                        {patient.request_date && (
+                          <Text style={[styles.requestTime, { color: theme.secondary }]}>
+                            Requested {new Date(patient.request_date).toLocaleDateString()}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={[styles.badge, { backgroundColor: theme.error + '20', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }]}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: theme.error }}>REJECTED</Text>
+                      </View>
+                    </View>
+                    {patient.notes && (
+                      <Text style={[styles.patientDetails, { color: theme.secondary, marginTop: 6, fontStyle: 'italic' }]}>
+                        Reason: {patient.notes}
                       </Text>
+                    )}
+                  </View>
+                );
+              }
+
+              if (patient._listStatus === 'disconnected') {
+                const name = patient.patient
+                  ? `${patient.patient.first_name || ''} ${patient.patient.last_name || ''}`.trim()
+                  : `${patient.first_name || ''} ${patient.last_name || ''}`.trim() || 'Unknown';
+                const email = patient.patient?.email || patient.email || 'No email';
+                const initial = (patient.patient?.first_name || patient.first_name || '?').charAt(0);
+                return (
+                  <View
+                    key={`disconnected-${patient._id || patient.id}`}
+                    style={[
+                      styles.patientCard,
+                      {
+                        backgroundColor: theme.card,
+                        borderColor: theme.secondary + '60',
+                        borderWidth: 1,
+                        opacity: 0.75,
+                        ...theme.shadow,
+                      },
+                    ]}
+                  >
+                    <View style={styles.requestHeader}>
+                      <View style={[styles.avatar, { backgroundColor: theme.secondary + '18' }]}>
+                        <Text style={[styles.avatarText, { color: theme.secondary }]}>{initial}</Text>
+                      </View>
+                      <View style={styles.patientInfo}>
+                        <Text style={[styles.patientName, { color: theme.text }]}>{name}</Text>
+                        <Text style={[styles.patientDetails, { color: theme.secondary }]}>{email}</Text>
+                        {patient.acceptance_date && (
+                          <Text style={[styles.requestTime, { color: theme.secondary }]}>
+                            Previously connected since {new Date(patient.acceptance_date).toLocaleDateString()}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={[styles.badge, { backgroundColor: theme.secondary + '20', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }]}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: theme.secondary }}>DISCONNECTED</Text>
+                      </View>
                     </View>
                   </View>
-                  <View style={styles.requestActions}>
-                    <TouchableOpacity
-                      style={[
-                        styles.acceptButton,
-                        { backgroundColor: theme.success },
-                      ]}
-                      onPress={() => handleAcceptRequest(patient._id || patient.id)}
-                    >
-                      <Text style={styles.actionButtonText}>Accept</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.declineButton, { borderColor: theme.primary }]}
-                      onPress={() => handleScheduleRequest(patient)}
-                    >
-                      <Ionicons name="calendar-outline" size={14} color={theme.primary} style={{ marginRight: 4 }} />
-                      <Text style={[styles.declineText, { color: theme.primary }]}>
-                        Schedule
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </TouchableOpacity>
-              ) : (
+                );
+              }
+
+              // Active patient card
+              return (
                 <TouchableOpacity
-                  key={patient.id}
+                  key={`active-${patient._id || patient.id}`}
                   style={[
                     styles.patientCard,
-                    {
-                      backgroundColor: theme.card,
-                      borderColor: theme.border,
-                      ...theme.shadow,
-                    },
+                    { backgroundColor: theme.card, borderColor: theme.border, ...theme.shadow },
                   ]}
                   onPress={() => navigation.navigate('PatientDetail', {
                     patient: patient,
@@ -422,12 +585,7 @@ export default function PatientsScreen() {
                   })}
                 >
                   <View style={styles.cardHeader}>
-                    <View
-                      style={[
-                        styles.avatar,
-                        { backgroundColor: theme.primary + '20' },
-                      ]}
-                    >
+                    <View style={[styles.avatar, { backgroundColor: theme.primary + '20' }]}>
                       <Text style={[styles.avatarText, { color: theme.primary }]}>
                         {patient.first_name?.charAt(0) || '?'}
                       </Text>
@@ -436,9 +594,7 @@ export default function PatientsScreen() {
                       <Text style={[styles.patientName, { color: theme.text }]}>
                         {`${patient.first_name || ''} ${patient.last_name || ''}`.trim() || 'Unknown'}
                       </Text>
-                      <Text
-                        style={[styles.patientDetails, { color: theme.secondary }]}
-                      >
+                      <Text style={[styles.patientDetails, { color: theme.secondary }]}>
                         {patient.email || 'No email'}
                       </Text>
                     </View>
@@ -462,43 +618,35 @@ export default function PatientsScreen() {
                   <View style={styles.metricsContainer}>
                     <View style={styles.metric}>
                       <Ionicons name="calendar" size={16} color={theme.secondary} />
-                      <Text style={[styles.metricLabel, { color: theme.secondary }]}>
-                        Consultations
-                      </Text>
+                      <Text style={[styles.metricLabel, { color: theme.secondary }]}>Consultations</Text>
                       <Text style={[styles.metricValue, { color: theme.text }]}>
                         {patientMetrics[patient._id || patient.id]?.consultationCount ?? '-'}
                       </Text>
                     </View>
-
                     <View style={styles.metric}>
                       <Ionicons name="chatbubbles" size={16} color={theme.secondary} />
-                      <Text style={[styles.metricLabel, { color: theme.secondary }]}>
-                        Unread Msgs
-                      </Text>
+                      <Text style={[styles.metricLabel, { color: theme.secondary }]}>Unread Msgs</Text>
                       <Text style={[styles.metricValue, { color: theme.text }]}>
                         {patientMetrics[patient._id || patient.id]?.unreadCount ?? '-'}
                       </Text>
                     </View>
-
                     <View style={styles.metric}>
                       <Ionicons name="calendar-outline" size={16} color={theme.warning} />
-                      <Text style={[styles.metricLabel, { color: theme.secondary }]}>
-                        Pending Appts
-                      </Text>
+                      <Text style={[styles.metricLabel, { color: theme.secondary }]}>Pending Appts</Text>
                       <Text style={[styles.metricValue, { color: (patientMetrics[patient._id || patient.id]?.pendingAppts ?? 0) > 0 ? theme.warning : theme.text }]}>
                         {patientMetrics[patient._id || patient.id]?.pendingAppts ?? 0}
                       </Text>
                     </View>
                   </View>
 
-                  {/* View Details indicator */}
                   <View style={styles.viewDetailsContainer}>
                     <Text style={[styles.viewDetailsText, { color: theme.primary }]}>Tap to view details</Text>
                     <Ionicons name="chevron-forward" size={16} color={theme.primary} />
                   </View>
                 </TouchableOpacity>
-              )
-            ))}
+              );
+            })
+          )}
         </ScrollView>
       </View>
       {/* ── Schedule Request Modal ── */}
@@ -660,14 +808,19 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 16,
   },
-  tabContainer: {
-    flexDirection: 'row',
+  tabWrapper: {
+    height: 44,
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
   },
+  tabContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
   tab: {
-    flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
     alignItems: 'center',
   },
   tabText: {
@@ -758,6 +911,7 @@ const styles = StyleSheet.create({
   requestHeader: {
     flexDirection: 'row',
     marginBottom: 12,
+    alignItems: "flex-start"
   },
   requestTime: {
     fontSize: 12,

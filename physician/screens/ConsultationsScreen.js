@@ -491,10 +491,6 @@ const pad = (n) => String(n).padStart(2, '0');
                       {formatTime(c.scheduled_date, c.scheduled_time)}
                     </Text>
                   </View>
-                  <View style={styles.detailItem}>
-                    <Ionicons name="hourglass" size={14} color={theme.secondary} />
-                    <Text style={[styles.detailText, { color: theme.text }]}>{c.duration_minutes} min</Text>
-                  </View>
                   <View style={[styles.statusChip, { backgroundColor: sColor + '18' }]}>
                     <Text style={[styles.statusChipText, { color: sColor }]}>
                       {(c.status || '').toUpperCase()}
@@ -638,12 +634,6 @@ const pad = (n) => String(n).padStart(2, '0');
                           {formatTime(consultation.scheduled_date, consultation.scheduled_time)}
                         </Text>
                       </View>
-                      <View style={styles.detailItem}>
-                        <Ionicons name="hourglass" size={16} color={theme.secondary} />
-                        <Text style={[styles.detailText, { color: theme.text }]}>
-                          {consultation.duration_minutes} min
-                        </Text>
-                      </View>
                     </View>
 
                     <View style={styles.actionButtons}>
@@ -718,12 +708,6 @@ const pad = (n) => String(n).padStart(2, '0');
                         <Ionicons name="time" size={16} color={theme.secondary} />
                         <Text style={[styles.detailText, { color: theme.text }]}>
                           {formatTime(consultation.scheduled_date, consultation.scheduled_time)}
-                        </Text>
-                      </View>
-                      <View style={styles.detailItem}>
-                        <Ionicons name="hourglass" size={16} color={theme.secondary} />
-                        <Text style={[styles.detailText, { color: theme.text }]}>
-                          {consultation.duration_minutes} min
                         </Text>
                       </View>
                     </View>
@@ -863,12 +847,7 @@ const pad = (n) => String(n).padStart(2, '0');
                             {formatTime(consultation.scheduled_date, consultation.scheduled_time)}
                           </Text>
                         </View>
-                        <View style={styles.detailItem}>
-                          <Ionicons name="hourglass" size={16} color={theme.secondary} />
-                          <Text style={[styles.detailText, { color: theme.text }]}>
-                            {consultation.duration_minutes} min
-                          </Text>
-                        </View>
+
                       </View>
 
                       {consultation.notes && (

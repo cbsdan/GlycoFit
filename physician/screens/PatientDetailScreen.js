@@ -86,6 +86,7 @@ export default function PatientDetailScreen({ route, navigation }) {
           diabetes.prediction?.percentage,
           diabetes.prediction?.probability
         ),
+        answers: diabetes.answers || {},
       },
       food_tracker: {
         ...food,
@@ -103,6 +104,7 @@ export default function PatientDetailScreen({ route, navigation }) {
           food.status?.days_tracked_last_week
         ),
         baseline_only: food.baseline_only || (food.status?.has_baseline && !food.status?.has_daily_data),
+        baseline: food.baseline || null,
       },
       step_counter: {
         ...step,
@@ -115,6 +117,7 @@ export default function PatientDetailScreen({ route, navigation }) {
         activity_level: step.activity_level || step.metrics?.activity_level || step.baseline?.baseline_activity_level,
         risk_category: step.risk_category || step.metrics?.risk_category,
         baseline_only: step.baseline_only || (step.status?.has_baseline && !step.status?.has_daily_data),
+        baseline: step.baseline || null,
       },
       sleep_tracking: {
         ...sleep,
@@ -132,6 +135,7 @@ export default function PatientDetailScreen({ route, navigation }) {
         ),
         risk_category: sleep.risk_category || sleep.metrics?.risk_category || sleep.risk_assessment?.category,
         baseline_only: sleep.baseline_only || (sleep.status?.has_baseline && !sleep.status?.has_daily_data),
+        baseline: sleep.baseline || null,
       },
       smoking_intake: {
         ...smoking,
@@ -151,6 +155,7 @@ export default function PatientDetailScreen({ route, navigation }) {
         ),
         risk_category: smoking.risk_category || smoking.metrics?.risk_category || smoking.risk_assessment?.risk_category,
         baseline_only: smoking.baseline_only || (smoking.has_baseline && !smoking.has_daily_data),
+        baseline: smoking.baseline || null,
       },
       alcohol_intake: {
         ...alcohol,
@@ -163,6 +168,7 @@ export default function PatientDetailScreen({ route, navigation }) {
         consumption_pattern: alcohol.consumption_pattern || alcohol.drinking_pattern || alcohol.baseline?.drinking_pattern,
         risk_category: alcohol.risk_category || alcohol.metrics?.risk_category || alcohol.risk_assessment?.risk_category,
         baseline_only: alcohol.baseline_only || (alcohol.status?.has_baseline && !alcohol.status?.has_daily_data),
+        baseline: alcohol.baseline || null,
       },
     };
 
@@ -801,251 +807,538 @@ export default function PatientDetailScreen({ route, navigation }) {
     );
   };
 
-  const renderOverview = () => (
-    <ScrollView
-      style={styles.tabContent}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    >
-      {/* Patient Info Card */}
-      <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
-        <View style={styles.patientHeader}>
-          <View style={[styles.avatar, { backgroundColor: theme.primary + '20' }]}>
-            <Text style={[styles.avatarText, { color: theme.primary }]}>
-              {data.first_name?.charAt(0) || '?'}{data.last_name?.charAt(0) || ''}
-            </Text>
-          </View>
-          <View style={styles.patientInfo}>
-            <Text style={[styles.patientName, { color: theme.text }]}>
-              {`${data.first_name || ''} ${data.last_name || ''}`.trim() || 'Unknown Patient'}
-            </Text>
-            <Text style={[styles.patientEmail, { color: theme.secondary }]}>
-              {data.email || 'No email'}
-            </Text>
-            {data.phone && (
-              <Text style={[styles.patientPhone, { color: theme.secondary }]}>
-                <Ionicons name="call-outline" size={14} /> {data.phone}
-              </Text>
-            )}
-          </View>
-        </View>
+  const renderOverview = () => {
+    const biometrics = data.biometrics || {};
+    const diagnosisStatus = biometrics.diagnosis_status || data.diagnosis_status || 'not_diagnosed';
+    const diagnosisLabel = diagnosisStatus === 'type2_diabetes' ? 'Type 2 Diabetic'
+      : diagnosisStatus === 'prediabetes' ? 'Prediabetic'
+      : 'Not Diagnosed';
+    const diagnosisColor = diagnosisStatus === 'type2_diabetes' ? theme.error
+      : diagnosisStatus === 'prediabetes' ? theme.warning
+      : theme.secondary;
 
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
+    const bmiCategory = biometrics.bmi_category || '';
+    const bmiCategoryColor = bmiCategory === 'Normal' ? theme.success
+      : bmiCategory === 'Overweight' ? theme.warning
+      : bmiCategory === 'Obese' ? theme.error
+      : bmiCategory === 'Underweight' ? '#f59e0b'
+      : theme.secondary;
 
-        <View style={styles.infoRow}>
-          <View style={styles.infoItem}>
-            <Ionicons name="calendar-outline" size={18} color={theme.secondary} />
-            <Text style={[styles.infoLabel, { color: theme.secondary }]}>Patient Since</Text>
-            <Text style={[styles.infoValue, { color: theme.text }]}>
-              {formatDate(data.relationship?.acceptance_date || relationship?.acceptance_date)}
-            </Text>
-          </View>
-        </View>
-      </View>
+    const answers = trackingData.diabetes_assessment?.answers || {};
+    const clinicalFlags = [
+      { key: 'HighBP', label: 'High BP', isRisk: answers.HighBP === 1 },
+      { key: 'HighChol', label: 'High Cholesterol', isRisk: answers.HighChol === 1 },
+      { key: 'Stroke', label: 'Stroke', isRisk: answers.Stroke === 1 },
+      { key: 'HeartDiseaseorAttack', label: 'Heart Disease', isRisk: answers.HeartDiseaseorAttack === 1 },
+      { key: 'PhysActivity', label: 'Inactive', isRisk: answers.PhysActivity === 0 },
+      { key: 'DiffWalk', label: 'Diff. Walking', isRisk: answers.DiffWalk === 1 },
+      { key: 'HvyAlcoholConsump', label: 'Heavy Alcohol', isRisk: answers.HvyAlcoholConsump === 1 },
+    ].filter(f => Object.keys(answers).length > 0);
 
-      {/* Health Overview - Comprehensive Health Tracking */}
-      <Text style={[styles.sectionTitle, { color: theme.text }]}>Health Overview</Text>
+    const foodLabelMap = {
+      daily_meal_frequency: 'Meals/day',
+      skip_breakfast: 'Skips Breakfast',
+      late_night_eating: 'Late Night Eating',
+      sugary_drinks_frequency: 'Sugary Drinks',
+      processed_food_frequency: 'Processed Food',
+      whole_grains_intake: 'Whole Grains',
+      vegetable_servings: 'Vegetable Servings',
+      fruit_servings: 'Fruit Servings',
+      red_meat_frequency: 'Red Meat',
+      fried_food_frequency: 'Fried Food',
+      snacking_frequency: 'Snacking',
+      portion_size_awareness: 'Portion Awareness',
+      fiber_rich_foods: 'Fiber-rich Foods',
+      refined_carbs_frequency: 'Refined Carbs',
+      water_intake: 'Water Intake',
+      eating_speed: 'Eating Speed',
+    };
 
-      {/* Diabetes Assessment */}
-      <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
-        <View style={styles.trackingHeader}>
-          <Ionicons name="medical" size={22} color={theme.primary} />
-          <Text style={[styles.trackingTitle, { color: theme.text }]}>Initial Assessment Result</Text>
-        </View>
-        <View style={styles.trackingContent}>
-          <View style={styles.trackingRow}>
-            <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Risk Level:</Text>
-            <Text style={[styles.trackingValue, {
-              color: trackingData.diabetes_assessment?.risk_level === 'low' ? theme.success :
-                trackingData.diabetes_assessment?.risk_level === 'moderate' ? theme.warning :
-                  trackingData.diabetes_assessment?.risk_level === 'high' ? theme.error : theme.secondary
-            }]}>
-              {trackingData.diabetes_assessment?.risk_level?.toUpperCase() || 'N/A'}
-            </Text>
-          </View>
-          <View style={styles.trackingRow}>
-            <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Probability:</Text>
-            <Text style={[styles.trackingValue, { color: theme.text }]}>
-              {trackingData.diabetes_assessment?.percentage !== null && trackingData.diabetes_assessment?.percentage !== undefined ? `${trackingData.diabetes_assessment.percentage.toFixed(1)}%` : 'N/A'}
-            </Text>
-          </View>
-        </View>
-      </View>
+    const formatFoodValue = (key, val) => {
+      if (val === null || val === undefined) return 'N/A';
+      const boolKeys = ['skip_breakfast', 'late_night_eating', 'portion_size_awareness'];
+      if (boolKeys.includes(key)) return val ? 'Yes' : 'No';
+      return String(val);
+    };
 
-      {/* Food Tracker */}
-      <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
-        <View style={styles.trackingHeader}>
-          <Ionicons name="restaurant" size={22} color={theme.success} />
-          <Text style={[styles.trackingTitle, { color: theme.text }]}>Food Tracker</Text>
-        </View>
-        {!trackingData.food_tracker?.has_data ? (
-          <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>N/A</Text>
-        ) : trackingData.food_tracker.baseline_only ? (
-          <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>
-            Baseline assessment completed. No daily logs yet.
-          </Text>
-        ) : (
-          <View style={styles.trackingContent}>
-            <View style={styles.trackingRow}>
-              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Risk Score:</Text>
-              <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.food_tracker.risk_score !== null && trackingData.food_tracker.risk_score !== undefined ? `${trackingData.food_tracker.risk_score.toFixed(1)}/100` : 'N/A'}
+    const consistencyLabel = (val) => {
+      const map = { 1: 'Very Inconsistent', 2: 'Inconsistent', 3: 'Moderate', 4: 'Consistent', 5: 'Very Consistent' };
+      return map[val] || (val !== null && val !== undefined ? String(val) : 'N/A');
+    };
+
+    const formatActivityLevel = (val) => {
+      if (!val) return 'N/A';
+      return val.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    };
+
+    return (
+      <ScrollView
+        style={styles.tabContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {/* Patient Info Card */}
+        <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
+          <View style={styles.patientHeader}>
+            <View style={[styles.avatar, { backgroundColor: theme.primary + '20' }]}>
+              <Text style={[styles.avatarText, { color: theme.primary }]}>
+                {data.first_name?.charAt(0) || '?'}{data.last_name?.charAt(0) || ''}
               </Text>
             </View>
-            <View style={styles.trackingRow}>
-              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Category:</Text>
-              <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.food_tracker.risk_category || 'N/A'}
+            <View style={styles.patientInfo}>
+              <Text style={[styles.patientName, { color: theme.text }]}>
+                {`${data.first_name || ''} ${data.last_name || ''}`.trim() || 'Unknown Patient'}
               </Text>
-            </View>
-          </View>
-        )}
-      </View>
-
-      {/* Step Counter */}
-      <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
-        <View style={styles.trackingHeader}>
-          <Ionicons name="footsteps" size={22} color={theme.primary} />
-          <Text style={[styles.trackingTitle, { color: theme.text }]}>Step Counter</Text>
-        </View>
-        {!trackingData.step_counter?.has_data ? (
-          <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>N/A</Text>
-        ) : trackingData.step_counter.baseline_only ? (
-          <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>
-            Baseline set. No daily tracking data yet.
-          </Text>
-        ) : (
-          <View style={styles.trackingContent}>
-            <View style={styles.trackingRow}>
-              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Avg Steps (7d):</Text>
-              <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.step_counter.avg_steps_7d !== null && trackingData.step_counter.avg_steps_7d !== undefined ? trackingData.step_counter.avg_steps_7d.toLocaleString() : 'N/A'}
+              <Text style={[styles.patientEmail, { color: theme.secondary }]}>
+                {data.email || 'No email'}
               </Text>
-            </View>
-            <View style={styles.trackingRow}>
-              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Risk Category:</Text>
-              <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.step_counter.risk_category || 'N/A'}
-              </Text>
-            </View>
-          </View>
-        )}
-      </View>
-
-      {/* Sleep Tracking */}
-      <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
-        <View style={styles.trackingHeader}>
-          <Ionicons name="moon" size={22} color={theme.secondary} />
-          <Text style={[styles.trackingTitle, { color: theme.text }]}>Sleep Tracking</Text>
-        </View>
-        {!trackingData.sleep_tracking?.has_data ? (
-          <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>N/A</Text>
-        ) : trackingData.sleep_tracking.baseline_only ? (
-          <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>
-            Baseline assessment completed. No daily logs yet.
-          </Text>
-        ) : (
-          <View style={styles.trackingContent}>
-            <View style={styles.trackingRow}>
-              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Avg Sleep (7d):</Text>
-              <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.sleep_tracking.avg_sleep_7d !== null && trackingData.sleep_tracking.avg_sleep_7d !== undefined ? `${trackingData.sleep_tracking.avg_sleep_7d.toFixed(1)} hrs` : 'N/A'}
-              </Text>
-            </View>
-            <View style={styles.trackingRow}>
-              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Risk Category:</Text>
-              <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.sleep_tracking.risk_category || 'N/A'}
-              </Text>
-            </View>
-            <View style={styles.trackingRow}>
-              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Days Tracked:</Text>
-              <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.sleep_tracking.days_tracked !== null && trackingData.sleep_tracking.days_tracked !== undefined ? trackingData.sleep_tracking.days_tracked : 'N/A'}
-              </Text>
-            </View>
-          </View>
-        )}
-      </View>
-
-      {/* Smoking Intake */}
-      <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
-        <View style={styles.trackingHeader}>
-          <Ionicons name="ban" size={22} color={theme.error} />
-          <Text style={[styles.trackingTitle, { color: theme.text }]}>Smoking Intake</Text>
-        </View>
-        {!trackingData.smoking_intake?.has_data ? (
-          <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>N/A</Text>
-        ) : trackingData.smoking_intake.baseline_only ? (
-          <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>
-            Baseline assessment completed. No daily logs yet.
-          </Text>
-        ) : (
-          <View style={styles.trackingContent}>
-            <View style={styles.trackingRow}>
-              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Status:</Text>
-              <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.smoking_intake.smoking_status === 'never' ? 'Never Smoked' :
-                  trackingData.smoking_intake.smoking_status === 'former' ? 'Former Smoker' :
-                    trackingData.smoking_intake.smoking_status === 'current' ? 'Current Smoker' : 'N/A'}
-              </Text>
-            </View>
-            {trackingData.smoking_intake.smoking_status === 'current' && (
-              <View style={styles.trackingRow}>
-                <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Avg/day (7d):</Text>
-                <Text style={[styles.trackingValue, { color: theme.text }]}>
-                  {trackingData.smoking_intake.avg_cigarettes_7d !== null && trackingData.smoking_intake.avg_cigarettes_7d !== undefined ? `${trackingData.smoking_intake.avg_cigarettes_7d.toFixed(1)} cigarettes` : 'N/A'}
+              {data.phone && (
+                <Text style={[styles.patientPhone, { color: theme.secondary }]}>
+                  <Ionicons name="call-outline" size={14} /> {data.phone}
+                </Text>
+              )}
+              {/* Diagnosis status pill */}
+              <View style={{
+                alignSelf: 'flex-start',
+                marginTop: 6,
+                paddingHorizontal: 10,
+                paddingVertical: 3,
+                borderRadius: 12,
+                backgroundColor: diagnosisColor + '22',
+                borderWidth: 1,
+                borderColor: diagnosisColor,
+              }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: diagnosisColor }}>
+                  {diagnosisLabel}
                 </Text>
               </View>
-            )}
-            <View style={styles.trackingRow}>
-              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Risk Category:</Text>
-              <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.smoking_intake.risk_category || 'N/A'}
+            </View>
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
+          <View style={styles.infoRow}>
+            <View style={styles.infoItem}>
+              <Ionicons name="calendar-outline" size={18} color={theme.secondary} />
+              <Text style={[styles.infoLabel, { color: theme.secondary }]}>Patient Since</Text>
+              <Text style={[styles.infoValue, { color: theme.text }]}>
+                {formatDate(data.relationship?.acceptance_date || relationship?.acceptance_date)}
               </Text>
             </View>
           </View>
-        )}
-      </View>
-
-      {/* Alcohol Intake */}
-      <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
-        <View style={styles.trackingHeader}>
-          <Ionicons name="wine" size={22} color={theme.warning} />
-          <Text style={[styles.trackingTitle, { color: theme.text }]}>Alcohol Intake</Text>
         </View>
-        {!trackingData.alcohol_intake?.has_data ? (
-          <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>N/A</Text>
-        ) : trackingData.alcohol_intake.baseline_only ? (
-          <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>
-            Baseline assessment completed. No daily logs yet.
-          </Text>
-        ) : (
+
+        {/* Biometrics Card */}
+        {Object.keys(biometrics).length > 0 && (
+          <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
+            <View style={styles.trackingHeader}>
+              <Ionicons name="body-outline" size={22} color={theme.primary} />
+              <Text style={[styles.trackingTitle, { color: theme.text }]}>Biometrics</Text>
+            </View>
+
+            {/* BMI display */}
+            {biometrics.bmi != null && (
+              <View style={{ alignItems: 'center', marginBottom: 16 }}>
+                <Text style={{ fontSize: 36, fontWeight: '700', color: bmiCategoryColor }}>
+                  {Number(biometrics.bmi).toFixed(1)}
+                </Text>
+                <Text style={{ fontSize: 12, color: theme.secondary, marginBottom: 4 }}>BMI</Text>
+                <View style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 4,
+                  borderRadius: 12,
+                  backgroundColor: bmiCategoryColor + '22',
+                  borderWidth: 1,
+                  borderColor: bmiCategoryColor,
+                }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: bmiCategoryColor }}>
+                    {bmiCategory || 'N/A'}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Grid: Height, Weight, Age, Sex */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              {[
+                { label: 'Height', value: biometrics.height != null ? `${biometrics.height} cm` : null },
+                { label: 'Weight', value: biometrics.weight != null ? `${biometrics.weight} kg` : null },
+                { label: 'Age', value: biometrics.age != null ? `${biometrics.age} yrs` : null },
+                { label: 'Sex', value: biometrics.sex ? (biometrics.sex === 'male' ? 'Male' : biometrics.sex === 'female' ? 'Female' : biometrics.sex) : null },
+              ].filter(item => item.value != null).map(item => (
+                <View key={item.label} style={{
+                  flex: 1,
+                  minWidth: '45%',
+                  alignItems: 'center',
+                  paddingVertical: 10,
+                  paddingHorizontal: 8,
+                  borderRadius: 10,
+                  backgroundColor: theme.primary + '10',
+                }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: theme.text }}>{item.value}</Text>
+                  <Text style={{ fontSize: 12, color: theme.secondary, marginTop: 2 }}>{item.label}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Health Overview - Comprehensive Health Tracking */}
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Health Overview</Text>
+
+        {/* Initial Assessment Card */}
+        <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
+          <View style={styles.trackingHeader}>
+            <Ionicons name="medical" size={22} color={theme.primary} />
+            <Text style={[styles.trackingTitle, { color: theme.text }]}>Initial Assessment Result</Text>
+          </View>
           <View style={styles.trackingContent}>
             <View style={styles.trackingRow}>
-              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Drinks/week (7d):</Text>
-              <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.alcohol_intake.drinks_per_week_7d !== null && trackingData.alcohol_intake.drinks_per_week_7d !== undefined ? trackingData.alcohol_intake.drinks_per_week_7d.toFixed(1) : 'N/A'}
+              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Risk Level:</Text>
+              <Text style={[styles.trackingValue, {
+                color: trackingData.diabetes_assessment?.risk_level === 'low' ? theme.success :
+                  trackingData.diabetes_assessment?.risk_level === 'moderate' ? theme.warning :
+                    trackingData.diabetes_assessment?.risk_level === 'high' ? theme.error : theme.secondary
+              }]}>
+                {trackingData.diabetes_assessment?.risk_level?.toUpperCase() || 'N/A'}
               </Text>
             </View>
             <View style={styles.trackingRow}>
-              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Pattern:</Text>
+              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Probability:</Text>
               <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.alcohol_intake.consumption_pattern || 'N/A'}
-              </Text>
-            </View>
-            <View style={styles.trackingRow}>
-              <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Risk Category:</Text>
-              <Text style={[styles.trackingValue, { color: theme.text }]}>
-                {trackingData.alcohol_intake.risk_category || 'N/A'}
+                {trackingData.diabetes_assessment?.percentage != null ? `${trackingData.diabetes_assessment.percentage.toFixed(1)}%` : 'N/A'}
               </Text>
             </View>
           </View>
-        )}
-      </View>
 
-      <View style={{ height: 80 }} />
-    </ScrollView>
-  );
+          {/* Clinical indicator chips */}
+          {clinicalFlags.length > 0 && (
+            <View style={{ marginTop: 14 }}>
+              <Text style={{ fontSize: 13, color: theme.secondary, marginBottom: 8, fontWeight: '500' }}>
+                Clinical Indicators
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {clinicalFlags.map(flag => (
+                  <View key={flag.key} style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 12,
+                    backgroundColor: flag.isRisk ? theme.error + '20' : theme.border + '60',
+                    borderWidth: 1,
+                    borderColor: flag.isRisk ? theme.error : theme.border,
+                  }}>
+                    <Text style={{
+                      fontSize: 12,
+                      fontWeight: '600',
+                      color: flag.isRisk ? theme.error : theme.secondary,
+                    }}>
+                      {flag.isRisk ? '⚠ ' : ''}{flag.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Food Tracker */}
+        <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
+          <View style={styles.trackingHeader}>
+            <Ionicons name="restaurant" size={22} color={theme.success} />
+            <Text style={[styles.trackingTitle, { color: theme.text }]}>Food Tracker</Text>
+          </View>
+          {!trackingData.food_tracker?.has_data ? (
+            <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>N/A</Text>
+          ) : (
+            <View style={styles.trackingContent}>
+              {!trackingData.food_tracker.baseline_only && (
+                <>
+                  <View style={styles.trackingRow}>
+                    <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Risk Score:</Text>
+                    <Text style={[styles.trackingValue, { color: theme.text }]}>
+                      {trackingData.food_tracker.risk_score != null ? `${trackingData.food_tracker.risk_score.toFixed(1)}/100` : 'N/A'}
+                    </Text>
+                  </View>
+                  <View style={styles.trackingRow}>
+                    <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Category:</Text>
+                    <Text style={[styles.trackingValue, { color: theme.text }]}>
+                      {trackingData.food_tracker.risk_category || 'N/A'}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {/* Food baseline responses */}
+              {trackingData.food_tracker.baseline?.responses && (
+                <View style={{ marginTop: trackingData.food_tracker.baseline_only ? 0 : 10 }}>
+                  <Text style={{ fontSize: 13, color: theme.secondary, marginBottom: 8, fontWeight: '500' }}>
+                    Food Habits (Baseline)
+                    {trackingData.food_tracker.baseline.baseline_risk_score != null
+                      ? `  —  Score: ${Number(trackingData.food_tracker.baseline.baseline_risk_score).toFixed(1)}`
+                      : ''}
+                  </Text>
+                  {Object.entries(trackingData.food_tracker.baseline.responses).map(([key, val]) => (
+                    <View key={key} style={[styles.trackingRow, { paddingVertical: 4 }]}>
+                      <Text style={[styles.trackingLabel, { color: theme.secondary, fontSize: 13 }]}>
+                        {foodLabelMap[key] || key}:
+                      </Text>
+                      <Text style={[styles.trackingValue, { color: theme.text, fontSize: 13 }]}>
+                        {formatFoodValue(key, val)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {trackingData.food_tracker.baseline_only && !trackingData.food_tracker.baseline?.responses && (
+                <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>
+                  Baseline assessment completed. No daily logs yet.
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Step Counter */}
+        <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
+          <View style={styles.trackingHeader}>
+            <Ionicons name="footsteps" size={22} color={theme.primary} />
+            <Text style={[styles.trackingTitle, { color: theme.text }]}>Step Counter</Text>
+          </View>
+          {!trackingData.step_counter?.has_data ? (
+            <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>N/A</Text>
+          ) : (
+            <View style={styles.trackingContent}>
+              {!trackingData.step_counter.baseline_only && (
+                <>
+                  <View style={styles.trackingRow}>
+                    <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Avg Steps (7d):</Text>
+                    <Text style={[styles.trackingValue, { color: theme.text }]}>
+                      {trackingData.step_counter.avg_steps_7d != null ? trackingData.step_counter.avg_steps_7d.toLocaleString() : 'N/A'}
+                    </Text>
+                  </View>
+                  <View style={styles.trackingRow}>
+                    <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Risk Category:</Text>
+                    <Text style={[styles.trackingValue, { color: theme.text }]}>
+                      {trackingData.step_counter.risk_category || 'N/A'}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {trackingData.step_counter.baseline && (
+                <View style={{ marginTop: trackingData.step_counter.baseline_only ? 0 : 10 }}>
+                  <Text style={{ fontSize: 13, color: theme.secondary, marginBottom: 8, fontWeight: '500' }}>
+                    Activity Baseline
+                  </Text>
+                  {[
+                    { label: 'Activity Level', value: formatActivityLevel(trackingData.step_counter.baseline.activity_level) },
+                    { label: 'Avg Daily Steps', value: trackingData.step_counter.baseline.avg_daily_steps != null ? trackingData.step_counter.baseline.avg_daily_steps.toLocaleString() : null },
+                    { label: 'Work Type', value: formatActivityLevel(trackingData.step_counter.baseline.work_type) },
+                    { label: 'Active Days/week', value: trackingData.step_counter.baseline.days_active_per_week != null ? String(trackingData.step_counter.baseline.days_active_per_week) : null },
+                    { label: 'Exercise Min/week', value: trackingData.step_counter.baseline.exercise_minutes_per_week != null ? `${trackingData.step_counter.baseline.exercise_minutes_per_week} min` : null },
+                  ].filter(item => item.value && item.value !== 'N/A').map(item => (
+                    <View key={item.label} style={[styles.trackingRow, { paddingVertical: 4 }]}>
+                      <Text style={[styles.trackingLabel, { color: theme.secondary, fontSize: 13 }]}>{item.label}:</Text>
+                      <Text style={[styles.trackingValue, { color: theme.text, fontSize: 13 }]}>{item.value}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {trackingData.step_counter.baseline_only && !trackingData.step_counter.baseline && (
+                <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>
+                  Baseline set. No daily tracking data yet.
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Sleep Tracking */}
+        <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
+          <View style={styles.trackingHeader}>
+            <Ionicons name="moon" size={22} color={theme.secondary} />
+            <Text style={[styles.trackingTitle, { color: theme.text }]}>Sleep Tracking</Text>
+          </View>
+          {!trackingData.sleep_tracking?.has_data ? (
+            <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>N/A</Text>
+          ) : (
+            <View style={styles.trackingContent}>
+              {!trackingData.sleep_tracking.baseline_only && (
+                <>
+                  <View style={styles.trackingRow}>
+                    <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Avg Sleep (7d):</Text>
+                    <Text style={[styles.trackingValue, { color: theme.text }]}>
+                      {trackingData.sleep_tracking.avg_sleep_7d != null ? `${trackingData.sleep_tracking.avg_sleep_7d.toFixed(1)} hrs` : 'N/A'}
+                    </Text>
+                  </View>
+                  <View style={styles.trackingRow}>
+                    <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Risk Category:</Text>
+                    <Text style={[styles.trackingValue, { color: theme.text }]}>
+                      {trackingData.sleep_tracking.risk_category || 'N/A'}
+                    </Text>
+                  </View>
+                  <View style={styles.trackingRow}>
+                    <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Days Tracked:</Text>
+                    <Text style={[styles.trackingValue, { color: theme.text }]}>
+                      {trackingData.sleep_tracking.days_tracked != null ? trackingData.sleep_tracking.days_tracked : 'N/A'}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {trackingData.sleep_tracking.baseline && (
+                <View style={{ marginTop: trackingData.sleep_tracking.baseline_only ? 0 : 10 }}>
+                  <Text style={{ fontSize: 13, color: theme.secondary, marginBottom: 8, fontWeight: '500' }}>
+                    Sleep Baseline
+                  </Text>
+                  {[
+                    { label: 'Usual Bedtime', value: trackingData.sleep_tracking.baseline.usual_bedtime },
+                    { label: 'Usual Wake Time', value: trackingData.sleep_tracking.baseline.usual_wake_time },
+                    { label: 'Avg Sleep Hours', value: trackingData.sleep_tracking.baseline.avg_sleep_hours != null ? `${trackingData.sleep_tracking.baseline.avg_sleep_hours} hrs` : null },
+                    { label: 'Nights ≥6h/week', value: trackingData.sleep_tracking.baseline.nights_6h_plus_per_week != null ? String(trackingData.sleep_tracking.baseline.nights_6h_plus_per_week) : null },
+                    { label: 'Bedtime Consistency', value: consistencyLabel(trackingData.sleep_tracking.baseline.bedtime_consistency) },
+                  ].filter(item => item.value && item.value !== 'N/A').map(item => (
+                    <View key={item.label} style={[styles.trackingRow, { paddingVertical: 4 }]}>
+                      <Text style={[styles.trackingLabel, { color: theme.secondary, fontSize: 13 }]}>{item.label}:</Text>
+                      <Text style={[styles.trackingValue, { color: theme.text, fontSize: 13 }]}>{item.value}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {trackingData.sleep_tracking.baseline_only && !trackingData.sleep_tracking.baseline && (
+                <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>
+                  Baseline assessment completed. No daily logs yet.
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Smoking Intake */}
+        <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
+          <View style={styles.trackingHeader}>
+            <Ionicons name="ban" size={22} color={theme.error} />
+            <Text style={[styles.trackingTitle, { color: theme.text }]}>Smoking Intake</Text>
+          </View>
+          {!trackingData.smoking_intake?.has_data ? (
+            <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>N/A</Text>
+          ) : (
+            <View style={styles.trackingContent}>
+              {!trackingData.smoking_intake.baseline_only && (
+                <>
+                  <View style={styles.trackingRow}>
+                    <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Status:</Text>
+                    <Text style={[styles.trackingValue, { color: theme.text }]}>
+                      {trackingData.smoking_intake.smoking_status === 'never' ? 'Never Smoked' :
+                        trackingData.smoking_intake.smoking_status === 'former' ? 'Former Smoker' :
+                          trackingData.smoking_intake.smoking_status === 'current' ? 'Current Smoker' : 'N/A'}
+                    </Text>
+                  </View>
+                  {trackingData.smoking_intake.smoking_status === 'current' && (
+                    <View style={styles.trackingRow}>
+                      <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Avg/day (7d):</Text>
+                      <Text style={[styles.trackingValue, { color: theme.text }]}>
+                        {trackingData.smoking_intake.avg_cigarettes_7d != null ? `${trackingData.smoking_intake.avg_cigarettes_7d.toFixed(1)} cigs` : 'N/A'}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.trackingRow}>
+                    <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Risk Category:</Text>
+                    <Text style={[styles.trackingValue, { color: theme.text }]}>
+                      {trackingData.smoking_intake.risk_category || 'N/A'}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {trackingData.smoking_intake.baseline && (
+                <View style={{ marginTop: trackingData.smoking_intake.baseline_only ? 0 : 10 }}>
+                  <Text style={{ fontSize: 13, color: theme.secondary, marginBottom: 8, fontWeight: '500' }}>
+                    Smoking Baseline
+                  </Text>
+                  {[
+                    { label: 'Status', value: trackingData.smoking_intake.baseline.smoking_status === 'never' ? 'Never Smoked' : trackingData.smoking_intake.baseline.smoking_status === 'former' ? 'Former Smoker' : trackingData.smoking_intake.baseline.smoking_status === 'current' ? 'Current Smoker' : null },
+                    { label: 'Years Smoked', value: trackingData.smoking_intake.baseline.years_smoked != null ? String(trackingData.smoking_intake.baseline.years_smoked) : null },
+                    { label: 'Cigs/day', value: trackingData.smoking_intake.baseline.typical_cigarettes_per_day != null ? String(trackingData.smoking_intake.baseline.typical_cigarettes_per_day) : null },
+                    { label: 'Started Smoking Age', value: trackingData.smoking_intake.baseline.start_smoking_age != null ? String(trackingData.smoking_intake.baseline.start_smoking_age) : null },
+                    { label: 'Quit Date', value: trackingData.smoking_intake.baseline.quit_date || null },
+                  ].filter(item => item.value).map(item => (
+                    <View key={item.label} style={[styles.trackingRow, { paddingVertical: 4 }]}>
+                      <Text style={[styles.trackingLabel, { color: theme.secondary, fontSize: 13 }]}>{item.label}:</Text>
+                      <Text style={[styles.trackingValue, { color: theme.text, fontSize: 13 }]}>{item.value}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {trackingData.smoking_intake.baseline_only && !trackingData.smoking_intake.baseline && (
+                <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>
+                  Baseline assessment completed. No daily logs yet.
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Alcohol Intake */}
+        <View style={[styles.card, { backgroundColor: theme.card, ...theme.shadow }]}>
+          <View style={styles.trackingHeader}>
+            <Ionicons name="wine" size={22} color={theme.warning} />
+            <Text style={[styles.trackingTitle, { color: theme.text }]}>Alcohol Intake</Text>
+          </View>
+          {!trackingData.alcohol_intake?.has_data ? (
+            <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>N/A</Text>
+          ) : (
+            <View style={styles.trackingContent}>
+              {!trackingData.alcohol_intake.baseline_only && (
+                <>
+                  <View style={styles.trackingRow}>
+                    <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Drinks/week (7d):</Text>
+                    <Text style={[styles.trackingValue, { color: theme.text }]}>
+                      {trackingData.alcohol_intake.drinks_per_week_7d != null ? trackingData.alcohol_intake.drinks_per_week_7d.toFixed(1) : 'N/A'}
+                    </Text>
+                  </View>
+                  <View style={styles.trackingRow}>
+                    <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Pattern:</Text>
+                    <Text style={[styles.trackingValue, { color: theme.text }]}>
+                      {trackingData.alcohol_intake.consumption_pattern || 'N/A'}
+                    </Text>
+                  </View>
+                  <View style={styles.trackingRow}>
+                    <Text style={[styles.trackingLabel, { color: theme.secondary }]}>Risk Category:</Text>
+                    <Text style={[styles.trackingValue, { color: theme.text }]}>
+                      {trackingData.alcohol_intake.risk_category || 'N/A'}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {trackingData.alcohol_intake.baseline && (
+                <View style={{ marginTop: trackingData.alcohol_intake.baseline_only ? 0 : 10 }}>
+                  <Text style={{ fontSize: 13, color: theme.secondary, marginBottom: 8, fontWeight: '500' }}>
+                    Alcohol Baseline
+                  </Text>
+                  {[
+                    { label: 'Drinking Days/week', value: trackingData.alcohol_intake.baseline.drinking_days_per_week != null ? String(trackingData.alcohol_intake.baseline.drinking_days_per_week) : null },
+                    { label: 'Drinks/occasion', value: trackingData.alcohol_intake.baseline.drinks_per_occasion != null ? String(trackingData.alcohol_intake.baseline.drinks_per_occasion) : null },
+                    { label: 'Binge Episodes/month', value: trackingData.alcohol_intake.baseline.binge_frequency_per_month != null ? String(trackingData.alcohol_intake.baseline.binge_frequency_per_month) : null },
+                    { label: 'Pattern', value: formatActivityLevel(trackingData.alcohol_intake.baseline.drinking_pattern) },
+                    { label: 'Drinks With Meals', value: trackingData.alcohol_intake.baseline.drinks_with_meals != null ? (trackingData.alcohol_intake.baseline.drinks_with_meals ? 'Yes' : 'No') : null },
+                    { label: 'Baseline Drinks/week', value: trackingData.alcohol_intake.baseline.baseline_drinks_per_week != null ? String(trackingData.alcohol_intake.baseline.baseline_drinks_per_week) : null },
+                  ].filter(item => item.value).map(item => (
+                    <View key={item.label} style={[styles.trackingRow, { paddingVertical: 4 }]}>
+                      <Text style={[styles.trackingLabel, { color: theme.secondary, fontSize: 13 }]}>{item.label}:</Text>
+                      <Text style={[styles.trackingValue, { color: theme.text, fontSize: 13 }]}>{item.value}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {trackingData.alcohol_intake.baseline_only && !trackingData.alcohol_intake.baseline && (
+                <Text style={[styles.baselineOnlyText, { color: theme.secondary }]}>
+                  Baseline assessment completed. No daily logs yet.
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+
+        <View style={{ height: 80 }} />
+      </ScrollView>
+    );
+  };
 
   // ========== SOAP / CONSULTATIONS TAB ==========
   const handleSubmitVitals = async () => {
