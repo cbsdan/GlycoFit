@@ -38,11 +38,11 @@ export default ({ config }) => {
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
             "buildToolsVersion": "35.0.0",
-            "androidGradlePluginVersion": "8.7.3",
             "kotlinVersion": "2.0.21"
           }
         }
-      ]
+      ],
+      "./plugins/withGradleWrapper"
     ],
     extra: {
       EXPO_PUBLIC_FIREBASE_API_KEY: "AIzaSyDcdJik9SmR2O_APNggZoV3EbCSrRxP3-c",

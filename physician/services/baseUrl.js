@@ -1,8 +1,8 @@
 const environments = {
   development: {
-    deviceLocal: "http://192.168.180.138:4000/api/v1",
+    deviceLocal: "http://192.168.68.106:4000/api/v1",
   },
-  production: "https://glycofit.onrender.com/api/v1",
+  production: "https://glycofit-backend-7diov.ondigitalocean.app/api/v1",
 };
 
 const getBaseUrl = () => {

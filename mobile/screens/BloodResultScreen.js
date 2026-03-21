@@ -170,28 +170,34 @@ const BloodResultScreen = ({ navigation }) => {
   const getChartData = () => {
     if (!history || history.length === 0) return null;
 
-    const vitalsData = history.slice(-7); // Last 7 entries
-    const labels = vitalsData.map((item, i) => {
+    // Pick the latest 6 by timestamp, then show oldest->latest on the chart
+    const latestSeven = [...history]
+      .filter(item => item?.created_at)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 6)
+      .reverse();
+
+    const labels = latestSeven.map((item, i) => {
       const date = new Date(item.created_at);
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     });
 
-    const fbsData = vitalsData.map(note => {
+    const fbsData = latestSeven.map(note => {
       const val = note.soap_objective?.fasting_blood_sugar;
       return val ? parseFloat(val) : 0;
     });
 
-    const ogttData = vitalsData.map(note => {
+    const ogttData = latestSeven.map(note => {
       const val = note.soap_objective?.ogtt;
       return val ? parseFloat(val) : 0;
     });
 
-    const hba1cData = vitalsData.map(note => {
+    const hba1cData = latestSeven.map(note => {
       const val = note.soap_objective?.hba1c;
       return val ? parseFloat(val) : 0;
     });
 
-    return { vitalsData, labels, fbsData, ogttData, hba1cData };
+    return { vitalsData: latestSeven, labels, fbsData, ogttData, hba1cData };
   };
 
   const renderManualChart = () => {

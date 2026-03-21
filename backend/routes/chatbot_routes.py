@@ -3,6 +3,27 @@ from controllers.chatbot_controller import ChatbotController
 
 chatbot_bp = Blueprint('chatbot', __name__)
 
+@chatbot_bp.route('/prepare', methods=['POST'])
+def prepare_prompt():
+    """
+    POST /api/v1/chatbot/prepare
+    Builds and returns the full context-enriched prompt so the mobile client
+    can stream directly to Ollama, bypassing App Platform proxy buffering.
+    Request:  { "message": "..." }
+    Response: { "success": true, "prompt": "...", "ollama_url": "..." }
+    """
+    return ChatbotController.prepare_prompt()
+
+@chatbot_bp.route('/save', methods=['POST'])
+def save_message():
+    """
+    POST /api/v1/chatbot/save
+    Saves a completed exchange to the database after streaming.
+    Request:  { "user_message": "...", "bot_response": "..." }
+    Response: { "success": true }
+    """
+    return ChatbotController.save_message()
+
 @chatbot_bp.route('/message', methods=['POST'])
 def send_message():
     """

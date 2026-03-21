@@ -12,9 +12,11 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import * as SecureStore from 'expo-secure-store';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import { API_URL } from '../config/constants';
 
 const ChatBotScreen = ({ navigation }) => {
   const { colors } = useTheme();
@@ -119,57 +121,157 @@ const ChatBotScreen = ({ navigation }) => {
     setInputText('');
     setIsTyping(true);
 
-    try {
-      // Call the backend chatbot API
-      const response = await api.sendChatbotMessage(messageText);
-      
-      if (response.success) {
-        const botMessage = {
-          id: (Date.now() + 1).toString(),
-          userText: null,
-          botText: response.response,
-          timestamp: new Date(response.timestamp),
-        };
-        setMessages((prev) => [...prev, botMessage]);
-        setTotalMessages(totalMessages + 1);
-        
-        // Scroll to bottom after API response
-        setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: true });
-        }, 100);
+    const botMessageId = (Date.now() + 1).toString();
+    let isFirstChunk = true;
+    let accumulated = '';
+    let buffer = '';
+
+    const appendChunk = (text) => {
+      accumulated += text;
+      const snapshot = accumulated;
+      if (isFirstChunk) {
+        isFirstChunk = false;
+        setIsTyping(false);
+        setMessages((prev) => [
+          ...prev,
+          { id: botMessageId, userText: null, botText: snapshot, timestamp: new Date() },
+        ]);
       } else {
-        // Fallback response on error
-        const botMessage = {
-          id: (Date.now() + 1).toString(),
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === botMessageId ? { ...msg, botText: snapshot } : msg
+          )
+        );
+      }
+      flatListRef.current?.scrollToEnd({ animated: false });
+    };
+
+    const processLine = (line) => {
+      if (!line.trim()) return;
+      try {
+        const parsed = JSON.parse(line);
+        if (typeof parsed.response === 'string' && parsed.response) {
+          appendChunk(parsed.response);
+        }
+      } catch {
+        // Plain-text chunk (non-JSON stream) – append as-is
+        appendChunk(line);
+      }
+    };
+
+    // Step 1: Get auth token and ask backend to build the enriched prompt
+    const authToken = await SecureStore.getItemAsync('auth_token');
+
+    let ollamaUrl;
+    let builtPrompt;
+    try {
+      const prepareRes = await fetch(`${API_URL}/chatbot/prepare`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ message: messageText }),
+      });
+      const prepareData = await prepareRes.json();
+      console.log('[Chatbot] prepare response:', JSON.stringify(prepareData).slice(0, 200));
+      if (!prepareData.success) throw new Error(prepareData.error || 'prepare failed');
+      ollamaUrl = prepareData.ollama_url;
+      builtPrompt = prepareData.prompt;
+    } catch (prepareError) {
+      console.error('Error preparing chatbot prompt:', prepareError);
+      setIsTyping(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: botMessageId,
           userText: null,
           botText: "I'm having trouble connecting right now. Please try again in a moment.",
           timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, botMessage]);
-        
-        // Scroll to bottom after response
-        setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: true });
-        }, 100);
-      }
-    } catch (error) {
-      console.error('Error sending message to chatbot:', error);
-      // Fallback response on error
-      const botMessage = {
-        id: (Date.now() + 1).toString(),
-        userText: null,
-        botText: "I'm having trouble connecting right now. Please try again in a moment.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, botMessage]);
-      
-      // Scroll to bottom after response
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    } finally {
-      setIsTyping(false);
+        },
+      ]);
+      return;
     }
+
+    // Step 2: Stream directly from Ollama (no proxy buffering)
+    console.log('[Chatbot] Starting XHR stream to:', ollamaUrl);
+    await new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      let lastLength = 0;
+
+      xhr.open('POST', ollamaUrl, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+
+      xhr.onprogress = () => {
+        const newText = xhr.responseText.slice(lastLength);
+        console.log('[Chatbot] onprogress fired, new bytes:', newText.length, 'raw:', newText.slice(0, 80));
+        lastLength = xhr.responseText.length;
+
+        buffer += newText;
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep incomplete trailing line
+        lines.forEach(processLine);
+      };
+
+      xhr.onload = async () => {
+        // Flush remaining buffer
+        if (buffer.trim()) processLine(buffer);
+        buffer = '';
+
+        if (isFirstChunk) {
+          setIsTyping(false);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: botMessageId,
+              userText: null,
+              botText: "I didn't receive a response. Please try again.",
+              timestamp: new Date(),
+            },
+          ]);
+        }
+        setTotalMessages((prev) => prev + 1);
+        setIsTyping(false);
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+
+        // Step 3: Save the completed exchange to the backend DB
+        if (accumulated) {
+          try {
+            await fetch(`${API_URL}/chatbot/save`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+              },
+              body: JSON.stringify({ user_message: messageText, bot_response: accumulated }),
+            });
+          } catch (saveError) {
+            console.warn('Failed to save chatbot exchange:', saveError);
+          }
+        }
+        resolve();
+      };
+
+      xhr.onerror = () => {
+        console.error('Error streaming chatbot response: network error');
+        setIsTyping(false);
+        if (isFirstChunk) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: botMessageId,
+              userText: null,
+              botText: "I'm having trouble connecting right now. Please try again in a moment.",
+              timestamp: new Date(),
+            },
+          ]);
+        }
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+        resolve();
+      };
+
+      xhr.send(JSON.stringify({ prompt: builtPrompt }));
+    });
   };
 
   const quickReplies = [
