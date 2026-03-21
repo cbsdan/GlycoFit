@@ -1094,26 +1094,26 @@ class LifestyleRecommendationService:
         }
         
         # Process food risk
-        if food_risk and food_risk.get("risk_factors"):
+        if food_risk:
             trackers_with_data.append("food")
-            for factor in food_risk["risk_factors"]:
+            for factor in food_risk.get("risk_factors", []):
                 risk_factors.append({**factor, "tracker": "food"})
             # Extract recommendations
             for rec in food_risk.get("recommendations", []):
                 all_recommendations.append({**rec, "tracker": "food"})
         
         # Process activity risk
-        if activity_risk and activity_risk.get("risk_factors"):
+        if activity_risk:
             trackers_with_data.append("activity")
-            for factor in activity_risk["risk_factors"]:
+            for factor in activity_risk.get("risk_factors", []):
                 risk_factors.append({**factor, "tracker": "activity"})
             for rec in activity_risk.get("recommendations", []):
                 all_recommendations.append({**rec, "tracker": "activity"})
         
         # Process alcohol risk
-        if alcohol_risk and alcohol_risk.get("risk_factors"):
+        if alcohol_risk:
             trackers_with_data.append("alcohol")
-            for factor in alcohol_risk["risk_factors"]:
+            for factor in alcohol_risk.get("risk_factors", []):
                 risk_factors.append({**factor, "tracker": "alcohol"})
             for rec in alcohol_risk.get("recommendations", []):
                 all_recommendations.append({**rec, "tracker": "alcohol"})

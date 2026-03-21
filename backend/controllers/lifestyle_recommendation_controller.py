@@ -40,6 +40,96 @@ def _bool_query(value) -> bool:
     return str(value).strip().lower() in ('1', 'true', 'yes', 'y', 'on')
 
 
+MOCK_PRESETS = {
+    'conservative': {
+        'profile': {
+            'age': 30,
+            'bmi': 21.8,
+        },
+        'food': {
+            'avg_glycemic_load': 150,
+            'avg_fiber_grams': 12,
+            'avg_added_sugars': 48,
+            'avg_calories': 2350,
+            'duration_days': 7,
+            'baseline_risk_score': 60,
+            'risk_score': 63,
+            'risk_category': 'high',
+        },
+        'activity': {
+            'avg_daily_steps': 2800,
+            'days_goal_met': 2,
+            'duration_days': 30,
+            'risk_score': 75,
+        },
+        'alcohol': {
+            'drinks_per_week': 10,
+            'binge_episodes_monthly': 3,
+            'duration_days': 30,
+        },
+    },
+    'moderate': {
+        'profile': {
+            'age': 62,
+            'bmi': 32.8,
+        },
+        'food': {
+            'avg_glycemic_load': 90,
+            'avg_fiber_grams': 31,
+            'avg_added_sugars': 18,
+            'avg_calories': 1750,
+            'duration_days': 7,
+            'baseline_risk_score': 35,
+            'risk_score': 32,
+            'risk_category': 'low',
+        },
+        'activity': {
+            'avg_daily_steps': 9800,
+            'days_goal_met': 22,
+            'duration_days': 30,
+            'risk_score': 18,
+        },
+        'alcohol': {
+            'drinks_per_week': 1,
+            'binge_episodes_monthly': 0,
+            'duration_days': 30,
+        },
+    },
+    'aggressive': {
+        'profile': {
+            'age': 44,
+            'bmi': 27.1,
+        },
+        'food': {
+            'avg_glycemic_load': 112,
+            'avg_fiber_grams': 20,
+            'avg_added_sugars': 29,
+            'avg_calories': 1980,
+            'duration_days': 7,
+            'baseline_risk_score': 48,
+            'risk_score': 48,
+            'risk_category': 'moderate',
+        },
+        'activity': {
+            'avg_daily_steps': 6100,
+            'days_goal_met': 10,
+            'duration_days': 30,
+            'risk_score': 40,
+        },
+        'alcohol': {
+            'drinks_per_week': 4,
+            'binge_episodes_monthly': 1,
+            'duration_days': 30,
+        },
+    },
+}
+
+
+def _normalize_mock_preset(value: str) -> str:
+    preset = (value or 'moderate').strip().lower()
+    return preset if preset in MOCK_PRESETS else 'moderate'
+
+
 def _estimate_age_risk_score(age: float) -> float:
     if age <= 0:
         return 0.0
@@ -106,6 +196,8 @@ def get_unified_recommendations():
         if days < 7 or days > 90:
             days = 30
         use_mock = _bool_query(request.args.get('mock', 'false'))
+        mock_preset = _normalize_mock_preset(request.args.get('mock_preset', 'moderate'))
+        mock_values = MOCK_PRESETS[mock_preset]
         
         service = get_lifestyle_recommendation_service()
         user = User.find_by_id(user_id)
@@ -144,20 +236,22 @@ def get_unified_recommendations():
             logger.error(f"Error getting food data: {e}")
             trackers_data['food'] = {'has_data': False, 'error': str(e)}
 
-        if not trackers_data.get('food', {}).get('has_data') and use_mock:
+        if use_mock:
+            food_mock = mock_values['food']
             food_predictions = service.predict_food_impact(
-                avg_glycemic_load=115,
-                avg_fiber_grams=18,
-                avg_added_sugars=34,
-                avg_calories=1950,
-                duration_days=7,
-                baseline_risk_score=50
+                avg_glycemic_load=food_mock['avg_glycemic_load'],
+                avg_fiber_grams=food_mock['avg_fiber_grams'],
+                avg_added_sugars=food_mock['avg_added_sugars'],
+                avg_calories=food_mock['avg_calories'],
+                duration_days=food_mock['duration_days'],
+                baseline_risk_score=food_mock['baseline_risk_score']
             )
             trackers_data['food'] = {
                 'has_data': True,
                 'is_mock': True,
-                'risk_score': 50,
-                'risk_category': 'moderate',
+                'mock_preset': mock_preset,
+                'risk_score': food_mock['risk_score'],
+                'risk_category': food_mock['risk_category'],
                 'predictions': food_predictions
             }
         
@@ -215,21 +309,24 @@ def get_unified_recommendations():
             logger.error(f"Error getting activity data: {e}")
             trackers_data['activity'] = {'has_data': False, 'error': str(e)}
 
-        if not trackers_data.get('activity', {}).get('has_data') and use_mock:
+        if use_mock:
+            activity_mock = mock_values['activity']
             step_predictions = service.predict_activity_impact(
-                avg_daily_steps=5200,
-                days_goal_met=8,
-                duration_days=30
+                avg_daily_steps=activity_mock['avg_daily_steps'],
+                days_goal_met=activity_mock['days_goal_met'],
+                duration_days=activity_mock['duration_days']
             )
             trackers_data['activity'] = {
                 'has_data': True,
                 'is_mock': True,
-                'risk_score': 45,
-                'avg_steps': 5200,
+                'mock_preset': mock_preset,
+                'risk_score': activity_mock['risk_score'],
+                'avg_steps': activity_mock['avg_daily_steps'],
                 'predictions': step_predictions
             }
         
         # 3. Alcohol Tracker
+        user_gender = 'male'
         try:
             alcohol_metrics = AlcoholMetrics.find_by_user_id(user_id)
             alcohol_baseline = AlcoholBaseline.find_by_user_id(user_id)
@@ -274,16 +371,18 @@ def get_unified_recommendations():
             logger.error(f"Error getting alcohol data: {e}")
             trackers_data['alcohol'] = {'has_data': False, 'error': str(e)}
 
-        if not trackers_data.get('alcohol', {}).get('has_data') and use_mock:
+        if use_mock:
+            alcohol_mock = mock_values['alcohol']
             alcohol_predictions = service.predict_alcohol_impact(
-                drinks_per_week=3,
-                binge_episodes_monthly=0,
-                duration_days=30,
+                drinks_per_week=alcohol_mock['drinks_per_week'],
+                binge_episodes_monthly=alcohol_mock['binge_episodes_monthly'],
+                duration_days=alcohol_mock['duration_days'],
                 gender=user_gender
             )
             trackers_data['alcohol'] = {
                 'has_data': True,
                 'is_mock': True,
+                'mock_preset': mock_preset,
                 'risk_multiplier': alcohol_predictions.get('risk_multiplier', 1.0),
                 'risk_category': alcohol_predictions.get('risk_category'),
                 'predictions': alcohol_predictions
@@ -343,6 +442,13 @@ def get_unified_recommendations():
                 ml_inputs['profile']['age'] = age_value
             if bmi_value is not None:
                 ml_inputs['profile']['bmi'] = bmi_value
+
+        if use_mock:
+            profile_mock = mock_values.get('profile', {})
+            if profile_mock.get('age') is not None:
+                ml_inputs['profile']['age'] = profile_mock['age']
+            if profile_mock.get('bmi') is not None:
+                ml_inputs['profile']['bmi'] = profile_mock['bmi']
 
         if trackers_data.get('food', {}).get('has_data'):
             current_pattern = trackers_data['food'].get('predictions', {}).get('current_pattern', {})
@@ -505,6 +611,20 @@ def get_unified_recommendations():
             elif title:
                 recommendations.append(title)
 
+        if not recommendations:
+            if age_raw >= 55:
+                recommendations.append(
+                    f"Prioritize regular screening: Your age ({age_raw:.0f}) increases baseline diabetes risk even with good habits."
+                )
+            if bmi_raw >= 27.5:
+                recommendations.append(
+                    f"Focus on weight management: BMI ({bmi_raw:.1f}) is above the Asian high-risk cutoff and can elevate long-term risk."
+                )
+            if not recommendations:
+                recommendations.append(
+                    "Maintain current lifestyle habits: Your recent tracker patterns are protective; continue consistent diet, activity, and alcohol control."
+                )
+
         trackers_with_data = [k for k in ['food', 'activity', 'alcohol'] if trackers_data.get(k, {}).get('has_data')]
         if len(trackers_with_data) == 3:
             confidence_level = 'high'
@@ -523,7 +643,7 @@ def get_unified_recommendations():
         if missing_trackers and not used_mock_trackers:
             data_quality_notes = f"Missing lifestyle tracker data: {', '.join(missing_trackers)}. Results use available data and profile features (age/BMI)."
         elif used_mock_trackers:
-            data_quality_notes = f"Using mock data for: {', '.join(used_mock_trackers)} (enable for testing with ?mock=true). Profile features (age/BMI) are included from user data."
+            data_quality_notes = f"Using {mock_preset} mock preset for: {', '.join(used_mock_trackers)} (enable for testing with ?mock=true&mock_preset={mock_preset}). Age/BMI are overridden by mock profile values for scenario testing."
         else:
             data_quality_notes = 'All model-supported lifestyle trackers are available.'
 
@@ -558,6 +678,11 @@ def get_unified_recommendations():
                         'age': ml_inputs.get('profile', {}).get('age'),
                         'bmi': ml_inputs.get('profile', {}).get('bmi')
                     }
+                },
+                'mock_info': {
+                    'enabled': bool(use_mock),
+                    'preset': mock_preset if use_mock else None,
+                    'used_trackers': used_mock_trackers,
                 },
                 'priority_actions': overall_assessment['priority_actions'],
                 'all_recommendations': overall_assessment['all_recommendations'][:10],  # Top 10

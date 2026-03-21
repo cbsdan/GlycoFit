@@ -18,9 +18,10 @@ import { useToast } from '../context/ToastContext';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getMyAssessment, getOverallRiskAssessment, refreshOverallRiskAssessment, getOverallRiskPrediction, getLifestyleRecommendations } from '../services/api';
+import { getMyAssessment, getOverallRiskAssessment, refreshOverallRiskAssessment, getOverallRiskPrediction, getLifestyleRecommendations, getProfile } from '../services/api';
 
 const { width } = Dimensions.get('window');
+const SHOW_MOCK_PRESET_PREVIEW = false;
 
 const PredictionScreen = ({ navigation }) => {
   const { colors } = useTheme();
@@ -34,19 +35,32 @@ const PredictionScreen = ({ navigation }) => {
   const [trendLoading, setTrendLoading] = useState(true);
   const [computationVisible, setComputationVisible] = useState(false);
   const [refsVisible, setRefsVisible] = useState(false);
+  const [resolvedDiagnosisStatus, setResolvedDiagnosisStatus] = useState((user?.diagnosis_status || '').toLowerCase());
+  const [isMockPreview, setIsMockPreview] = useState(false);
+  const [activeMockPreset, setActiveMockPreset] = useState(null);
 
-  // Keep diagnosis status for contextual text, but do not gate risk visibility.
-  const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';
+  // Use resolved diagnosis status (fresh profile) to avoid stale auth-state gating.
+  const isDiagnosed = resolvedDiagnosisStatus === 'prediabetes' || resolvedDiagnosisStatus === 'type2_diabetes';
+  const isType2User = resolvedDiagnosisStatus === 'type2_diabetes';
+
+  useEffect(() => {
+    setResolvedDiagnosisStatus((user?.diagnosis_status || '').toLowerCase());
+  }, [user?.diagnosis_status]);
 
   useFocusEffect(
     React.useCallback(() => {
       loadAssessment();
-    }, [])
+    }, [user?.diagnosis_status])
   );
 
   useEffect(() => {
     const fetchTrendPrediction = async () => {
       try {
+        if (isType2User) {
+          // Trend prediction is not applicable in this assessment view for diagnosed Type 2 users.
+          setTrendPrediction(null);
+          return;
+        }
         setTrendLoading(true);
         const result = await getOverallRiskPrediction();
         if (result && result.success && result.data) {
@@ -59,10 +73,30 @@ const PredictionScreen = ({ navigation }) => {
       }
     };
     fetchTrendPrediction();
-  }, []);
+  }, [isType2User]);
 
   const loadAssessment = async () => {
     try {
+      // Resolve latest diagnosis from profile to avoid stale UI after profile edits.
+      let effectiveDiagnosisStatus = (user?.diagnosis_status || '').toLowerCase();
+      try {
+        const profileRes = await getProfile(true);
+        const latestDiagnosis = (
+          profileRes?.profile?.diagnosis_status ||
+          profileRes?.data?.diagnosis_status ||
+          profileRes?.user?.diagnosis_status ||
+          ''
+        ).toLowerCase();
+        if (latestDiagnosis) {
+          effectiveDiagnosisStatus = latestDiagnosis;
+        }
+      } catch (profileError) {
+        console.log('Could not refresh profile diagnosis for assessment view:', profileError);
+      }
+
+      setResolvedDiagnosisStatus(effectiveDiagnosisStatus);
+      const effectiveIsType2User = effectiveDiagnosisStatus === 'type2_diabetes';
+
       // Only show loading spinner if we don't have data yet (first load)
       if (!assessment && !overallRisk) {
         setLoading(true);
@@ -73,11 +107,33 @@ const PredictionScreen = ({ navigation }) => {
       if (result && result.assessment) {
         setAssessment(result.assessment);
 
+        if (effectiveIsType2User) {
+          setOverallRisk({
+            overall_risk_score: 0,
+            overall_risk_category: 'maintenance',
+            category_info: {
+              title: 'Maintenance Mode',
+              color: '#7F8C8D',
+              icon: 'shield-heart-outline',
+              probability: 'Risk scoring is disabled in this view for Type 2 Diabetes',
+              message: 'Focus on daily diabetes management behaviors and clinical follow-up.'
+            },
+            model_used: false,
+            model_eligibility: {
+              should_use_model: false,
+              diagnosis_status: 'type2_diabetes'
+            }
+          });
+          return;
+        }
+
         // Prefer lifestyle model risk output for the Assessment tab.
         try {
-          const lifestyleResult = await getLifestyleRecommendations(30);
+          const lifestyleResult = await getLifestyleRecommendations(30, false);
           if (lifestyleResult && lifestyleResult.success && lifestyleResult.data) {
             setOverallRisk(lifestyleResult.data);
+            setIsMockPreview(false);
+            setActiveMockPreset(null);
           } else {
             // Fallback to comprehensive risk endpoint if lifestyle endpoint is unavailable.
             const overallResult = await getOverallRiskAssessment();
@@ -98,11 +154,34 @@ const PredictionScreen = ({ navigation }) => {
         }
       } else {
         setAssessment(null);
+
+        if (effectiveIsType2User) {
+          setOverallRisk({
+            overall_risk_score: 0,
+            overall_risk_category: 'maintenance',
+            category_info: {
+              title: 'Maintenance Mode',
+              color: '#7F8C8D',
+              icon: 'shield-heart-outline',
+              probability: 'Risk scoring is disabled in this view for Type 2 Diabetes',
+              message: 'Focus on daily diabetes management behaviors and clinical follow-up.'
+            },
+            model_used: false,
+            model_eligibility: {
+              should_use_model: false,
+              diagnosis_status: 'type2_diabetes'
+            }
+          });
+          return;
+        }
+
         // Still try to load lifestyle risk output even if initial assessment is missing.
         try {
-          const lifestyleResult = await getLifestyleRecommendations(30);
+          const lifestyleResult = await getLifestyleRecommendations(30, false);
           if (lifestyleResult && lifestyleResult.success && lifestyleResult.data) {
             setOverallRisk(lifestyleResult.data);
+            setIsMockPreview(false);
+            setActiveMockPreset(null);
           } else {
             setOverallRisk(null);
           }
@@ -210,11 +289,13 @@ const PredictionScreen = ({ navigation }) => {
   const handleRefreshOverallRisk = async () => {
     try {
       setLoading(true);
+      setIsMockPreview(false);
+      setActiveMockPreset(null);
       // Refresh by re-fetching lifestyle recommendations first.
       let updated = false;
 
       try {
-        const lifestyleResult = await getLifestyleRecommendations(30);
+        const lifestyleResult = await getLifestyleRecommendations(30, false);
         if (lifestyleResult && lifestyleResult.success && lifestyleResult.data) {
           setOverallRisk(lifestyleResult.data);
           updated = true;
@@ -242,6 +323,60 @@ const PredictionScreen = ({ navigation }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTryMockPreview = async (preset = 'moderate') => {
+    try {
+      setLoading(true);
+      const lifestyleResult = await getLifestyleRecommendations(30, true, preset);
+      const presetLabels = {
+        conservative: 'Good BMI/Age + Bad Lifestyle',
+        moderate: 'Older/High BMI + Good Lifestyle',
+        aggressive: 'Random Mix',
+      };
+      if (lifestyleResult && lifestyleResult.success && lifestyleResult.data) {
+        setOverallRisk(lifestyleResult.data);
+        setIsMockPreview(true);
+        const resolvedPreset = lifestyleResult?.data?.mock_info?.preset || preset;
+        setActiveMockPreset(resolvedPreset);
+        Alert.alert(
+          'Mock Preview Enabled',
+          `Using ${presetLabels[resolvedPreset] || resolvedPreset} temporary inputs for preview. No database records were created.`
+        );
+      } else {
+        Alert.alert('Notice', 'Unable to load mock preview right now.');
+      }
+    } catch (error) {
+      console.log('Error loading mock preview:', error);
+      Alert.alert('Error', 'Failed to load mock preview. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUseRealData = async () => {
+    setIsMockPreview(false);
+    setActiveMockPreset(null);
+    await loadAssessment();
+  };
+
+  const handleOpenMockPresetPicker = () => {
+    Alert.alert(
+      'Choose Mock Preset',
+      'Select a mock scenario to preview possible risk changes without saving data.',
+      [
+        { text: 'Good BMI/Age + Bad Lifestyle', onPress: () => handleTryMockPreview('conservative') },
+        { text: 'Older/High BMI + Good Lifestyle', onPress: () => handleTryMockPreview('moderate') },
+        { text: 'Random Mix', onPress: () => handleTryMockPreview('aggressive') },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const mockPresetLabels = {
+    conservative: 'Good BMI/Age + Bad Lifestyle',
+    moderate: 'Older/High BMI + Good Lifestyle',
+    aggressive: 'Random Mix',
   };
 
   const predictionCards = [
@@ -658,6 +793,47 @@ const PredictionScreen = ({ navigation }) => {
       fontSize: 14,
       fontWeight: '600',
       color: colors.primary,
+    },
+    mockPreviewButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#2C3E50',
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 10,
+      gap: 8,
+      marginBottom: 10,
+    },
+    mockPreviewButtonText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: '#FFFFFF',
+    },
+    mockBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: '#FFF8E1',
+      borderWidth: 1,
+      borderColor: '#F1C40F',
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+      marginBottom: 10,
+      gap: 10,
+    },
+    mockBannerText: {
+      flex: 1,
+      fontSize: 12,
+      color: '#7D6608',
+      lineHeight: 16,
+    },
+    mockBannerAction: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.primary,
+      textDecorationLine: 'underline',
     },
     explanationSection: {
       marginBottom: 16,
@@ -1154,11 +1330,21 @@ const PredictionScreen = ({ navigation }) => {
     hasBmiInput ? null : 'BMI',
   ].filter(Boolean);
 
-  const diagnosisStatus = (user?.diagnosis_status || '').toLowerCase();
-  const isType2User = diagnosisStatus === 'type2_diabetes';
+  const diagnosisStatus = resolvedDiagnosisStatus;
   const modelUsed = overallRisk?.model_used;
   const modelEligible = overallRisk?.model_eligibility?.should_use_model;
   const hideLifestyleModelOutput = isType2User && (modelUsed === false || modelEligible === false);
+  const hasMissingModelTrackers = (overallRisk?.trackers_missing || []).some((k) => ['food', 'activity', 'alcohol'].includes(k));
+  const categoryInfo = overallRisk?.category_info || {
+    title: 'Unknown',
+    color: colors.secondary,
+    icon: 'help-circle',
+    probability: '',
+    message: '',
+  };
+  const overallRiskScoreValue = Number.isFinite(Number(overallRisk?.overall_risk_score))
+    ? Number(overallRisk.overall_risk_score)
+    : 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1192,22 +1378,22 @@ const PredictionScreen = ({ navigation }) => {
                   </View>
                   {!hideLifestyleModelOutput ? (
                     <View style={styles.overallRiskScoreSection}>
-                      <View style={[styles.overallRiskScoreCircle, { borderColor: overallRisk.category_info.color }]}>
-                        <Text style={[styles.overallRiskScoreValue, { color: overallRisk.category_info.color }]}>
-                          {overallRisk.overall_risk_score.toFixed(1)}
+                      <View style={[styles.overallRiskScoreCircle, { borderColor: categoryInfo.color }]}>
+                        <Text style={[styles.overallRiskScoreValue, { color: categoryInfo.color }]}>
+                          {overallRiskScoreValue.toFixed(1)}
                         </Text>
                         <Text style={styles.overallRiskScoreLabel}>/ 100</Text>
                       </View>
                       <View style={styles.overallRiskScoreInfo}>
-                        <View style={[styles.overallRiskBadge, { backgroundColor: overallRisk.category_info.color }]}>
-                          <Icon name={overallRisk.category_info.icon} size={16} color="#FFFFFF" />
-                          <Text style={styles.overallRiskBadgeText}>{overallRisk.category_info.title}</Text>
+                        <View style={[styles.overallRiskBadge, { backgroundColor: categoryInfo.color }]}>
+                          <Icon name={categoryInfo.icon} size={16} color="#FFFFFF" />
+                          <Text style={styles.overallRiskBadgeText}>{categoryInfo.title}</Text>
                         </View>
                         <Text style={[styles.overallRiskProbability, { color: colors.secondary }]}>
-                          {overallRisk.category_info.probability}
+                          {categoryInfo.probability}
                         </Text>
                         <Text style={[styles.overallRiskMessage, { color: colors.secondary }]}>
-                          {overallRisk.category_info.message}
+                          {categoryInfo.message}
                         </Text>
                       </View>
                     </View>
@@ -1230,6 +1416,28 @@ const PredictionScreen = ({ navigation }) => {
                     <Icon name="refresh" size={18} color={colors.primary} />
                     <Text style={styles.refreshOverallButtonText}>Refresh Assessment</Text>
                   </TouchableOpacity>
+
+                  {SHOW_MOCK_PRESET_PREVIEW && !hideLifestyleModelOutput && hasMissingModelTrackers && !isMockPreview && (
+                    <TouchableOpacity
+                      style={styles.mockPreviewButton}
+                      onPress={handleOpenMockPresetPicker}
+                      activeOpacity={0.7}
+                    >
+                      <Icon name="test-tube" size={18} color="#FFFFFF" />
+                      <Text style={styles.mockPreviewButtonText}>Try Mock Presets Preview</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {!hideLifestyleModelOutput && isMockPreview && (
+                    <View style={styles.mockBanner}>
+                      <Text style={styles.mockBannerText}>
+                        Mock preview is active ({mockPresetLabels[activeMockPreset || 'moderate'] || 'Custom'} preset, no data saved).
+                      </Text>
+                      <TouchableOpacity onPress={handleUseRealData} activeOpacity={0.7}>
+                        <Text style={styles.mockBannerAction}>Use Real Data</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                   {/* Risk Factor Breakdown - all tracked components, color-coded */}
                   {!hideLifestyleModelOutput && overallRisk.primary_risk_factors && overallRisk.primary_risk_factors.length > 0 && (
                     <View style={styles.riskFactorsSection}>
@@ -1265,7 +1473,7 @@ const PredictionScreen = ({ navigation }) => {
                     </View>
                   )}
 
-                  {overallRisk.recommendations && overallRisk.recommendations.length > 0 && (
+                  {!hideLifestyleModelOutput && overallRisk.recommendations && overallRisk.recommendations.length > 0 && (
                     <View style={styles.recommendationsSection}>
                       <Text style={styles.recommendationsTitle}>Recommendations</Text>
                       {overallRisk.recommendations.map((rec, index) => (
@@ -1277,7 +1485,7 @@ const PredictionScreen = ({ navigation }) => {
                     </View>
                   )}
 
-                  {overallRisk.data_quality_notes && (
+                  {!hideLifestyleModelOutput && overallRisk.data_quality_notes && (
                     <View style={styles.dataQualitySection}>
                       <View style={styles.dataQualityHeader}>
                         <Icon name="information-outline" size={18} color={colors.secondary} />
@@ -1308,9 +1516,11 @@ const PredictionScreen = ({ navigation }) => {
                   )}
 
                   {/* ===== Health Trajectory Prediction ===== */}
-                  <Text style={styles.predictionSectionTitle}>Health Trajectory Prediction</Text>
+                  {!hideLifestyleModelOutput && (
+                    <Text style={styles.predictionSectionTitle}>Health Trajectory Prediction</Text>
+                  )}
 
-                  {trendLoading ? (
+                  {!hideLifestyleModelOutput && (trendLoading ? (
                     <View style={styles.trendLoadingBox}>
                       <ActivityIndicator size="small" color={colors.primary} />
                       <Text style={styles.trendLoadingText}>Analysing your lifestyle trends…</Text>
@@ -1490,7 +1700,7 @@ const PredictionScreen = ({ navigation }) => {
                         Complete your initial assessment to unlock health trajectory predictions.
                       </Text>
                     </View>
-                  )}
+                  ))}
                 </View>
               </>
             )}

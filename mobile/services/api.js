@@ -2719,11 +2719,14 @@ export const getFoodDailyLogAnalysis = async (days = 7) => {
  * Get unified lifestyle recommendations for all trackers
  * Returns recommendations from food, sleep, activity, alcohol, and smoking trackers
  * @param {number} days - Number of days to analyze (default: 30)
+ * @param {boolean} useMock - When true, backend injects temporary mock tracker inputs for preview (not persisted)
+ * @param {string} mockPreset - Mock preset name: conservative | moderate | aggressive
  * @returns {Promise<Object>} Unified recommendations with timeline predictions
  */
-export const getLifestyleRecommendations = async (days = 30) => {
+export const getLifestyleRecommendations = async (days = 30, useMock = false, mockPreset = 'moderate') => {
   try {
-    const response = await api.get(`/lifestyle/recommendations?days=${days}`);
+    const safePreset = (mockPreset || 'moderate').toLowerCase();
+    const response = await api.get(`/lifestyle/recommendations?days=${days}&mock=${useMock ? 'true' : 'false'}&mock_preset=${encodeURIComponent(safePreset)}`);
     return response.data;
   } catch (error) {
     console.error('Error fetching lifestyle recommendations:', error.response?.data || error.message);
