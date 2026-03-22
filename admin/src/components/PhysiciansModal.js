@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, forwardRef } from 'react';
+import React, { useEffect, useState, useMemo, forwardRef, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -35,7 +35,7 @@ export default function PhysiciansModal({ open, onClose, apiBase, getAuthHeaders
   const [physicians, setPhysicians] = useState([]);
   const [query, setQuery] = useState('');
 
-  const fetchPhysicians = async () => {
+  const fetchPhysicians = useCallback(async () => {
     setLoading(true);
     try {
       const headers = getAuthHeaders ? await getAuthHeaders() : { 'Content-Type': 'application/json' };
@@ -49,12 +49,11 @@ export default function PhysiciansModal({ open, onClose, apiBase, getAuthHeaders
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiBase, getAuthHeaders]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (open) fetchPhysicians();
-  }, [open]);
+  }, [open, fetchPhysicians]);
 
   const filteredPhysicians = useMemo(() => {
     if (!query) return physicians;

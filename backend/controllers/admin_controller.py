@@ -44,7 +44,11 @@ def _user_display(user_doc):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def get_risk_distribution():
-    """GET /admin/risk/distribution — Count of users per overall risk category."""
+    """GET /admin/risk/distribution — Count of users per overall risk category.
+    
+    The active XGBoost lifestyle ML model outputs three categories: low, moderate, high.
+    Legacy records may still contain very_high; these are folded into 'high' for consistency.
+    """
     try:
         db = get_db()
         pipeline = [
@@ -59,17 +63,23 @@ def get_risk_distribution():
             }}
         ]
         agg = list(db.overall_risk_assessments.aggregate(pipeline))
-        distribution = {item['_id']: item['count'] for item in agg if item['_id']}
+        raw_dist = {item['_id']: item['count'] for item in agg if item['_id']}
+
+        # Fold legacy very_high records into high so the admin chart stays aligned
+        # with the 3-class ML model output.
+        distribution = {
+            'low': raw_dist.get('low', 0),
+            'moderate': raw_dist.get('moderate', 0),
+            'high': raw_dist.get('high', 0) + raw_dist.get('very_high', 0),
+        }
 
         total_assessed = sum(distribution.values())
         total_users = db.users.count_documents({"role": {"$in": ["user", "admin"]}})
 
-        # Flatten distribution keys to top level so the frontend can access riskDist.low etc.
         return jsonify({
-            'low': distribution.get('low', 0),
-            'moderate': distribution.get('moderate', 0),
-            'high': distribution.get('high', 0),
-            'very_high': distribution.get('very_high', 0),
+            'low': distribution['low'],
+            'moderate': distribution['moderate'],
+            'high': distribution['high'],
             'distribution': distribution,
             'total': total_assessed,
             'total_assessed': total_assessed,
@@ -898,13 +908,18 @@ def get_risk_trend():
 
 
 def get_high_risk_patients():
-    """GET /admin/risk/high-risk-patients — Paginated high/very_high risk users."""
+    """GET /admin/risk/high-risk-patients — Paginated high-risk users.
+    
+    Matches both 'high' and legacy 'very_high' categories so no data is lost
+    when transitioning from the old rule-based model to the XGBoost ML model.
+    """
     try:
         db = get_db()
         skip = request.args.get('skip', 0, type=int)
         limit = request.args.get('limit', 20, type=int)
 
-        # Get latest assessment per user, filtered to high/very_high
+        # Get latest assessment per user, filtered to high risk
+        # (very_high is a legacy category; fold it in for backward compatibility)
         pipeline = [
             {"$sort": {"created_at": -1}},
             {"$group": {"_id": "$user_id", "doc": {"$first": "$$ROOT"}}},

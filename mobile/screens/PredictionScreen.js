@@ -1518,10 +1518,9 @@ const PredictionScreen = ({ navigation }) => {
                       <Text style={styles.classificationLegendTitle}>Score Classification</Text>
                       <View style={styles.classificationRow}>
                         {[
-                          { label: 'Low', range: '0 – 25', color: '#10B981', prob: '<10%' },
-                          { label: 'Moderate', range: '26 – 50', color: '#F59E0B', prob: '10–30%' },
-                          { label: 'High', range: '51 – 75', color: '#EF4444', prob: '30–60%' },
-                          { label: 'Very High', range: '76 – 100', color: '#DC2626', prob: '>60%' },
+                          { label: 'Low', range: '0 – 33', color: '#10B981', prob: '<33%' },
+                          { label: 'Moderate', range: '34 – 66', color: '#F59E0B', prob: '33–66%' },
+                          { label: 'High', range: '67 – 100', color: '#EF4444', prob: '>66%' },
                         ].map((tier) => (
                           <View
                             key={tier.label}

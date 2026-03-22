@@ -33,7 +33,6 @@ const RISK_COLORS = {
   low: '#10b981',
   moderate: '#f59e0b',
   high: '#ef4444',
-  very_high: '#991b1b',
 };
 
 const STATUS_DISPLAY = {
@@ -136,8 +135,8 @@ function Dashboard() {
 
   // ── Derived chart data ─────────────────────────────────────────────────
   const distMap = riskDist?.distribution || {};
-  const riskLabels = ['low', 'moderate', 'high', 'very_high'];
-  const riskDisplay = ['Low', 'Moderate', 'High', 'Very High'];
+  const riskLabels = ['low', 'moderate', 'high'];
+  const riskDisplay = ['Low', 'Moderate', 'High'];
   const riskValues = riskLabels.map((k) => distMap[k] || 0);
   const totalAssessed = riskDist?.total_assessed || 0;
   const unassessed = riskDist?.unassessed || 0;
@@ -158,7 +157,7 @@ function Dashboard() {
   const consultHistory = recentActivity?.recent_consultations || [];
   const highRiskAlerts = recentActivity?.high_risk_alerts || [];
 
-  const riskColor = (cat) => ({ low: '#10b981', moderate: '#f59e0b', high: '#ef4444', very_high: '#991b1b' }[cat] || '#9ca3af');
+  const riskColor = (cat) => ({ low: '#10b981', moderate: '#f59e0b', high: '#ef4444' }[cat] || '#9ca3af');
 
   return (
     <Box>
@@ -421,7 +420,7 @@ function Dashboard() {
               </Tooltip>
             </Box>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-              Breakdown of all assessed users by risk level (Low, Moderate, High, Very High). Shows the proportion of the user base at each risk tier.
+              Breakdown of all assessed users by risk level (Low, Moderate, High) based on the XGBoost lifestyle ML model.
             </Typography>
             {riskDist ? (
               <>

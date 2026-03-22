@@ -648,7 +648,28 @@ def get_unified_recommendations():
             data_quality_notes = 'All model-supported lifestyle trackers are available.'
 
         category_info = OverallRiskAssessment.get_risk_category_info(overall_assessment['overall_risk_category'])
-        
+
+        # Persist ML-based assessment to overall_risk_assessments so admin charts stay current.
+        # Skip for mock requests to avoid polluting production data.
+        if not use_mock:
+            try:
+                assessment_record = OverallRiskAssessment(
+                    user_id=user_id,
+                    overall_risk_score=overall_assessment['overall_risk_score'],
+                    overall_risk_category=overall_assessment['overall_risk_category'],
+                    confidence_level=confidence_level,
+                    component_scores=component_scores,
+                    primary_risk_factors=primary_risk_factors,
+                    protective_factors=[],
+                    key_improvements=overall_assessment['priority_actions'][:3],
+                    recommendations=recommendations,
+                    explanation=data_quality_notes,
+                    data_quality_notes=data_quality_notes,
+                )
+                assessment_record.save()
+            except Exception as persist_err:
+                logger.warning(f"Could not persist lifestyle assessment for user {user_id}: {persist_err}")
+
         return jsonify({
             'success': True,
             'data': {

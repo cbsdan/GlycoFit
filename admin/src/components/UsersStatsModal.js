@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -43,7 +43,7 @@ export default function UsersStatsModal({ open, onClose, apiBase, getAuthHeaders
   const [usersList, setUsersList] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
 
-  const fetchAnalytics = async (d) => {
+  const fetchAnalytics = useCallback(async (d) => {
     setLoading(true);
     try {
       const end = new Date();
@@ -112,9 +112,9 @@ export default function UsersStatsModal({ open, onClose, apiBase, getAuthHeaders
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiBase, getAuthHeaders, initialStats]);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
       const headers = getAuthHeaders ? await getAuthHeaders() : { 'Content-Type': 'application/json' };
@@ -129,15 +129,14 @@ export default function UsersStatsModal({ open, onClose, apiBase, getAuthHeaders
     } finally {
       setLoadingUsers(false);
     }
-  };
+  }, [apiBase, getAuthHeaders]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (open) {
       fetchAnalytics(days);
       fetchUsers();
     }
-  }, [open, days]);
+  }, [open, days, fetchAnalytics, fetchUsers]);
 
   const [selectedUser, setSelectedUser] = useState(null);
   const [userMeals, setUserMeals] = useState([]);

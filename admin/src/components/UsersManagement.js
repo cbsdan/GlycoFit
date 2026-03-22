@@ -17,7 +17,6 @@ import {
   TextField,
   FormControlLabel,
   Checkbox,
-  Typography,
 } from '@mui/material';
 import userService from '../services/userService';
 import MealModal from './MealModal';

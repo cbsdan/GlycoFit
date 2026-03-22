@@ -92,7 +92,7 @@ function RiskChip({ level }) {
     low: { color: 'success', label: 'Low' },
     moderate: { color: 'warning', label: 'Moderate' },
     high: { color: 'error', label: 'High' },
-    very_high: { color: 'error', label: 'Very High' },
+    very_high: { color: 'error', label: 'High' },
   };
   if (!level) return <Typography variant="body2">—</Typography>;
   const c = map[level] || { color: 'default', label: level };

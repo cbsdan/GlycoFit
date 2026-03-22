@@ -1,8 +1,7 @@
 import React from 'react';
-import { Drawer, List, ListItem, ListItemIcon, ListItemText, Box, Divider, Typography, Tooltip } from '@mui/material';
+import { Drawer, List, ListItem, ListItemIcon, ListItemText, Tooltip } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
-import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';

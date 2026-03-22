@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box, Typography, Paper, Grid, CircularProgress, Card, CardContent, Avatar,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip,
-  Pagination, Accordion, AccordionSummary, AccordionDetails,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Pagination,
 } from '@mui/material';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import QuestionAnswerIcon from '@mui/icons-material/QuestionAnswer';
 import adminService from '../services/adminService';
 import { Bar, Doughnut } from 'react-chartjs-2';

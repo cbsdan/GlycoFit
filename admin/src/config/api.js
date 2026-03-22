@@ -29,4 +29,28 @@ apiClient.interceptors.request.use(
   }
 );
 
+// On 401, force-refresh the Firebase token and retry the request once.
+// This handles the case where the token expired between the request interceptor
+// and the server validation.
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      const user = auth.currentUser;
+      if (user) {
+        try {
+          const freshToken = await user.getIdToken(true);
+          originalRequest.headers.Authorization = `Bearer ${freshToken}`;
+          return apiClient(originalRequest);
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
+        }
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default apiClient;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Box, Typography, Paper, Grid, CircularProgress, Card, CardContent, Avatar,
+  Box, Typography, Paper, Grid, CircularProgress, Card, CardContent,
   Chip, LinearProgress, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Alert, Divider, List, ListItem, ListItemText,
   ListItemIcon,

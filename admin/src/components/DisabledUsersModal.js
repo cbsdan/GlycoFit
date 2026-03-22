@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, forwardRef } from 'react';
+import React, { useEffect, useState, useMemo, forwardRef, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -57,7 +57,7 @@ export default function DisabledUsersModal({ open, onClose, apiBase, getAuthHead
   const [sleepTimeframe, setSleepTimeframe] = useState(30);
   const [tabValue, setTabValue] = useState(0);
 
-  const fetchDisabledUsers = async () => {
+  const fetchDisabledUsers = useCallback(async () => {
     setLoading(true);
     try {
       const headers = getAuthHeaders ? await getAuthHeaders() : { 'Content-Type': 'application/json' };
@@ -71,12 +71,11 @@ export default function DisabledUsersModal({ open, onClose, apiBase, getAuthHead
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiBase, getAuthHeaders]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (open) fetchDisabledUsers();
-  }, [open]);
+  }, [open, fetchDisabledUsers]);
 
   const filteredUsers = useMemo(() => {
     if (!query) return users;

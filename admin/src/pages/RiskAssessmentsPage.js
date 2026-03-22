@@ -46,7 +46,7 @@ function RiskAssessmentsPage() {
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress size={60} /></Box>;
 
-  const riskColors = { low: '#10b981', moderate: '#f59e0b', high: '#ef4444', very_high: '#991b1b' };
+  const riskColors = { low: '#10b981', moderate: '#f59e0b', high: '#ef4444' };
 
   return (
     <Box>
@@ -90,9 +90,9 @@ function RiskAssessmentsPage() {
               <Box sx={{ maxWidth: 260, mx: 'auto', mt: 2 }}>
                 <Doughnut
                   data={{
-                    labels: ['Low', 'Moderate', 'High', 'Very High'],
+                    labels: ['Low', 'Moderate', 'High'],
                     datasets: [{
-                      data: [riskDist.low || 0, riskDist.moderate || 0, riskDist.high || 0, riskDist.very_high || 0],
+                      data: [riskDist.low || 0, riskDist.moderate || 0, riskDist.high || 0],
                       backgroundColor: Object.values(riskColors),
                     }],
                   }}
@@ -229,8 +229,8 @@ function RiskAssessmentsPage() {
                   <TableCell>{a.type || 'Overall'}</TableCell>
                   <TableCell>{(a.score || 0).toFixed(1)}%</TableCell>
                   <TableCell>
-                    <Chip label={a.risk_level || '—'} size="small" variant="outlined"
-                      color={a.risk_level === 'high' || a.risk_level === 'very_high' ? 'error' : a.risk_level === 'moderate' ? 'warning' : 'success'}
+                    <Chip label={a.risk_level === 'very_high' ? 'High' : (a.risk_level || '—')} size="small" variant="outlined"
+                      color={(a.risk_level === 'high' || a.risk_level === 'very_high') ? 'error' : a.risk_level === 'moderate' ? 'warning' : 'success'}
                     />
                   </TableCell>
                   <TableCell>{a.date ? new Date(a.date).toLocaleDateString() : '—'}</TableCell>

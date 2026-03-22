@@ -26,6 +26,29 @@ export const AuthProvider = ({ children }) => {
 
   const API_URL = process.env.REACT_APP_API_URL;
 
+  const CACHE_KEY = (uid) => `glycofit_admin_user_${uid}`;
+
+  const cacheUserDetails = (uid, data) => {
+    try {
+      localStorage.setItem(CACHE_KEY(uid), JSON.stringify(data));
+    } catch (_) {}
+  };
+
+  const getCachedUserDetails = (uid) => {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY(uid));
+      return raw ? JSON.parse(raw) : null;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  const clearCachedUserDetails = (uid) => {
+    try {
+      if (uid) localStorage.removeItem(CACHE_KEY(uid));
+    } catch (_) {}
+  };
+
   // Returns a cached Firebase ID token, refreshing only when close to expiry.
   const getCachedToken = useCallback(async () => {
     if (!currentUser) return null;
@@ -40,40 +63,58 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setLoading(true);
       setError(null);
 
       if (user) {
-        try {
-          // Get user details from backend
-          const response = await axios.post(`${API_URL}/auth/get-user`, {
-            uid: user.uid
-          });
+        // Immediately restore session from localStorage so the UI is unblocked.
+        const cached = getCachedUserDetails(user.uid);
+        if (cached && cached.role === 'admin') {
+          setCurrentUser(user);
+          setUserDetails(cached);
+          setLoading(false);
+        } else {
+          setLoading(true);
+        }
 
+        // Background re-verification — refreshes cached data without blocking the UI.
+        try {
+          const response = await axios.post(`${API_URL}/auth/get-user`, { uid: user.uid });
           const userData = response.data.data;
 
-          // Check if user has admin role
           if (userData.role !== 'admin') {
+            // Explicitly denied — sign out.
+            clearCachedUserDetails(user.uid);
             await signOut(auth);
             setError('Access denied. Admin privileges required.');
             setCurrentUser(null);
             setUserDetails(null);
+            setLoading(false);
           } else {
+            cacheUserDetails(user.uid, userData);
             setCurrentUser(user);
             setUserDetails(userData);
+            setLoading(false);
           }
         } catch (err) {
           console.error('Error fetching user details:', err);
-          setError('Failed to verify admin status');
-          await signOut(auth);
-          setCurrentUser(null);
-          setUserDetails(null);
+          if (cached && cached.role === 'admin') {
+            // Network/server failure — keep the session alive using cached data.
+            // The backend middleware still validates every API request independently.
+            setLoading(false);
+          } else {
+            // No cache and backend unreachable — can't confirm admin role.
+            setError('Failed to verify admin status. Please try again.');
+            await signOut(auth);
+            setCurrentUser(null);
+            setUserDetails(null);
+            setLoading(false);
+          }
         }
       } else {
         setCurrentUser(null);
         setUserDetails(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return unsubscribe;
@@ -114,7 +155,9 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
+      const uid = currentUser?.uid;
       await signOut(auth);
+      clearCachedUserDetails(uid);
       setCurrentUser(null);
       setUserDetails(null);
     } catch (err) {
