@@ -663,8 +663,8 @@ def get_unified_recommendations():
                 'recommendations': recommendations,
                 'data_quality_notes': data_quality_notes,
                 'trackers': trackers_data,
-                'trackers_analyzed': overall_assessment['trackers_analyzed'],
-                'trackers_missing': overall_assessment['trackers_missing'],
+                'trackers_analyzed': trackers_with_data,
+                'trackers_missing': missing_trackers,
                 'model_prediction': model_prediction,
                 'model_used': bool(model_prediction),
                 'model_eligibility': {
