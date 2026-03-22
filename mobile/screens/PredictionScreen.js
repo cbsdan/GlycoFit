@@ -34,7 +34,6 @@ const PredictionScreen = ({ navigation }) => {
   const [trendPrediction, setTrendPrediction] = useState(null);
   const [trendLoading, setTrendLoading] = useState(true);
   const [computationVisible, setComputationVisible] = useState(false);
-  const [refsVisible, setRefsVisible] = useState(false);
   const [resolvedDiagnosisStatus, setResolvedDiagnosisStatus] = useState((user?.diagnosis_status || '').toLowerCase());
   const [isMockPreview, setIsMockPreview] = useState(false);
   const [activeMockPreset, setActiveMockPreset] = useState(null);
@@ -1346,6 +1345,55 @@ const PredictionScreen = ({ navigation }) => {
     ? Number(overallRisk.overall_risk_score)
     : 0;
 
+  const formulaRowMeta = {
+    bmi: {
+      label: 'BMI / Obesity',
+      note: 'Strongest predictor in this Health Summary path; uses WHO Asian cutoffs (>=23 = overweight for Filipinos).',
+      url: 'https://doi.org/10.1016/S0140-6736(03)15268-3',
+      fallbackWeight: '40.01%',
+    },
+    age: {
+      label: 'Age',
+      note: 'Risk rises with age and is treated as a major non-modifiable predictor in this trained-model path.',
+      url: 'https://doi.org/10.1371/journal.pone.0194127',
+      fallbackWeight: '36.54%',
+    },
+    food: {
+      label: 'Food Intake Quality',
+      note: 'Food pattern contribution from glycemic load, fiber, added sugar, and calorie patterns.',
+      url: 'https://doi.org/10.2337/dc10-1079',
+      fallbackWeight: '11.75%',
+    },
+    activity: {
+      label: 'Physical Activity (Steps)',
+      note: 'Physical inactivity is a key modifiable diabetes risk factor.',
+      url: 'https://doi.org/10.1007/s10654-015-0056-z',
+      fallbackWeight: '5.98%',
+    },
+    alcohol: {
+      label: 'Alcohol Consumption',
+      note: 'Alcohol contributes with a smaller but meaningful weighted impact in this model path.',
+      url: 'https://doi.org/10.2337/dc09-0227',
+      fallbackWeight: '5.72%',
+    },
+  };
+
+  const formulaDisplayOrder = ['bmi', 'age', 'food', 'activity', 'alcohol'];
+  const formulaRows = formulaDisplayOrder.map((componentKey) => {
+    const meta = formulaRowMeta[componentKey];
+    const weightValue = Number(overallRisk?.component_scores?.[componentKey]?.weight);
+    const weight = Number.isFinite(weightValue) && weightValue > 0
+      ? `${(weightValue * 100).toFixed(2)}%`
+      : meta.fallbackWeight;
+
+    return {
+      label: meta.label,
+      weight,
+      note: meta.note,
+      url: meta.url,
+    };
+  });
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
@@ -1839,27 +1887,82 @@ const PredictionScreen = ({ navigation }) => {
                 <Text style={styles.computationDisclaimerText}>
                   This computation estimates the risk of developing{' '}
                   <Text style={{ fontWeight: '700' }}>pre-diabetes or Type 2 diabetes</Text>.
-                  Scores are derived from validated, peer-reviewed research and a machine learning
-                  model trained on the BRFSS dataset.
+                  In this Health Summary view, weighted contributions are aligned with the trained
+                  model components: BMI, Age, Food Intake, Physical Activity, and Alcohol.
                 </Text>
               </View>
+
+              <Text style={styles.computationSectionLabel}>Model Validation Snapshot</Text>
+              <View style={styles.tableContainer}>
+                <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.1 }]}>Metric</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.1 }]}>Baseline</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.2 }]}>Enhanced</Text>
+                </View>
+                {[
+                  { metric: 'Accuracy', baseline: '70.43%', enhanced: '72.48%' },
+                  { metric: 'Healthy Precision', baseline: '0.72', enhanced: '0.74' },
+                  { metric: 'Healthy Recall', baseline: '0.68', enhanced: '0.70' },
+                  { metric: 'At-Risk Precision', baseline: '0.69', enhanced: '0.71' },
+                  { metric: 'At-Risk Recall', baseline: '0.73', enhanced: '0.75' },
+                ].map((row, idx) => (
+                  <View
+                    key={row.metric}
+                    style={[
+                      styles.tableRow,
+                      idx % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
+                    ]}
+                  >
+                    <Text style={[styles.tableCell, { flex: 2.1 }]}>{row.metric}</Text>
+                    <Text style={[styles.tableCell, { flex: 1.1 }]}>{row.baseline}</Text>
+                    <Text style={[styles.tableCell, { flex: 1.2, fontWeight: '700', color: '#1F618D' }]}>{row.enhanced}</Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
+                Balanced dataset: 438,842 rows (219,421 Healthy, 219,421 At-Risk). Enhanced confusion matrix: 30,762 true healthy, 32,851 true at-risk, 13,123 false positives, 11,033 false negatives.
+              </Text>
+
+              <Text style={styles.computationSectionLabel}>Dataset Risk Profiles (Observed)</Text>
+              <View style={styles.tableContainer}>
+                <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2 }]}>Segment</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.3 }]}>At-Risk Rate</Text>
+                </View>
+                {[
+                  { segment: 'Age: Under 30', rate: '14.3%' },
+                  { segment: 'Age: 30-44', rate: '21.1%' },
+                  { segment: 'Age: 45-59', rate: '35.2%' },
+                  { segment: 'Age: 60+', rate: '42.3%' },
+                  { segment: 'BMI: Normal (<25)', rate: '12.4%' },
+                  { segment: 'BMI: Overweight (25-29.9)', rate: '28.4%' },
+                  { segment: 'BMI: Obese I (30-34.9)', rate: '36.9%' },
+                  { segment: 'BMI: Obese II+ (35+)', rate: '46.6%' },
+                  { segment: 'Activity: Active (Level 1)', rate: '30.0%' },
+                  { segment: 'Activity: Sedentary (Level 2)', rate: '23.9%' },
+                ].map((row, idx) => (
+                  <View
+                    key={row.segment}
+                    style={[
+                      styles.tableRow,
+                      idx % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
+                    ]}
+                  >
+                    <Text style={[styles.tableCell, { flex: 2 }]}>{row.segment}</Text>
+                    <Text style={[styles.tableCell, { flex: 1.3, fontWeight: '700' }]}>{row.rate}</Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
+                These are observed cohort rates used for transparency and context; they are not direct per-user probability outputs.
+              </Text>
 
               {/* ── Formula ── */}
               <Text style={styles.computationSectionLabel}>Weighted Risk Formula</Text>
               <View style={styles.formulaBox}>
                 <Text style={styles.formulaTitle}>Overall Risk Score (0 – 100)</Text>
                 <View style={styles.formulaDivider} />
-                {[
-                  { label: 'BMI / Obesity', weight: '25%', note: 'Strongest Diabetes predictor; uses WHO Asian cutoffs (≥23 = overweight for Filipinos)', url: 'https://doi.org/10.1016/S0140-6736(03)15268-3' },
-                  { label: 'ML Initial Assessment', weight: '20%', note: 'Validated clinical model trained on BRFSS dataset', url: 'https://doi.org/10.1056/NEJMoa012512' },
-                  { label: 'Age', weight: '15%', note: 'Risk rises sharply after 45; strong non-modifiable predictor', url: 'https://doi.org/10.1371/journal.pone.0194127' },
-                  { label: 'Food Intake Quality', weight: '12%', note: 'Primary modifiable Diabetes risk factor; reflects daily dietary habits', url: 'https://doi.org/10.2337/dc10-1079' },
-                  { label: 'Physical Activity (Steps)', weight: '10%', note: 'Physical inactivity is a key modifiable risk factor', url: 'https://doi.org/10.1007/s10654-015-0056-z' },
-                  { label: 'Smoking Status', weight: '7%', note: '44% increased Diabetes risk for active smokers', url: 'https://doi.org/10.1001/jama.298.22.2654' },
-                  { label: 'Sleep Duration & Quality', weight: '6%', note: 'Disrupts insulin sensitivity and glucose metabolism', url: 'https://doi.org/10.2337/dc09-1124' },
-                  { label: 'Alcohol Consumption', weight: '4%', note: 'J-shaped relationship with Diabetes risk', url: 'https://doi.org/10.2337/dc09-0227' },
-                  { label: 'Biological Sex', weight: '1%', note: 'Hormonal & metabolic differences', url: 'https://doi.org/10.1210/er.2015-1137' },
-                ].map((row, idx) => (
+                {formulaRows.map((row, idx) => (
                   <View
                     key={row.label}
                     style={[
@@ -1882,462 +1985,6 @@ const PredictionScreen = ({ navigation }) => {
                   </View>
                 ))}
               </View>
-
-              {/* ── Risk Categories ── */}
-              <Text style={styles.computationSectionLabel}>Risk Categories</Text>
-              <View style={styles.tableContainer}>
-                {/* Header */}
-                <View style={[styles.tableRow, styles.tableHeaderRow]}>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.2 }]}>Score</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.5 }]}>Category</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2 }]}>10-yr Probability</Text>
-                </View>
-                {[
-                  { score: '0 – 25', category: 'Low', prob: '< 10 %', color: '#27AE60' },
-                  { score: '26 – 50', category: 'Moderate', prob: '10 – 30 %', color: '#F39C12' },
-                  { score: '51 – 75', category: 'High', prob: '30 – 60 %', color: '#E67E22' },
-                  { score: '76 – 100', category: 'Very High', prob: '> 60 %', color: '#E74C3C' },
-                ].map((row, idx) => (
-                  <View
-                    key={row.score}
-                    style={[
-                      styles.tableRow,
-                      idx % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
-                    ]}
-                  >
-                    <Text style={[styles.tableCell, { flex: 1.2 }]}>{row.score}</Text>
-                    <Text style={[styles.tableCell, { flex: 1.5, color: row.color, fontWeight: '700' }]}>
-                      {row.category}
-                    </Text>
-                    <Text style={[styles.tableCell, { flex: 2 }]}>{row.prob}</Text>
-                  </View>
-                ))}
-              </View>
-
-              {/* ── Component Scoring Detail ── */}
-              <Text style={styles.computationSectionLabel}>Component Scoring Detail</Text>
-
-              {/* Legend */}
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#E74C3C' }} />
-                  <Text style={{ fontSize: 12, color: colors.secondary }}><Text style={{ fontWeight: '700', color: '#E74C3C' }}>+</Text> Increases risk score</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#27AE60' }} />
-                  <Text style={{ fontSize: 12, color: colors.secondary }}><Text style={{ fontWeight: '700', color: '#27AE60' }}>−</Text> Decreases risk score</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.secondary }} />
-                  <Text style={{ fontSize: 12, color: colors.secondary }}><Text style={{ fontWeight: '700' }}>0</Text> No impact on score</Text>
-                </View>
-              </View>
-
-              {/* Physical Activity */}
-              <Text style={styles.componentLabel}>Physical Activity (Step Count)</Text>
-              <Text style={{ fontSize: 12, color: colors.secondary, marginBottom: 8, lineHeight: 17 }}>Daily step count is a key indicator of cardiovascular and metabolic health. Consistent movement lowers insulin resistance and reduces diabetes risk.</Text>
-              <View style={styles.tableContainer}>
-                <View style={[styles.tableRow, styles.tableHeaderRow]}>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>Condition</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.4 }]}>Score (0–100)</Text>
-                </View>
-                {[
-                  { cond: '< 3,000 steps / day (very sedentary)', pts: '~36–46', pos: true },
-                  { cond: '3,000 – 4,999 steps / day (sedentary)', pts: '~22–32', pos: true },
-                  { cond: '5,000 – 6,999 steps / day (below target)', pts: '~9–19', pos: true },
-                  { cond: '7,000 – 9,999 steps / day (near target)', pts: '~0–10', neutral: true },
-                  { cond: '≥ 10,000 steps / day (meets goal)', pts: '0', neutral: true },
-                  { cond: 'Inconsistent activity (< 3 active days / wk)', pts: '+10 added', pos: true },
-                ].map((r, i) => (
-                  <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
-                    <Text style={[styles.tableCell, { flex: 2.5 }]}>{r.cond}</Text>
-                    <Text style={[styles.tableCell, { flex: 1.4, fontWeight: '700',
-                      color: r.pos ? '#E74C3C' : '#27AE60' }]}>
-                      {r.pts}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
-                Weight 10% → steps service scores are normalized to 0-100 for risk weighting; max contribution = +10.0 pts to overall score. Score blends baseline daily steps with logged data (confidence-weighted).
-              </Text>
-
-              {/* Sleep */}
-              <Text style={styles.componentLabel}>Sleep</Text>
-              <Text style={{ fontSize: 12, color: colors.secondary, marginBottom: 8, lineHeight: 17 }}>Poor or irregular sleep disrupts glucose regulation and hormones that control appetite, directly elevating diabetes risk.</Text>
-              <View style={styles.tableContainer}>
-                <View style={[styles.tableRow, styles.tableHeaderRow]}>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>Condition</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.4 }]}>Added to Score</Text>
-                </View>
-                {[
-                  { cond: '< 6 h / night (short sleep)', pts: '+ 20–30', pos: true },
-                  { cond: '7 – 8 h / night (optimal)', pts: '0', neutral: true },
-                  { cond: '> 9 h / night (long sleep)', pts: '+ 15–25', pos: true },
-                  { cond: 'High sleep-duration variability', pts: '+ 10–20', pos: true },
-                  { cond: 'Irregular bedtime pattern', pts: '+ 10–15', pos: true },
-                ].map((r, i) => (
-                  <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
-                    <Text style={[styles.tableCell, { flex: 2.5 }]}>{r.cond}</Text>
-                    <Text style={[styles.tableCell, { flex: 1.4, fontWeight: '700',
-                      color: r.pos ? '#E74C3C' : '#27AE60' }]}>
-                      {r.pts}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
-                Weight 6% → sleep service scores are normalized to 0-100 for risk weighting; max contribution = +6.0 pts to overall score. Baseline typical sleep hours are blended with daily logged data (confidence-weighted).
-              </Text>
-
-              {/* Smoking */}
-              <Text style={styles.componentLabel}>Smoking</Text>
-              <Text style={{ fontSize: 12, color: colors.secondary, marginBottom: 8, lineHeight: 17 }}>Smoking impairs insulin sensitivity and promotes inflammation. Active smokers have up to 44% higher risk of developing Type 2 diabetes.</Text>
-              <View style={styles.tableContainer}>
-                <View style={[styles.tableRow, styles.tableHeaderRow]}>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>Condition</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.4 }]}>Score (0–100)</Text>
-                </View>
-                {[
-                  { cond: 'Never smoked', pts: '0', prot: true },
-                  { cond: 'Former — quit > 10 yrs (light history)', pts: '~10', pos: true },
-                  { cond: 'Former — quit > 10 yrs (heavy history)', pts: '~25', pos: true },
-                  { cond: 'Former — quit 5–10 yrs', pts: '~25–50', pos: true },
-                  { cond: 'Former — quit < 5 yrs', pts: '~50–75', pos: true },
-                  { cond: 'Current — light (< 10 cigs / day)', pts: '~50', pos: true },
-                  { cond: 'Current — moderate (10–19 cigs / day)', pts: '~75', pos: true },
-                  { cond: 'Current — heavy (≥ 20 cigs / day)', pts: '100 (max)', pos: true },
-                ].map((r, i) => (
-                  <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
-                    <Text style={[styles.tableCell, { flex: 2.5 }]}>{r.cond}</Text>
-                    <Text style={[styles.tableCell, { flex: 1.4, fontWeight: '700',
-                      color: r.prot ? '#27AE60' : '#E74C3C' }]}>
-                      {r.pts}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
-                Weight 7% → max contribution = +7.0 pts to overall score. Baseline smoking history (status, cigarettes/day, pack-years, quit date) is used to calculate risk; daily logs refine it over time.
-              </Text>
-
-              {/* Alcohol */}
-              <Text style={styles.componentLabel}>Alcohol Intake</Text>
-              <Text style={{ fontSize: 12, color: colors.secondary, marginBottom: 8, lineHeight: 17 }}>Alcohol has a J-shaped relationship with diabetes risk — light drinking may be neutral or mildly protective, while heavy or binge drinking raises risk significantly.</Text>
-              <View style={styles.tableContainer}>
-                <View style={[styles.tableRow, styles.tableHeaderRow]}>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>Condition</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.4 }]}>Score (0–100)</Text>
-                </View>
-                {[
-                  { cond: 'No consumption', pts: '0', neutral: true },
-                  { cond: 'Light ≤ 7 drinks / week', pts: '−25 (protective)', prot: true },
-                  { cond: 'Moderate 7–14 drinks / week', pts: '+25', pos: true },
-                  { cond: 'Heavy > 14–21 drinks / week', pts: '+75', pos: true },
-                  { cond: 'Binge / very high (≥ 4–5 per occasion)', pts: '+100 (max)', pos: true },
-                ].map((r, i) => (
-                  <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
-                    <Text style={[styles.tableCell, { flex: 2.5 }]}>{r.cond}</Text>
-                    <Text style={[styles.tableCell, { flex: 1.4, fontWeight: '700',
-                      color: r.prot ? '#27AE60' : r.pos ? '#E74C3C' : colors.text }]}>
-                      {r.pts}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
-                Weight 4% → max contribution = +4.0 pts / min = −1.0 pts (protective) to overall score. Your baseline questionnaire answers (drinks/week, drinks per occasion, binge frequency) are used if daily logs are absent or fewer than 7 days exist.
-              </Text>
-
-              {/* BMI */}
-              <Text style={styles.componentLabel}>Body Mass Index (BMI)</Text>
-              <Text style={{ fontSize: 12, color: colors.secondary, marginBottom: 8, lineHeight: 17 }}>Excess body weight, especially abdominal fat, increases insulin resistance. This app uses WHO-recommended Asian BMI cutoffs, which are lower than standard Western cutoffs — important for Filipino users whose cardiometabolic risk rises at a lower BMI.</Text>
-              <View style={styles.tableContainer}>
-                <View style={[styles.tableRow, styles.tableHeaderRow]}>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.5 }]}>BMI Range (Asian / Filipino Standard)</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.4 }]}>Score (0–100)</Text>
-                </View>
-                {[
-                  { cond: 'Underweight  < 18.5', pts: '12', pos: true },
-                  { cond: 'Normal  18.5 – 22.9', pts: '0', prot: true },
-                  { cond: 'At Risk (overweight)  23.0 – 27.4', pts: '25', pos: true },
-                  { cond: 'Obese Class I  27.5 – 32.4', pts: '60', pos: true },
-                  { cond: 'Obese Class II  ≥ 32.5', pts: '100 (max)', pos: true },
-                ].map((r, i) => (
-                  <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
-                    <Text style={[styles.tableCell, { flex: 2.5 }]}>{r.cond}</Text>
-                    <Text style={[styles.tableCell, { flex: 1.4, fontWeight: '700',
-                      color: r.prot ? '#27AE60' : '#E74C3C' }]}>
-                      {r.pts}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
-                Weight 25% → max contribution = +25.0 pts to overall score. WHO Asian cutoffs used (WHO Expert Consultation, 2004): overweight ≥23, obese ≥27.5. This is the most impactful single factor. Calculated from your profile height and weight.
-              </Text>
-
-              {/* Age & Sex */}
-              <Text style={styles.componentLabel}>Age</Text>
-              <Text style={{ fontSize: 12, color: colors.secondary, marginBottom: 8, lineHeight: 17 }}>Diabetes risk increases with age due to declining pancreatic beta-cell function and reduced physical activity over time. This factor is non-modifiable.</Text>
-              <View style={styles.tableContainer}>
-                <View style={[styles.tableRow, styles.tableHeaderRow]}>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2 }]}>Age Range</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.4 }]}>Score (0–100)</Text>
-                </View>
-                {[
-                  { cond: '< 30 years', pts: '0', prot: true },
-                  { cond: '30 – 39 years', pts: '13', pos: true },
-                  { cond: '40 – 49 years', pts: '33', pos: true },
-                  { cond: '50 – 59 years', pts: '53', pos: true },
-                  { cond: '60 – 69 years', pts: '80', pos: true },
-                  { cond: '≥ 70 years', pts: '100 (max)', pos: true },
-                ].map((r, i) => (
-                  <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
-                    <Text style={[styles.tableCell, { flex: 2 }]}>{r.cond}</Text>
-                    <Text style={[styles.tableCell, { flex: 1.4, fontWeight: '700',
-                      color: r.prot ? '#27AE60' : '#E74C3C' }]}>
-                      {r.pts}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
-                Weight 15% → max contribution = +15.0 pts to overall score. Non-modifiable; taken from your profile date of birth.
-              </Text>
-
-              <Text style={styles.componentLabel}>Biological Sex</Text>
-              <Text style={{ fontSize: 12, color: colors.secondary, marginBottom: 8, lineHeight: 17 }}>Hormonal and metabolic differences between sexes contribute a small, non-modifiable influence on overall diabetes risk.</Text>
-              <View style={styles.tableContainer}>
-                <View style={[styles.tableRow, styles.tableHeaderRow]}>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2 }]}>Sex</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.4 }]}>Score (0–100)</Text>
-                </View>
-                {[
-                  { cond: 'Female', pts: '0', prot: true },
-                  { cond: 'Male', pts: '100 (max)', pos: true },
-                ].map((r, i) => (
-                  <View key={i} style={[styles.tableRow, i % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
-                    <Text style={[styles.tableCell, { flex: 2 }]}>{r.cond}</Text>
-                    <Text style={[styles.tableCell, { flex: 1.4, fontWeight: '700',
-                      color: r.prot ? '#27AE60' : '#E74C3C' }]}>
-                      {r.pts}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
-                Weight 1% → max contribution = +1.0 pt to overall score (males). Non-modifiable; taken from your profile.
-              </Text>
-
-              {/* ── Scientific References ── */}
-              <TouchableOpacity
-                style={styles.refsToggleRow}
-                onPress={() => setRefsVisible(!refsVisible)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.computationSectionLabel, { marginTop: 0, marginBottom: 0 }]}>Scientific References (APA)</Text>
-                <Icon
-                  name={refsVisible ? 'chevron-up' : 'chevron-down'}
-                  size={18}
-                  color={colors.primary}
-                />
-              </TouchableOpacity>
-              {refsVisible && <View style={styles.referencesContainer}>
-                {[
-                  {
-                    num: 1,
-                    authors: 'American Diabetes Association.',
-                    year: '2023',
-                    title: 'Standards of medical care in diabetes — 2023',
-                    journal: 'Diabetes Care, 46(Supplement_1)',
-                    url: 'https://doi.org/10.2337/dc23-Sint',
-                  },
-                  {
-                    num: 2,
-                    authors: 'Bellou, V., Belbasis, L., Tzoulaki, I., & Evangelou, E.',
-                    year: '2018',
-                    title: 'Risk factors for type 2 diabetes mellitus: An exposure-wide umbrella review of meta-analyses',
-                    journal: 'PLOS ONE, 13(3), e0194127',
-                    url: 'https://doi.org/10.1371/journal.pone.0194127',
-                  },
-                  {
-                    num: 3,
-                    authors: 'Knutson, K. L., Spiegel, K., Penev, P., & Van Cauter, E.',
-                    year: '2007',
-                    title: 'The metabolic consequences of sleep deprivation',
-                    journal: 'Sleep Medicine Reviews, 11(3), 163–178',
-                    url: 'https://doi.org/10.1016/j.smrv.2007.01.002',
-                  },
-                  {
-                    num: 4,
-                    authors: 'Cappuccio, F. P., D\'Elia, L., Strazzullo, P., & Miller, M. A.',
-                    year: '2010',
-                    title: 'Quantity and quality of sleep and incidence of type 2 diabetes: A systematic review and meta-analysis',
-                    journal: 'Diabetes Care, 33(2), 414–420',
-                    url: 'https://doi.org/10.2337/dc09-1124',
-                  },
-                  {
-                    num: 5,
-                    authors: 'Shan, Z., Ma, H., Xie, M., Yan, P., Guo, Y., Bao, W., Rong, Y., Jackson, C. L., Hu, F. B., & Liu, L.',
-                    year: '2015',
-                    title: 'Sleep duration and risk of type 2 diabetes: A meta-analysis of prospective studies',
-                    journal: 'Diabetes Care, 38(3), 529–537',
-                    url: 'https://doi.org/10.2337/dc14-2073',
-                  },
-                  {
-                    num: 6,
-                    authors: 'Aune, D., Norat, T., Leitzmann, M., Tonstad, S., & Vatten, L. J.',
-                    year: '2015',
-                    title: 'Physical activity and the risk of type 2 diabetes: A systematic review and dose-response meta-analysis',
-                    journal: 'European Journal of Epidemiology, 30(7), 529–542',
-                    url: 'https://doi.org/10.1007/s10654-015-0056-z',
-                  },
-                  {
-                    num: 7,
-                    authors: 'Tudor-Locke, C., Craig, C. L., Brown, W. J., Clemes, S. A., De Cocker, K., Giles-Corti, B., Hatano, Y., Inoue, S., Matsudo, S. M., Mutrie, N., Oppert, J.-M., Rowe, D. A., Schmidt, M. D., Schofield, G. M., Spence, J. C., Teixeira, P. J., Tully, M. A., & Blair, S. N.',
-                    year: '2011',
-                    title: 'How many steps/day are enough? For adults',
-                    journal: 'International Journal of Behavioral Nutrition and Physical Activity, 8, 79',
-                    url: 'https://doi.org/10.1186/1479-5868-8-79',
-                  },
-                  {
-                    num: 8,
-                    authors: 'Colberg, S. R., Sigal, R. J., Yardley, J. E., Riddell, M. C., Dunstan, D. W., Dempsey, P. C., Horton, E. S., Castorino, K., & Tate, D. F.',
-                    year: '2016',
-                    title: 'Physical activity/exercise and diabetes: A position statement of the American Diabetes Association',
-                    journal: 'Diabetes Care, 39(11), 2065–2079',
-                    url: 'https://doi.org/10.2337/dc16-1728',
-                  },
-                  {
-                    num: 9,
-                    authors: 'Willi, C., Bodenmann, P., Ghali, W. A., Faris, P. D., & Cornuz, J.',
-                    year: '2007',
-                    title: 'Active smoking and the risk of type 2 diabetes: A systematic review and meta-analysis',
-                    journal: 'JAMA, 298(22), 2654–2664',
-                    url: 'https://doi.org/10.1001/jama.298.22.2654',
-                  },
-                  {
-                    num: 10,
-                    authors: 'Pan, A., Wang, Y., Talaei, M., Hu, F. B., & Wu, T.',
-                    year: '2015',
-                    title: 'Relation of active, passive, and quitting smoking with incident type 2 diabetes: A systematic review and meta-analysis',
-                    journal: 'The Lancet Diabetes & Endocrinology, 3(12), 958–967',
-                    url: 'https://doi.org/10.1016/S2213-8587(15)00316-2',
-                  },
-                  {
-                    num: 11,
-                    authors: 'Baliunas, D. O., Taylor, B. J., Irving, H., Roerecke, M., Patra, J., Mohapatra, S., & Rehm, J.',
-                    year: '2009',
-                    title: 'Alcohol as a risk factor for type 2 diabetes: A systematic review and meta-analysis',
-                    journal: 'Diabetes Care, 32(11), 2123–2132',
-                    url: 'https://doi.org/10.2337/dc09-0227',
-                  },
-                  {
-                    num: 12,
-                    authors: 'Holst, C., Becker, U., Jørgensen, M. E., Grønbæk, M., & Tolstrup, J. S.',
-                    year: '2017',
-                    title: 'Alcohol drinking patterns and risk of diabetes: A cohort study of 70,551 men and women from the general Danish population',
-                    journal: 'Diabetologia, 60(10), 1941–1950',
-                    url: 'https://doi.org/10.1007/s00125-017-4359-3',
-                  },
-                  {
-                    num: 13,
-                    authors: 'Malik, V. S., Popkin, B. M., Bray, G. A., Després, J.-P., Willett, W. C., & Hu, F. B.',
-                    year: '2010',
-                    title: 'Sugar-sweetened beverages and risk of metabolic syndrome and type 2 diabetes: A meta-analysis',
-                    journal: 'Diabetes Care, 33(11), 2477–2483',
-                    url: 'https://doi.org/10.2337/dc10-1079',
-                  },
-                  {
-                    num: 14,
-                    authors: 'Yao, B., Fang, H., Xu, W., Yan, Y., Xu, H., Liu, Y., Mo, M., Zhang, H., & Zhao, Y.',
-                    year: '2014',
-                    title: 'Dietary fiber intake and risk of type 2 diabetes: A dose-response analysis of prospective studies',
-                    journal: 'European Journal of Nutrition, 53(2), 489–498',
-                    url: 'https://doi.org/10.1007/s00394-013-0567-7',
-                  },
-                  {
-                    num: 15,
-                    authors: 'Abdullah, A., Peeters, A., de Courten, M., & Stoelwinder, J.',
-                    year: '2010',
-                    title: 'The magnitude of association between overweight and obesity and the risk of diabetes: A meta-analysis of prospective cohort studies',
-                    journal: 'Diabetes Research and Clinical Practice, 89(3), 309–319',
-                    url: 'https://doi.org/10.1016/j.diabres.2010.04.012',
-                  },
-                  {
-                    num: 16,
-                    authors: 'Kautzky-Willer, A., Harreiter, J., & Pacini, G.',
-                    year: '2016',
-                    title: 'Sex and gender differences in risk, pathophysiology and complications of type 2 diabetes mellitus',
-                    journal: 'Endocrine Reviews, 37(3), 278–316',
-                    url: 'https://doi.org/10.1210/er.2015-1137',
-                  },
-                  {
-                    num: 17,
-                    authors: 'Knowler, W. C., Barrett-Connor, E., Fowler, S. E., Hamman, R. F., Lachin, J. M., Walker, E. A., & Nathan, D. M.',
-                    year: '2002',
-                    title: 'Reduction in the incidence of type 2 diabetes with lifestyle intervention or metformin',
-                    journal: 'New England Journal of Medicine, 346(6), 393–403',
-                    url: 'https://doi.org/10.1056/NEJMoa012512',
-                  },
-                  {
-                    num: 18,
-                    authors: 'Centers for Disease Control and Prevention.',
-                    year: '2020',
-                    title: 'National Diabetes Statistics Report, 2020',
-                    journal: 'U.S. Department of Health and Human Services',
-                    url: 'https://www.cdc.gov/diabetes/data/statistics-report/index.html',
-                  },
-                  {
-                    num: 19,
-                    authors: 'World Health Organization Expert Consultation.',
-                    year: '2004',
-                    title: 'Appropriate body-mass index for Asian populations and its implications for policy and intervention strategies',
-                    journal: 'The Lancet, 363(9403), 157–163',
-                    url: 'https://doi.org/10.1016/S0140-6736(03)15268-3',
-                  },
-                  {
-                    num: 20,
-                    authors: 'Yoon, K. H., Lee, J. H., Kim, J. W., Cho, J. H., Choi, Y. H., Ko, S. H., Zimmet, P., & Son, H. Y.',
-                    year: '2006',
-                    title: 'Epidemic obesity and type 2 diabetes in Asia',
-                    journal: 'The Lancet, 368(9548), 1681–1688',
-                    url: 'https://doi.org/10.1016/S0140-6736(06)69703-1',
-                  },
-                  {
-                    num: 21,
-                    authors: 'International Diabetes Federation.',
-                    year: '2021',
-                    title: 'IDF Diabetes Atlas (10th ed.)',
-                    journal: 'International Diabetes Federation',
-                    url: 'https://www.diabetesatlas.org',
-                  },
-                  {
-                    num: 22,
-                    authors: 'Food and Nutrition Research Institute – Department of Science and Technology (FNRI-DOST).',
-                    year: '2019',
-                    title: '2018 Expanded National Nutrition Survey (ENNS): Highlights',
-                    journal: 'Taguig City: FNRI-DOST, Republic of the Philippines',
-                    url: 'https://www.fnri.dost.gov.ph',
-                  },
-                ].map((ref) => (
-                  <View key={ref.num} style={styles.referenceItem}>
-                    <Text style={styles.referenceNum}>[{ref.num}]</Text>
-                    <View style={styles.referenceTextBlock}>
-                      <Text style={styles.referenceText}>
-                        {ref.authors} ({ref.year}). {ref.title}. <Text style={styles.referenceJournal}>{ref.journal}.</Text>
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => Linking.openURL(ref.url)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.referenceUrl}>{ref.url}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
-              </View>}
             </View>
           )}
         </View>
