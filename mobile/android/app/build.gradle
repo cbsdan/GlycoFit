@@ -147,19 +147,9 @@ android {
     }
 }
 
-// Force Health Connect SDK version to fix SDK Status 3
-configurations.all {
-    resolutionStrategy {
-        force "androidx.health.connect:connect-client:1.1.0-alpha12"
-    }
-}
-
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
-
-    // Force latest Health Connect SDK to fix SDK Status 3 issue
-    implementation("androidx.health.connect:connect-client:1.1.0-alpha12")
 
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
     def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";

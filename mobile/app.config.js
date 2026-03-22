@@ -62,7 +62,7 @@ export default ({ config }) => {
             compileSdkVersion: 35,
             targetSdkVersion: 35,
             buildToolsVersion: "35.0.0",
-            kotlinVersion: "1.9.24"
+            kotlinVersion: "2.0.21"
           }
         }
       ],
