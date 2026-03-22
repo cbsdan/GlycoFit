@@ -390,10 +390,10 @@ export default function ProfileScreen() {
           />
           <View style={styles.statItem}>
             <Text style={[styles.statValue, { color: theme.text }]}>
-              {physicianProfile?.rating?.toFixed(1) || '0.0'}
+              {physicianProfile?.years_of_experience || 0}
             </Text>
             <Text style={[styles.statLabel, { color: theme.secondary }]}>
-              Rating
+              Exp. (yrs)
             </Text>
           </View>
         </View>
@@ -458,17 +458,6 @@ export default function ProfileScreen() {
             </Text>
             <Text style={[styles.infoValue, { color: theme.text }]}>
               {physicianProfile?.license_number || 'Not set'}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.infoItem}>
-          <Ionicons name="briefcase" size={20} color={theme.secondary} />
-          <View style={styles.infoContent}>
-            <Text style={[styles.infoLabel, { color: theme.secondary }]}>
-              Experience
-            </Text>
-            <Text style={[styles.infoValue, { color: theme.text }]}>
-              {physicianProfile?.years_of_experience || 0} years
             </Text>
           </View>
         </View>

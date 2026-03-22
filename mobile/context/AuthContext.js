@@ -89,9 +89,15 @@ export const AuthProvider = ({ children }) => {
             }
             
             const result = await authService.getCurrentUser();
-            if (result) {
+            // Guard: only apply the result if Firebase still has the same user signed in.
+            // Without this check, the async backend call can complete after auth.signOut()
+            // during registration and incorrectly set isAuthenticated = true.
+            if (result && auth.currentUser && auth.currentUser.uid === firebaseUser.uid) {
               setUser(result);
               setIsAuthenticated(true);
+            } else if (!auth.currentUser) {
+              // Firebase was signed out while we were fetching — stay unauthenticated
+              console.log('[AuthContext] Firebase signed out before getCurrentUser completed — skipping');
             }
           }
         } catch (error) {

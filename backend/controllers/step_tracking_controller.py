@@ -219,8 +219,8 @@ class StepTrackingController:
             db = get_db()
             user_activity = UserActivity(db)
             
-            end_date = datetime.utcnow().date()
-            start_date = end_date - timedelta(days=days)
+            end_date = datetime.utcnow().date() + timedelta(days=1)  # +1 day buffer so records stored with local dates in UTC+ zones are included
+            start_date = end_date - timedelta(days=days + 1)
             
             logger.debug(
                 "get_summary: user_id=%s firebase_uid=%s date_range=%s to %s",

@@ -60,7 +60,9 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
       if (response.success) {
         toast.show('Disconnected from physician', 'success');
         setShowDisconnectModal(false);
-        navigation.goBack();
+        // Replace the current screen with PhysicianRouter so it re-checks
+        // for an active physician and lands on FindPhysicianScreen.
+        navigation.replace('PhysicianRouter');
       }
     } catch (error) {
       console.error('Error disconnecting:', error);
@@ -541,10 +543,19 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
   };
 
   const renderHistory = () => {
-    const pending = consultations.filter(c => c.status === 'pending');
-    const approved = consultations.filter(c => c.status === 'approved' || c.status === 'scheduled');
+    const isPastConsultation = (c) => {
+      const d = c.scheduled_date;
+      if (!d) return false;
+      return new Date(d) < new Date();
+    };
+
+    const pending = consultations.filter(c => c.status === 'pending' && !isPastConsultation(c));
+    const approved = consultations.filter(c => (c.status === 'approved' || c.status === 'scheduled') && !isPastConsultation(c));
     const cancelled = consultations.filter(c => c.status === 'cancelled');
-    const completed = consultations.filter(c => c.status === 'completed');
+    const completed = consultations.filter(c =>
+      c.status === 'completed' ||
+      ((c.status === 'pending' || c.status === 'approved' || c.status === 'scheduled') && isPastConsultation(c))
+    );
     const rejected = consultations.filter(c => c.status === 'rejected');
 
     const handleSubmitRequest = async () => {

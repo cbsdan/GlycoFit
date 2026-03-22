@@ -14,6 +14,7 @@ const MAX_RETRIES = 5;
 
 /**
  * Initialize Socket.IO connection
+ * Returns only after the socket is actually connected.
  */
 export const initializeSocket = async () => {
   try {
@@ -60,6 +61,18 @@ export const initializeSocket = async () => {
       console.error('Socket error:', error);
     });
 
+    // Wait for the socket to be actually connected before returning.
+    // Without this, joinConversation() is called while socket.connected is
+    // still false, so the room-join is silently skipped and no live events
+    // are received.
+    if (!socket.connected) {
+      await new Promise((resolve) => {
+        socket.once('connect', resolve);
+        // Safety timeout: resolve anyway after 10 s so the screen doesn't hang
+        setTimeout(resolve, 10000);
+      });
+    }
+
     return socket;
   } catch (error) {
     console.error('Error initializing socket:', error);
@@ -89,11 +102,18 @@ export const disconnectSocket = () => {
  * Join a conversation room
  */
 export const joinConversation = (conversationId, userRole) => {
-  if (socket && socket.connected) {
+  if (!socket) return;
+  const doJoin = () => {
     socket.emit('join_conversation', {
       conversation_id: conversationId,
       user_role: userRole
     });
+    console.log('Joined conversation room:', conversationId);
+  };
+  if (socket.connected) {
+    doJoin();
+  } else {
+    socket.once('connect', doJoin);
   }
 };
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../context/ThemeContext';
@@ -73,28 +74,41 @@ const SettingsStack = () => {
 // Physician Router - checks if patient has an active physician and routes accordingly
 const PhysicianRouter = ({ navigation }) => {
   const [status, setStatus] = React.useState('loading'); // 'loading' | 'no-physician'
+  const isInitialMount = React.useRef(true);
+
+  const checkPhysician = React.useCallback(async (forceRefresh = false) => {
+    try {
+      const response = await api.getMyPhysician(forceRefresh);
+      if (response.success) {
+        const activePhysicians = (response.data || []).filter(
+          item => item.relationship.status === 'active'
+        );
+        if (activePhysicians.length > 0) {
+          // Replace the router screen so back button doesn't return to this router
+          navigation.replace('PhysicianCommunication', { relationship: activePhysicians[0] });
+          return; // stay in 'loading' state — component will unmount during replace
+        }
+      }
+    } catch (error) {
+      console.error('Error checking physician:', error);
+    }
+    setStatus('no-physician');
+  }, [navigation]);
 
   React.useEffect(() => {
-    const checkPhysician = async () => {
-      try {
-        const response = await api.getMyPhysician();
-        if (response.success) {
-          const activePhysicians = (response.data || []).filter(
-            item => item.relationship.status === 'active'
-          );
-          if (activePhysicians.length > 0) {
-            // Replace the router screen so back button doesn't return to this router
-            navigation.replace('PhysicianCommunication', { relationship: activePhysicians[0] });
-            return; // stay in 'loading' state — component will unmount during replace
-          }
-        }
-      } catch (error) {
-        console.error('Error checking physician:', error);
-      }
-      setStatus('no-physician');
-    };
-    checkPhysician();
+    checkPhysician(false);
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (isInitialMount.current) {
+        isInitialMount.current = false;
+        return;
+      }
+      setStatus('loading');
+      checkPhysician(true);
+    }, [checkPhysician])
+  );
 
   if (status === 'loading') {
     return (

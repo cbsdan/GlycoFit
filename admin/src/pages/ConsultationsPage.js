@@ -72,10 +72,16 @@ function ConsultationsPage() {
   const statusColor = (s) => {
     if (!s) return 'default';
     const sl = s.toLowerCase();
-    if (sl === 'completed' || sl === 'done') return 'success';
+    if (sl === 'completed' || sl === 'done' || sl === 'okay') return 'success';
     if (sl === 'pending' || sl === 'scheduled') return 'warning';
     if (sl === 'cancelled' || sl === 'rejected') return 'error';
     return 'info';
+  };
+
+  const isPastAppointment = (a) => {
+    const d = a.date || a.scheduled_date || a.appointment_date;
+    if (!d) return false;
+    return new Date(d) < new Date();
   };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress size={60} /></Box>;
@@ -185,15 +191,21 @@ function ConsultationsPage() {
               <TableBody>
                 {appointments.length === 0 ? (
                   <TableRow><TableCell colSpan={5} align="center">No appointments</TableCell></TableRow>
-                ) : appointments.map((a, i) => (
-                  <TableRow key={i} hover>
-                    <TableCell>{a.patient_name || a.patient || '—'}</TableCell>
-                    <TableCell>{a.physician_name || a.physician || '—'}</TableCell>
-                    <TableCell>{a.date ? new Date(a.date).toLocaleString() : '—'}</TableCell>
-                    <TableCell><Chip label={a.status || '—'} size="small" color={statusColor(a.status)} variant="outlined" /></TableCell>
-                    <TableCell>{a.type || a.appointment_type || '—'}</TableCell>
-                  </TableRow>
-                ))}
+                ) : appointments.map((a, i) => {
+                  const past = isPastAppointment(a);
+                  const displayStatus = past ? 'completed' : (a.status || '—');
+                  return (
+                    <TableRow key={i} hover sx={past ? { bgcolor: '#f5f5f5', opacity: 0.65 } : {}}>
+                      <TableCell>{a.patient_name || a.patient || '—'}</TableCell>
+                      <TableCell>{a.physician_name || a.physician || '—'}</TableCell>
+                      <TableCell sx={past ? { color: 'text.disabled' } : {}}>
+                        {a.date ? new Date(a.date).toLocaleString() : '—'}
+                      </TableCell>
+                      <TableCell><Chip label={displayStatus} size="small" color={statusColor(displayStatus)} variant="outlined" /></TableCell>
+                      <TableCell>{a.type || a.appointment_type || '—'}</TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>

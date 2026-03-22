@@ -38,8 +38,12 @@ def get_available_physicians():
                     relationship_status = rel.status
                     break
 
+            # Count only active (non-rejected, non-duplicate) patient relationships
+            active_patient_count = len(PatientPhysician.get_physician_patients(physician._id, status='active'))
+
             physician_data = {
                 **physician.to_safe_dict(),
+                'total_patients': active_patient_count,
                 'user': {
                     'first_name': physician_user.first_name,
                     'last_name': physician_user.last_name,

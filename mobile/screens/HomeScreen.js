@@ -151,10 +151,13 @@ const HomeScreen = ({ navigation }) => {
         
         if (summaryData?.recent_records && summaryData.recent_records.length > 0) {
           console.log('✅ Found recent_records:', summaryData.recent_records.length, 'records');
-          // Only use a record if it is actually from today — same date-check as StepCounterScreen
-          const todayStr = new Date().toISOString().split('T')[0];
+          // Use the device's LOCAL date for comparison. Records are stored with the
+          // local date as a plain YYYY-MM-DD prefix, so slicing is safer than
+          // converting through UTC (which shifts the date for UTC+ timezones).
+          const now = new Date();
+          const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
           const todayRecord = summaryData.recent_records.find(
-            r => new Date(r.date).toISOString().split('T')[0] === todayStr
+            r => (r.date || '').split('T')[0] === todayStr
           );
           console.log('📊 Today record:', todayRecord || 'none');
 
@@ -166,7 +169,19 @@ const HomeScreen = ({ navigation }) => {
             };
             console.log('✅ Got today\'s steps from backend:', stepsData);
           } else {
-            console.log('⚠️ No backend record for today — steps will show N/A or from sensor');
+            // No data for today — use the most recent synced record so the home screen
+            // always shows the latest available instead of N/A.
+            const latestRecord = summaryData.recent_records.find(r => r.steps > 0);
+            if (latestRecord) {
+              stepsData = {
+                steps: latestRecord.steps,
+                source: 'backend',
+                date: latestRecord.date
+              };
+              console.log('📅 Using latest synced record (not today):', stepsData);
+            } else {
+              console.log('⚠️ No non-zero backend records found — will try device fallbacks');
+            }
           }
         } else {
           console.log('⚠️ Backend returned empty or no recent_records');
@@ -204,8 +219,27 @@ const HomeScreen = ({ navigation }) => {
           console.log('⚠️ Health Connect failed:', hcError.message || hcError);
         }
       }
-      
-      // 3. Set the health data with steps (or null if no data)
+
+      // 3. Final fallback: phone sensor / AsyncStorage (same source StepCounterScreen uses)
+      if (!stepsData || stepsData.steps === 0) {
+        try {
+          // If sensor isn't actively running, reload today's count from AsyncStorage
+          if (!stepDetectionService.isRunning) {
+            await stepDetectionService.loadTodaySteps();
+          }
+          const sensorSteps = stepDetectionService.getStepCount();
+          if (sensorSteps > 0) {
+            stepsData = { steps: sensorSteps, source: 'sensor' };
+            console.log('✅ Got steps from phone sensor/storage:', sensorSteps);
+          } else {
+            console.log('⚠️ Phone sensor also returned 0 steps');
+          }
+        } catch (sensorError) {
+          console.log('⚠️ Phone sensor steps not available:', sensorError?.message);
+        }
+      }
+
+      // 4. Set the health data with steps (or null if no data)
       if (stepsData && stepsData.steps > 0) {
         setHealthData({
           steps: stepsData.steps,
@@ -388,25 +422,47 @@ const HomeScreen = ({ navigation }) => {
 
     // 2. Calories Burned - Calculate from steps
     let caloriesBurned = 'N/A';
-    let caloriesPeriod = 'today';
-    
+
     console.log('🔍 HomeScreen stats - healthData:', healthData);
-    
+
     // Get steps from healthData (direct value)
-    const todaySteps = healthData?.steps || 0;
-    
-    if (todaySteps > 0) {
+    const stepCount = healthData?.steps || 0;
+
+    // Build a human-readable date label for the steps/calories cards
+    const getStepsDateLabel = () => {
+      const rawDate = healthData?.date;
+      if (!rawDate) return 'today';
+      const recordDateStr = (rawDate || '').split('T')[0]; // e.g. "2026-03-22"
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      if (recordDateStr === todayStr) return 'today';
+      // Check yesterday
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+      if (recordDateStr === yesterdayStr) return 'yesterday';
+      // Otherwise show short date e.g. "Mar 20"
+      try {
+        const d = new Date(recordDateStr + 'T00:00:00');
+        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      } catch (_) {
+        return recordDateStr;
+      }
+    };
+    const stepsDateLabel = stepCount > 0 ? getStepsDateLabel() : '';
+
+    if (stepCount > 0) {
       // Calculate calories from steps
-      const totalCalories = stepDetectionService.calculateCalories(todaySteps);
+      const totalCalories = stepDetectionService.calculateCalories(stepCount);
       caloriesBurned = totalCalories * 0.7; // ~70% as active calories
-      console.log('🔥 Calculated', caloriesBurned, 'active calories from', todaySteps, 'steps');
+      console.log('🔥 Calculated', caloriesBurned, 'active calories from', stepCount, 'steps');
     } else {
       console.log('⚠️ No steps data - showing N/A for calories');
     }
-    
+
     stats.push({
       id: 'calories-burned',
-      title: caloriesBurned !== 'N/A' ? `Calories (${caloriesPeriod})` : 'Calories Burned',
+      title: caloriesBurned !== 'N/A' ? `Calories (${stepsDateLabel})` : 'Calories Burned',
       value: caloriesBurned !== 'N/A' ? Math.round(caloriesBurned).toLocaleString() : 'N/A',
       unit: caloriesBurned !== 'N/A' ? 'kcal' : '',
       status: 'good',
@@ -416,14 +472,13 @@ const HomeScreen = ({ navigation }) => {
     });
 
     // 3. Steps - Get from healthData
-    const steps = todaySteps > 0 ? todaySteps : 'N/A';
-    const stepsPeriod = steps !== 'N/A' ? 'today' : '';
-    
-    console.log('👣 Steps for display:', steps, stepsPeriod ? `(${stepsPeriod})` : '');
-    
+    const steps = stepCount > 0 ? stepCount : 'N/A';
+
+    console.log('👣 Steps for display:', steps, stepsDateLabel ? `(${stepsDateLabel})` : '');
+
     stats.push({
       id: 'steps',
-      title: stepsPeriod ? `Steps (${stepsPeriod})` : 'Steps',
+      title: stepsDateLabel ? `Steps (${stepsDateLabel})` : 'Steps',
       value: steps !== 'N/A' ? Math.round(steps).toLocaleString() : 'N/A',
       unit: steps !== 'N/A' ? 'steps' : '',
       status: 'good',

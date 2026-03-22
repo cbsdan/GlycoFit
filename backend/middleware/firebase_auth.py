@@ -54,34 +54,6 @@ def firebase_auth_required(f):
                 
                 logging.info(f"Firebase authentication successful for user: {firebase_uid}")
                 
-            except ValueError as ve:
-                # Handle clock skew errors specifically
-                error_msg = str(ve)
-                if "Token used too early" in error_msg or "clock" in error_msg.lower():
-                    logging.warning(f"Clock skew detected in token verification: {error_msg}")
-                    # Try one more time after waiting for clock sync (up to 2 retries)
-                    import time
-                    for retry in range(2):
-                        try:
-                            time.sleep(0.5 * (retry + 1))  # Progressive delay: 0.5s, then 1s
-                            decoded_token = verify_firebase_token(token)
-                            firebase_uid = decoded_token.get('uid')
-                            
-                            if firebase_uid:
-                                user = User.find_by_uid(firebase_uid)
-                                if user and not user.is_currently_disabled():
-                                    request.firebase_user = decoded_token
-                                    request.current_user = user
-                                    request.current_user_id = str(user._id)
-                                    logging.info(f"Firebase authentication successful after retry {retry + 1} for user: {firebase_uid}")
-                                    return f(*args, **kwargs)
-                        except Exception as retry_error:
-                            if retry == 1:  # Last retry failed
-                                logging.warning(f"Final retry failed: {str(retry_error)}")
-                            continue
-                
-                logging.warning(f"Firebase token verification failed: {error_msg}")
-                return jsonify({'error': 'Invalid or expired token'}), 401
             except Exception as e:
                 logging.warning(f"Firebase token verification failed: {str(e)}")
                 return jsonify({'error': 'Invalid or expired token'}), 401
@@ -139,34 +111,6 @@ def firebase_admin_required(f):
                 
                 logging.info(f"Firebase admin authentication successful for user: {firebase_uid}")
                 
-            except ValueError as ve:
-                # Handle clock skew errors specifically
-                error_msg = str(ve)
-                if "Token used too early" in error_msg or "clock" in error_msg.lower():
-                    logging.warning(f"Clock skew detected in admin token verification: {error_msg}")
-                    # Try one more time after waiting for clock sync (up to 2 retries)
-                    import time
-                    for retry in range(2):
-                        try:
-                            time.sleep(0.5 * (retry + 1))  # Progressive delay: 0.5s, then 1s
-                            decoded_token = verify_firebase_token(token)
-                            firebase_uid = decoded_token.get('uid')
-                            
-                            if firebase_uid:
-                                user = User.find_by_uid(firebase_uid)
-                                if user and user.role == 'admin' and not user.is_currently_disabled():
-                                    request.firebase_user = decoded_token
-                                    request.current_user = user
-                                    request.current_user_id = str(user._id)
-                                    logging.info(f"Firebase admin authentication successful after retry {retry + 1} for user: {firebase_uid}")
-                                    return f(*args, **kwargs)
-                        except Exception as retry_error:
-                            if retry == 1:  # Last retry failed
-                                logging.warning(f"Final admin retry failed: {str(retry_error)}")
-                            continue
-                
-                logging.warning(f"Firebase admin token verification failed: {error_msg}")
-                return jsonify({'error': 'Invalid or expired token'}), 401
             except Exception as e:
                 logging.warning(f"Firebase admin token verification failed: {str(e)}")
                 return jsonify({'error': 'Invalid or expired token'}), 401

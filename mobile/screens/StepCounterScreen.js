@@ -575,13 +575,15 @@ const StepCounterScreen = ({ navigation }) => {
       if (!silent) console.log('📤 Syncing to backend...');
 
       const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      // Build a local-date string (YYYY-MM-DD) so the backend stores the date in the
+      // device's timezone, not the UTC equivalent of local midnight.
+      const localDateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
       // Use activityDataRef to get the freshest values — activityData state may be stale
       // if updateTodaySteps was just called (React state updates are async)
       const latestActivity = activityDataRef.current;
       const dataToSync = {
-        date: today.toISOString(),
+        date: localDateStr,
         steps: latestActivity.steps,
         distance: latestActivity.distance,
         activeCalories: latestActivity.activeCalories,

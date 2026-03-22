@@ -67,7 +67,7 @@ const UniversalScreenWrapper = ({ children }) => {
 
 // Navigation component that handles auth state
 function AppNavigator() {
-  const { isAuthenticated, isLoading, user, refreshUserData } = useAuth();
+  const { isAuthenticated, isLoading, user, refreshUserData, updateUserData } = useAuth();
   const { colors, isDarkMode } = useTheme();
   const navigationRef = React.useRef();
   const [showWelcome, setShowWelcome] = useState(false);
@@ -126,16 +126,27 @@ function AppNavigator() {
       // Check from user object if disclaimer has been accepted
       const disclaimerAccepted = user?.disclaimer_accepted;
       
-      // Show disclaimer if not accepted (null or false)
-      const shouldShowDisclaimer = disclaimerAccepted !== true;
+      // Also check for the persistent new-registration flag written by authService.register().
+      // This is the primary guard against race conditions where onAuthStateChanged events
+      // during registration can set lastCheckedUserId before the manual login occurs.
+      const pendingOnboardingUid = await AsyncStorage.getItem('@pending_onboarding_uid');
+      const isNewRegistration = !!pendingOnboardingUid && pendingOnboardingUid === user?.uid;
+
+      // Show disclaimer if not accepted OR if this is a brand-new registration
+      const shouldShowDisclaimer = isNewRegistration || disclaimerAccepted !== true;
       
       setShowDisclaimer(shouldShowDisclaimer);
       
       // Mark this user as checked after we've determined the status
       lastCheckedUserId.current = user?.uid;
       
-      // If disclaimer already accepted, proceed to check health metrics
-      if (!shouldShowDisclaimer) {
+      if (shouldShowDisclaimer) {
+        // New user (disclaimer not yet accepted): clear any per-device onboarding
+        // skip flags left by a previous user on the same device so this user
+        // always goes through the full onboarding flow.
+        await AsyncStorage.multiRemove([HEALTH_METRICS_SKIPPED_KEY, ASSESSMENT_SKIPPED_KEY]);
+      } else {
+        // Disclaimer already accepted — proceed to check health metrics
         await checkHealthMetricsStatus();
       }
     } catch (error) {
@@ -152,11 +163,15 @@ function AppNavigator() {
     // First hide the disclaimer screen
     setShowDisclaimer(false);
     
-    // Refresh user data to get updated disclaimer_accepted status
-    try {
-      await refreshUserData();
-    } catch (error) {
-      console.error('Error refreshing user data:', error);
+    // Clear the new-registration flag now that onboarding has started
+    await AsyncStorage.removeItem('@pending_onboarding_uid');
+    
+    // Persist disclaimer_accepted: true into the locally-stored user object so that
+    // on the next app reload the stored user already reflects acceptance.
+    // (refreshUserData reads from AsyncStorage, not the backend, so without this
+    // the stored user would still have disclaimer_accepted: null after a reload.)
+    if (user) {
+      updateUserData({ ...user, disclaimer_accepted: true });
     }
     
     // After disclaimer is accepted, check health metrics

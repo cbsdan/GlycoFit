@@ -161,6 +161,19 @@ export default function PatientsScreen() {
     }
   };
 
+  const handleRejectRequest = async (requestId) => {
+    try {
+      const response = await patientAPI.declineRequest(requestId);
+      if (response.success) {
+        showToast('Patient request declined', 'success');
+        fetchPatients();
+      }
+    } catch (error) {
+      console.error('Error rejecting request:', error);
+      showToast('Failed to reject request', 'error');
+    }
+  };
+
   const handleScheduleRequest = (patient) => {
     setSchedulingPatient(patient);
     setScheduleDate(new Date());
@@ -230,6 +243,12 @@ export default function PatientsScreen() {
           (selectedTab === 'rejected' && patient._listStatus === 'rejected') ||
           (selectedTab === 'disconnected' && patient._listStatus === 'disconnected');
     return matchesSearch && matchesTab;
+  }).sort((a, b) => {
+    const getLatestDate = (p) => {
+      const d = p.acceptance_date || p.request_date || p.updated_at || p.created_at || null;
+      return d ? new Date(d).getTime() : 0;
+    };
+    return getLatestDate(b) - getLatestDate(a);
   });
 
   const getGlucoseColor = (level) => {
@@ -469,11 +488,10 @@ export default function PatientsScreen() {
                         <Text style={styles.actionButtonText}>Accept</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.declineButton, { borderColor: theme.primary }]}
-                        onPress={() => handleScheduleRequest(patient)}
+                        style={[styles.declineButton, { borderColor: theme.error }]}
+                        onPress={() => handleRejectRequest(patient._id || patient.id)}
                       >
-                        <Ionicons name="calendar-outline" size={14} color={theme.primary} style={{ marginRight: 4 }} />
-                        <Text style={[styles.declineText, { color: theme.primary }]}>Schedule</Text>
+                        <Text style={[styles.declineText, { color: theme.error }]}>Reject</Text>
                       </TouchableOpacity>
                     </View>
                   </TouchableOpacity>
@@ -847,6 +865,7 @@ const styles = StyleSheet.create({
   listContainer: {
     flex: 1,
     padding: 16,
+    marginBottom: 16,
   },
   patientCard: {
     padding: 16,

@@ -238,12 +238,15 @@ def get_patient_soap_notes(patient_id):
 
         query = {
             'patient_id': ObjectId(patient_id),
-            'physician_id': physician._id,  # Scoped to this physician only
-            'consultation_mode': {'$in': ['quick_vitals', 'full']}
+            'consultation_mode': {'$in': ['quick_vitals', 'full']},
+            '$or': [
+                {'physician_id': physician._id},  # Notes authored by this physician
+                {'source': 'user'}                 # Vitals self-logged by the patient
+            ]
         }
 
         notes_data = list(
-            db.consultations.find(query).sort('created_at', -1).limit(50)
+            db.consultations.find(query).sort('created_at', -1).limit(100)
         )
 
         results = []

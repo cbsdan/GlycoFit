@@ -182,7 +182,16 @@ export const authService = {
       const response = await api.post('/auth/register', formData, config);
       
       if (response.data.success) {
-        await storeUserData(idToken, response.data.user);
+        // Persist a flag so App.js forces the full onboarding flow (disclaimer +
+        // health metrics) on the very first login, regardless of any Firebase
+        // onAuthStateChanged race conditions during registration.
+        const newUid = response.data.user?.uid || '';
+        if (newUid) {
+          await AsyncStorage.setItem('@pending_onboarding_uid', newUid);
+        }
+        // Sign out from Firebase so the auth state is clean before the user
+        // explicitly logs in.
+        await auth.signOut();
         return {
           success: true,
           user: response.data.user
@@ -2954,7 +2963,7 @@ export const getStepSummary = async (days = 7, forceRefresh = false) => {
   return await CacheService.getData(
     `step_summary_${days}d`,
     () => getStepSummaryUncached(days),
-    { ...CACHE_CONFIG.risk_assessment, forceRefresh }
+    { ...CACHE_CONFIG.step_summary, forceRefresh }
   );
 };
 

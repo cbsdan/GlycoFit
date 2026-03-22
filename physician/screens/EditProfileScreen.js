@@ -19,7 +19,7 @@ import { physicianAPI } from '../services/api';
 
 export default function EditProfileScreen({ physicianProfile, onClose }) {
   const { colors: theme } = useTheme();
-  const { user } = useAuth();
+  const { user, updateUserData } = useAuth();
   const toast = useToast();
 
   const [loading, setLoading] = useState(false);
@@ -38,6 +38,12 @@ export default function EditProfileScreen({ physicianProfile, onClose }) {
     try {
       setLoading(true);
 
+      // Update user first/last name
+      const userRes = await physicianAPI.updateUserProfile({
+        first_name: formData.first_name.trim(),
+        last_name: formData.last_name.trim(),
+      });
+
       // Update physician-specific info
       const physicianData = {
         specialization: formData.specialization,
@@ -53,6 +59,14 @@ export default function EditProfileScreen({ physicianProfile, onClose }) {
       console.log('Update response:', physicianRes);
 
       if (physicianRes.success) {
+        // Refresh cached user data with updated name
+        const updatedUser = {
+          ...user,
+          first_name: formData.first_name.trim(),
+          last_name: formData.last_name.trim(),
+        };
+        updateUserData(updatedUser);
+
         toast.success('Profile updated successfully');
         onClose(true); // Pass true to indicate update was successful
       } else {

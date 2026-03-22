@@ -267,6 +267,16 @@ export const physicianAPI = {
     }
   },
 
+  updateUserProfile: async (data) => {
+    try {
+      const response = await api.put('/auth/profile', data);
+      return response.data;
+    } catch (error) {
+      console.error('Update user profile error:', error);
+      throw error;
+    }
+  },
+
   updateAvailability: async (data) => {
     try {
       const response = await api.put('/physician/availability', data);

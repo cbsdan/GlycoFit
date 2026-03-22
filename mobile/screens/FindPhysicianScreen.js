@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -47,16 +48,28 @@ const FindPhysicianScreen = ({ navigation }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
+  const isInitialMount = useRef(true);
+
   useEffect(() => {
-    loadData();
+    loadData(false);
   }, []);
 
-  const loadData = async () => {
+  useFocusEffect(
+    useCallback(() => {
+      if (isInitialMount.current) {
+        isInitialMount.current = false;
+        return;
+      }
+      loadData(true);
+    }, [])
+  );
+
+  const loadData = async (forceRefresh = false) => {
     try {
       setLoading(true);
       await Promise.all([
-        fetchAvailablePhysicians(),
-        fetchMyPhysicians()
+        fetchAvailablePhysicians(forceRefresh),
+        fetchMyPhysicians(forceRefresh)
       ]);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -68,13 +81,13 @@ const FindPhysicianScreen = ({ navigation }) => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   };
 
-  const fetchAvailablePhysicians = async () => {
+  const fetchAvailablePhysicians = async (forceRefresh = false) => {
     try {
-      const response = await api.getAvailablePhysicians();
+      const response = await api.getAvailablePhysicians(forceRefresh);
       if (response.success) {
         setAllPhysicians(response.data || []);
       }
@@ -83,9 +96,9 @@ const FindPhysicianScreen = ({ navigation }) => {
     }
   };
 
-  const fetchMyPhysicians = async () => {
+  const fetchMyPhysicians = async (forceRefresh = false) => {
     try {
-      const response = await api.getMyPhysician();
+      const response = await api.getMyPhysician(forceRefresh);
       if (response.success) {
         const data = response.data || [];
         setMyPhysicians(data.filter(item => item.relationship.status === 'active'));
@@ -266,12 +279,6 @@ const FindPhysicianScreen = ({ navigation }) => {
 
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
-                <Icon name="star" size={14} color="#F39C12" />
-                <Text style={[styles.statText, { color: theme.secondary }]}>
-                  {physician.rating.toFixed(1)}
-                </Text>
-              </View>
-              <View style={styles.statItem}>
                 <Icon name="account-group" size={14} color={theme.secondary} />
                 <Text style={[styles.statText, { color: theme.secondary }]}>
                   {physician.total_patients} patients
@@ -280,10 +287,18 @@ const FindPhysicianScreen = ({ navigation }) => {
               <View style={styles.statItem}>
                 <Icon name="calendar-check" size={14} color={theme.secondary} />
                 <Text style={[styles.statText, { color: theme.secondary }]}>
-                  {physician.years_of_experience} years
+                  {physician.years_of_experience} yrs exp
                 </Text>
               </View>
             </View>
+
+            {physician.consultation_fee !== undefined && physician.consultation_fee !== null && (
+              <View style={styles.consultationFeeRow}>
+                <Text style={[styles.consultationFeeText, { color: '#27AE60' }]}>
+                  ₱{physician.consultation_fee} / consultation
+                </Text>
+              </View>
+            )}
 
             {physician.bio && (
               <Text style={[styles.bio, { color: theme.secondary }]} numberOfLines={2}>
@@ -293,7 +308,7 @@ const FindPhysicianScreen = ({ navigation }) => {
 
             {physician.languages && physician.languages.length > 0 && (
               <View style={styles.languagesContainer}>
-                {physician.languages.slice(0, 3).map((lang, index) => (
+                {physician.languages.map((lang, index) => (
                   <View key={index} style={[styles.languageTag, { backgroundColor: theme.background }]}>
                     <Text style={[styles.languageText, { color: theme.secondary }]}>{lang}</Text>
                   </View>
@@ -918,15 +933,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginHorizontal: 20,
     marginBottom: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
   },
   searchInput: {
     flex: 1,
     marginLeft: 12,
-    fontSize: 16,
+    fontSize: 13,
   },
   content: {
     flex: 1,
@@ -945,6 +960,9 @@ const styles = StyleSheet.create({
   avatarContainer: {
     position: 'relative',
     marginRight: 12,
+    width: 60,
+    height: 60,
+    alignSelf: 'flex-start',
   },
   avatar: {
     width: 60,
@@ -1001,6 +1019,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginLeft: 4,
   },
+  consultationFeeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  consultationFeeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 5,
+  },
   bio: {
     fontSize: 13,
     lineHeight: 18,
@@ -1011,14 +1039,14 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   languageTag: {
-    paddingHorizontal: 8,
+    paddingRight: 8,
     paddingVertical: 4,
     borderRadius: 6,
     marginRight: 6,
     marginTop: 4,
   },
   languageText: {
-    fontSize: 11,
+    fontSize: 12,
   },
   actionContainer: {
     marginTop: 8,

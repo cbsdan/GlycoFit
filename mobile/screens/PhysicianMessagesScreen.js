@@ -180,6 +180,17 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
       };
       
       setMessages(prev => {
+        // If this is our own message echoed back from socket, replace the optimistic temp
+        if (newMessage.sender === 'patient') {
+          const tempIdx = prev.findIndex(
+            m => typeof m.id === 'string' && m.id.startsWith('temp_') && m.text === newMessage.text
+          );
+          if (tempIdx !== -1) {
+            const updated = [...prev];
+            updated[tempIdx] = newMessage;
+            return updated;
+          }
+        }
         // Check if message already exists
         if (prev.some(m => m.id === newMessage.id)) {
           return prev;
@@ -334,6 +345,19 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
     setMessageText('');
     setSending(true);
 
+    // Optimistic UI: add message immediately so the user sees it right away
+    const tempId = `temp_${Date.now()}`;
+    const tempMessage = {
+      id: tempId,
+      text: content,
+      sender: 'patient',
+      timestamp: new Date().toISOString(),
+      read: false,
+      messageType: 'text',
+    };
+    setMessages(prev => [...prev, tempMessage]);
+    setShouldScrollToEnd(true);
+
     try {
       const senderId = user?._id || user?.id;
       
@@ -347,7 +371,22 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
 
       // If socket failed, use HTTP fallback
       if (!socketSent) {
-        await api.sendChatMessage(conversationId, content, 'patient');
+        const response = await api.sendChatMessage(conversationId, content, 'patient');
+        if (response?.success && response?.message) {
+          const realMessage = {
+            id: response.message._id,
+            text: response.message.content,
+            sender: response.message.sender_role,
+            timestamp: response.message.created_at,
+            read: response.message.read,
+            messageType: response.message.message_type,
+          };
+          setMessages(prev => {
+            const filtered = prev.filter(m => m.id !== tempId);
+            if (filtered.some(m => m.id === realMessage.id)) return filtered;
+            return [...filtered, realMessage];
+          });
+        }
       }
       
       // Stop typing indicator
@@ -360,6 +399,8 @@ const PhysicianMessagesScreen = ({ route, navigation }) => {
       console.error('Error sending message:', error);
       // Restore message if failed
       setMessageText(content);
+      // Remove the optimistic message on error
+      setMessages(prev => prev.filter(m => m.id !== tempId));
     } finally {
       setSending(false);
     }

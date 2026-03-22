@@ -179,6 +179,17 @@ export default function PatientChatScreen({ route, navigation }) {
       };
       
       setMessages(prev => {
+        // If this is our own message echoed back from socket, replace the optimistic temp
+        if (newMessage.sender === 'physician') {
+          const tempIdx = prev.findIndex(
+            m => typeof m.id === 'string' && m.id.startsWith('temp_') && m.text === newMessage.text
+          );
+          if (tempIdx !== -1) {
+            const updated = [...prev];
+            updated[tempIdx] = newMessage;
+            return updated;
+          }
+        }
         if (prev.some(m => m.id === newMessage.id)) {
           return prev;
         }
@@ -332,6 +343,19 @@ export default function PatientChatScreen({ route, navigation }) {
     setMessageText('');
     setSending(true);
 
+    // Optimistic UI: add message immediately so the user sees it right away
+    const tempId = `temp_${Date.now()}`;
+    const tempMessage = {
+      id: tempId,
+      text: content,
+      sender: 'physician',
+      timestamp: new Date().toISOString(),
+      read: false,
+      messageType: 'text',
+    };
+    setMessages(prev => [...prev, tempMessage]);
+    setShouldScrollToEnd(true);
+
     try {
       // Try to send via socket first
       const socketSent = sendSocketMessage(
@@ -343,7 +367,22 @@ export default function PatientChatScreen({ route, navigation }) {
 
       // If socket failed, use HTTP fallback
       if (!socketSent) {
-        await chatService.sendMessage(conversationId, content);
+        const response = await chatService.sendMessage(conversationId, content);
+        if (response?.success && response?.message) {
+          const realMessage = {
+            id: response.message._id,
+            text: response.message.content,
+            sender: response.message.sender_role,
+            timestamp: response.message.created_at,
+            read: response.message.read,
+            messageType: response.message.message_type,
+          };
+          setMessages(prev => {
+            const filtered = prev.filter(m => m.id !== tempId);
+            if (filtered.some(m => m.id === realMessage.id)) return filtered;
+            return [...filtered, realMessage];
+          });
+        }
       }
       
       // Stop typing indicator
@@ -355,6 +394,8 @@ export default function PatientChatScreen({ route, navigation }) {
     } catch (error) {
       console.error('Error sending message:', error);
       setMessageText(content);
+      // Remove the optimistic message on error
+      setMessages(prev => prev.filter(m => m.id !== tempId));
     } finally {
       setSending(false);
     }

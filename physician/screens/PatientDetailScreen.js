@@ -290,7 +290,12 @@ export default function PatientDetailScreen({ route, navigation }) {
       const patientId = patient.id || patient._id;
       const response = await consultationAPI.getAll({ patient_id: patientId });
       if (response.success) {
-        setAppointments(response.data || []);
+        const sorted = (response.data || []).sort((a, b) => {
+          const dateA = new Date(a.created_at || a.preferred_date || 0);
+          const dateB = new Date(b.created_at || b.preferred_date || 0);
+          return dateB - dateA; // latest first
+        });
+        setAppointments(sorted);
       }
     } catch (e) {
       console.error('Error fetching appointments:', e);
@@ -564,7 +569,7 @@ export default function PatientDetailScreen({ route, navigation }) {
         return obj.ogtt != null || obj.fasting_blood_sugar != null || obj.hba1c != null;
       })
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-      .slice(-7); // recommended to only show the latest 7 data points on a mobile screen for readability
+      .slice(-6); // recommended to only show the latest 6 data points on a mobile screen for readability
 
     if (vitalsData.length < 2) return null;
 
@@ -1537,12 +1542,16 @@ export default function PatientDetailScreen({ route, navigation }) {
                     </Text>
                   </View>
                   <View style={styles.noteActions}>
-                    <TouchableOpacity style={styles.noteActionBtn} onPress={() => handleEditNote(note)}>
-                      <Ionicons name="create-outline" size={18} color={theme.primary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.noteActionBtn} onPress={() => handleDeleteNote(note.id)}>
-                      <Ionicons name="trash-outline" size={18} color={theme.error} />
-                    </TouchableOpacity>
+                    {note.source !== 'user' && (
+                      <>
+                        <TouchableOpacity style={styles.noteActionBtn} onPress={() => handleEditNote(note)}>
+                          <Ionicons name="create-outline" size={18} color={theme.primary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.noteActionBtn} onPress={() => handleDeleteNote(note.id)}>
+                          <Ionicons name="trash-outline" size={18} color={theme.error} />
+                        </TouchableOpacity>
+                      </>
+                    )}
                   </View>
                 </View>
                 <Text style={[styles.noteDate, { color: theme.secondary, marginBottom: 2 }]}>
