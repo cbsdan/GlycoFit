@@ -717,7 +717,7 @@ const FoodTrackerScreen = ({ navigation }) => {
             )}
             
             {/* Diet Timeline Predictions */}
-            {timelinePredictions && Object.keys(timelinePredictions).length > 0 && (
+            {/* {timelinePredictions && Object.keys(timelinePredictions).length > 0 && (
               <TimelinePredictionCard
                 predictions={timelinePredictions}
                 title="Diet Predictions"
@@ -727,7 +727,7 @@ const FoodTrackerScreen = ({ navigation }) => {
                 expanded={expandedSections.predictions}
                 onToggleExpand={() => setExpandedSections(prev => ({ ...prev, predictions: !prev.predictions }))}
               />
-            )}
+            )} */}
           </>
         ) : (
           <View style={[styles.noDataCard, { backgroundColor: colors.card }]}>
