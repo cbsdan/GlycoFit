@@ -1892,6 +1892,18 @@ const PredictionScreen = ({ navigation }) => {
                 </Text>
               </View>
 
+              <Text style={styles.computationSectionLabel}>Trained Model Context (Lifestyle Risk Tracker)</Text>
+              <View style={styles.computationDisclaimer}>
+                <Icon name="database" size={16} color={colors.primary} />
+                <Text style={styles.computationDisclaimerText}>
+                  The lifestyle risk tracker model is trained on a balanced BRFSS-based dataset
+                  (438,842 rows; 219,421 healthy and 219,421 at-risk), then applied in-app using
+                  component weighting for BMI, Age, Food Intake, Physical Activity, and Alcohol.
+                  Philippine context is incorporated in interpretation and references (for example,
+                  Asian BMI cutoffs and Philippine surveillance reports) to support local relevance.
+                </Text>
+              </View>
+
               <Text style={styles.computationSectionLabel}>Model Validation Snapshot</Text>
               <View style={styles.tableContainer}>
                 <View style={[styles.tableRow, styles.tableHeaderRow]}>
@@ -1982,6 +1994,59 @@ const PredictionScreen = ({ navigation }) => {
                       <Text style={[styles.formulaNote, { flex: 1 }]}>{row.note}</Text>
                       <Icon name="open-in-new" size={11} color={colors.primary} />
                     </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+
+              <Text style={styles.computationSectionLabel}>Scientific References</Text>
+              <View style={styles.referencesContainer}>
+                {[
+                  {
+                    num: 1,
+                    authors: 'Campugan, J. E., & Aguaras, M. G.',
+                    year: '2025',
+                    title: 'Predictive Modeling of Diabetes Classification using Binomial Logistic Regression on Biomedical Indicators',
+                    journal: 'Journal of Interdisciplinary Perspectives',
+                    url: 'https://jippublication.com/index.php/jip/article/view/861',
+                  },
+                  {
+                    num: 2,
+                    authors: 'Rivera, F. N. F., et al.',
+                    year: '2024',
+                    title: 'A Machine Learning Web Application for Predicting the Risk of Diabetes Using Explainable Artificial Intelligence (XAI) on Philippine Data',
+                    journal: 'ResearchGate',
+                    url: 'https://www.researchgate.net/publication/399378103_A_Machine_Learning_Web_Application_for_Predicting_the_Risk_of_Diabetes_Using_Explainable_Artificial_Intelligence_XAI_on_Philippine_Data',
+                  },
+                  {
+                    num: 3,
+                    authors: 'Banate, I. G. C., et al.',
+                    year: '2025',
+                    title: "Development and Application of a Risk Assessment System in Determining Individuals' Susceptibility to Developing Type II Diabetes Mellitus",
+                    journal: 'Celebes Nursing Journal',
+                    url: 'https://celebesnursingjournal.com/index.php/CNJ/article/view/68',
+                  },
+                  {
+                    num: 4,
+                    authors: 'Chang, L., Fukuoka, Y., Aouizerat, B. E., et al.',
+                    year: '2023',
+                    title: 'Prediction of Weight Loss to Decrease the Risk for Type 2 Diabetes Using Multidimensional Data in Filipino Americans',
+                    journal: 'PubMed',
+                    url: 'https://pubmed.ncbi.nlm.nih.gov/37040172/',
+                  },
+                ].map((ref) => (
+                  <View key={ref.num} style={styles.referenceItem}>
+                    <Text style={styles.referenceNum}>[{ref.num}]</Text>
+                    <View style={styles.referenceTextBlock}>
+                      <Text style={styles.referenceText}>
+                        {ref.authors} ({ref.year}). {ref.title}. <Text style={styles.referenceJournal}>{ref.journal}.</Text>
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => Linking.openURL(ref.url)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.referenceUrl}>{ref.url}</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ))}
               </View>
