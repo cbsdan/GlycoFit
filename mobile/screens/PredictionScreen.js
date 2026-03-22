@@ -1256,6 +1256,61 @@ const PredictionScreen = ({ navigation }) => {
       marginTop: 14,
       marginBottom: 6,
     },
+    classificationLegend: {
+      marginBottom: 16,
+      paddingTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    classificationLegendTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.text,
+      marginBottom: 10,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    classificationRow: {
+      flexDirection: 'row',
+      gap: 6,
+      marginBottom: 10,
+    },
+    classificationTile: {
+      flex: 1,
+      borderRadius: 10,
+      padding: 8,
+      alignItems: 'center',
+      borderWidth: 1,
+    },
+    classificationDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      marginBottom: 4,
+    },
+    classificationTileLabel: {
+      fontSize: 11,
+      fontWeight: '700',
+      textAlign: 'center',
+      marginBottom: 2,
+    },
+    classificationTileRange: {
+      fontSize: 9,
+      textAlign: 'center',
+      marginBottom: 1,
+    },
+    classificationTileProb: {
+      fontSize: 9,
+      textAlign: 'center',
+      fontStyle: 'italic',
+    },
+    classificationNote: {
+      fontSize: 11,
+      color: colors.secondary,
+      lineHeight: 16,
+      textAlign: 'center',
+      fontStyle: 'italic',
+    },
     refsToggleRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1456,6 +1511,44 @@ const PredictionScreen = ({ navigation }) => {
                       </Text>
                     </View>
                   )}
+
+                  {/* Score Classification Legend */}
+                  {!hideLifestyleModelOutput && (
+                    <View style={styles.classificationLegend}>
+                      <Text style={styles.classificationLegendTitle}>Score Classification</Text>
+                      <View style={styles.classificationRow}>
+                        {[
+                          { label: 'Low', range: '0 – 25', color: '#10B981', prob: '<10%' },
+                          { label: 'Moderate', range: '26 – 50', color: '#F59E0B', prob: '10–30%' },
+                          { label: 'High', range: '51 – 75', color: '#EF4444', prob: '30–60%' },
+                          { label: 'Very High', range: '76 – 100', color: '#DC2626', prob: '>60%' },
+                        ].map((tier) => (
+                          <View
+                            key={tier.label}
+                            style={[
+                              styles.classificationTile,
+                              {
+                                borderColor: tier.color,
+                                backgroundColor: `${tier.color}15`,
+                                borderWidth: overallRiskScoreValue >= parseInt(tier.range) &&
+                                  overallRiskScoreValue <= parseInt(tier.range.split('–')[1])
+                                  ? 2 : 1,
+                              },
+                            ]}
+                          >
+                            <View style={[styles.classificationDot, { backgroundColor: tier.color }]} />
+                            <Text style={[styles.classificationTileLabel, { color: tier.color }]}>{tier.label}</Text>
+                            <Text style={[styles.classificationTileRange, { color: colors.secondary }]}>{tier.range}</Text>
+                            <Text style={[styles.classificationTileProb, { color: colors.secondary }]}>{tier.prob}</Text>
+                          </View>
+                        ))}
+                      </View>
+                      <Text style={styles.classificationNote}>
+                        Score reflects 10-year diabetes development probability based on BMI, age, diet, physical activity, and alcohol consumption.
+                      </Text>
+                    </View>
+                  )}
+
                   <TouchableOpacity
                     style={styles.refreshOverallButton}
                     onPress={handleRefreshOverallRisk}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { View, ActivityIndicator, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApp } from '@react-native-firebase/app';
@@ -10,14 +10,12 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import api from './services/api';
-import IntroductionScreen from './screens/IntroductionScreen';
 import LoginScreen from './screens/LoginScreen';
 import PatientChatScreen from './screens/PatientChatScreen';
 import PatientDetailScreen from './screens/PatientDetailScreen';
 import TabNavigator from './navigation/TabNavigator';
 
 const Stack = createNativeStackNavigator();
-const INTRO_SHOWN_KEY = '@intro_shown';
 
 // Check if Firebase is initialized, if not it will auto-initialize from google-services.json
 try {
@@ -34,38 +32,10 @@ messaging().setBackgroundMessageHandler(async (remoteMessage) => {
 
 function AppContent() {
   const navigationRef = React.useRef();
-  const [showIntro, setShowIntro] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { colors: theme, isDarkMode } = useTheme();
 
-  useEffect(() => {
-    checkIntroStatus();
-  }, []);
-
-  const checkIntroStatus = async () => {
-    try {
-      const introShown = await AsyncStorage.getItem(INTRO_SHOWN_KEY);
-      setShowIntro(introShown === null); // Show intro only if it hasn't been shown before
-    } catch (error) {
-      console.log('Error checking intro status:', error);
-      setShowIntro(true); // Default to showing intro on error
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleGetStarted = async () => {
-    try {
-      await AsyncStorage.setItem(INTRO_SHOWN_KEY, 'true');
-      setShowIntro(false);
-    } catch (error) {
-      console.log('Error saving intro status:', error);
-      setShowIntro(false);
-    }
-  };
-
-  if (isLoading || authLoading) {
+  if (authLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.background }}>
         <ActivityIndicator size="large" color={theme.primary} />
@@ -75,7 +45,6 @@ function AppContent() {
 
   // Determine initial route based on auth state
   const getInitialRouteName = () => {
-    if (showIntro) return 'Introduction';
     if (isAuthenticated) return 'Main';
     return 'Login';
   };
@@ -111,12 +80,6 @@ function AppContent() {
           gestureEnabled: false,
         }}
       >
-        {showIntro ? (
-          <Stack.Screen name="Introduction">
-            {(props) => <IntroductionScreen {...props} onGetStarted={handleGetStarted} />}
-          </Stack.Screen>
-        ) : null}
-        
         {!isAuthenticated ? (
           <Stack.Screen 
             name="Login" 

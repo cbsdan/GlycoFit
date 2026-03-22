@@ -4,7 +4,7 @@ const environments = {
     // deviceLocal: "https://glycofit-backend-fzvh5.ondigitalocean.app/api/v1",
     deviceLocal: "http://192.168.68.106:4000/api/v1",
   },
-  production: "https://glycofit-backend-7diov.ondigitalocean.app/api/v1",
+  production: "https://glycofit-app-backend-n44y8.ondigitalocean.app/api/v1",
 };
 
 const getBaseUrl = () => {
