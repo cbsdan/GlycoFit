@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,14 @@ const ChatBotScreen = ({ navigation }) => {
   const [skip, setSkip] = useState(0);
   const [totalMessages, setTotalMessages] = useState(0);
   const flatListRef = useRef(null);
+  const isAtBottomRef = useRef(true);
+
+  const handleScroll = useCallback((event) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const distanceFromBottom =
+      contentSize.height - layoutMeasurement.height - contentOffset.y;
+    isAtBottomRef.current = distanceFromBottom < 80;
+  }, []);
 
   // Initial load of chat history
   useEffect(() => {
@@ -116,6 +124,7 @@ const ChatBotScreen = ({ navigation }) => {
       timestamp: new Date(),
     };
 
+    isAtBottomRef.current = true;
     setMessages((prev) => [...prev, userMessage]);
     const messageText = inputText.trim();
     setInputText('');
@@ -143,7 +152,9 @@ const ChatBotScreen = ({ navigation }) => {
           )
         );
       }
-      flatListRef.current?.scrollToEnd({ animated: false });
+      if (isAtBottomRef.current) {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }
     };
 
     const processLine = (line) => {
@@ -554,10 +565,18 @@ const ChatBotScreen = ({ navigation }) => {
               renderItem={renderMessage}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.messagesList}
-              onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-              onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
-              onEndReached={handleEndReached}
-              onEndReachedThreshold={0.5}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              onContentSizeChange={() => {
+                if (isAtBottomRef.current) {
+                  flatListRef.current?.scrollToEnd({ animated: false });
+                }
+              }}
+              onLayout={() => {
+                if (isAtBottomRef.current) {
+                  flatListRef.current?.scrollToEnd({ animated: false });
+                }
+              }}
               ListHeaderComponent={
                 hasMoreMessages && messages.length > 0 ? (
                   <TouchableOpacity

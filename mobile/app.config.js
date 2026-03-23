@@ -30,12 +30,6 @@ export default ({ config }) => {
         "android.permission.health.WRITE_STEPS",
         "android.permission.health.READ_ACTIVE_CALORIES_BURNED"
       ],
-      intentFilters: [
-        {
-          action: "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE",
-          category: ["android.intent.category.DEFAULT"]
-        }
-      ]
     },
     web: {
       favicon: "./assets/favicon.png"
