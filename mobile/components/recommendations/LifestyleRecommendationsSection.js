@@ -287,6 +287,7 @@ const LifestyleRecommendationsSection = ({
   const getRiskColor = (level) => {
     switch (level?.toLowerCase()) {
       case 'low':
+      case 'none':
       case 'healthy':
       case 'optimal':
       case 'non-smoker':
@@ -299,12 +300,17 @@ const LifestyleRecommendationsSection = ({
       case 'elevated':
       case 'heavy':
         return '#E74C3C';
+      case 'very_high':
+      case 'very_heavy':
+      case 'binge':
+        return '#C0392B';
       default:
         return config.color;
     }
   };
 
-  const riskLevel = data?.risk_assessment?.current_risk_level || 
+  const riskLevel = data?.risk_assessment?.current_risk_level ||
+                    data?.risk_assessment?.risk_category ||
                     data?.current_status?.pattern || 
                     data?.current_assessment?.risk_level;
   const riskScore = data?.risk_assessment?.risk_score || 

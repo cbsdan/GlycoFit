@@ -344,6 +344,9 @@ def get_unified_recommendations():
                     drinks_per_week = alcohol_metrics.avg_drinks_per_week_30d or 0
                     binge_episodes = alcohol_metrics.binge_episodes_30d or 0
                     data_days = alcohol_metrics.days_with_data_30d or 0
+                    # Supplement with baseline binge frequency when no binge episodes logged yet
+                    if binge_episodes == 0 and alcohol_baseline:
+                        binge_episodes = alcohol_baseline.baseline_binge_frequency_per_month or 0
                 elif alcohol_baseline:
                     drinks_per_week = (alcohol_baseline.baseline_drinking_days_per_week or 0) * \
                                       (alcohol_baseline.baseline_drinks_per_occasion or 0)
@@ -946,6 +949,9 @@ def get_alcohol_predictions():
             drinks_per_week = alcohol_metrics.avg_drinks_per_week_30d or 0
             binge_episodes = alcohol_metrics.binge_episodes_30d or 0
             data_days = alcohol_metrics.days_with_data_30d or 0
+            # Supplement with baseline binge frequency when no binge episodes logged yet
+            if binge_episodes == 0 and alcohol_baseline:
+                binge_episodes = alcohol_baseline.baseline_binge_frequency_per_month or 0
         elif alcohol_baseline:
             drinks_per_week = (alcohol_baseline.baseline_drinking_days_per_week or 0) * \
                               (alcohol_baseline.baseline_drinks_per_occasion or 0)

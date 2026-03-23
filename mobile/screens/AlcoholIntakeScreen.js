@@ -14,11 +14,13 @@ import {
 import { useTheme } from '../context/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { 
-  saveAlcoholIntake, 
+  saveAlcoholIntake,   // legacy, kept for reference
   getAlcoholIntake,
   getAlcoholRiskAssessment,
   getAlcoholIntakeHistory,
-  deleteAlcoholIntake 
+  deleteAlcoholIntake,
+  createAlcoholBaseline,
+  updateAlcoholBaseline,
 } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { LifestyleRecommendationsSection } from '../components/recommendations';
@@ -274,37 +276,38 @@ const AlcoholIntakeScreen = ({ navigation }) => {
       const drinkDays = drinkingDaysPerWeek === '' ? 0 : parseInt(drinkingDaysPerWeek);
       const bingeDays = bingeFrequency === '' ? 0 : parseInt(bingeFrequency);
 
-      const alcoholData = {
-        average_drinks_per_day: avgDrinks,
-        drinking_days_per_week: drinkDays,
-        binge_frequency_per_month: bingeDays,
-      };
-
-      // Save alcohol intake
-      const response = await saveAlcoholIntake(alcoholData);
-
-      if (response.success) {
-        // Get risk assessment
-        const assessmentResponse = await getAlcoholRiskAssessment();
-        
-        if (assessmentResponse.success && assessmentResponse.data) {
-          setRiskAssessment(assessmentResponse.data);
-          setShowResults(true);
+      // Save to alcohol baseline using the correct API (upsert: try update first, create on 404)
+      // Fields map: drinks_per_occasion ≈ average_drinks_per_day
+      let saveResponse;
+      try {
+        saveResponse = await updateAlcoholBaseline(drinkDays, avgDrinks, bingeDays);
+      } catch (updateError) {
+        if (updateError?.response?.status === 404) {
+          // No baseline yet — create it
+          saveResponse = await createAlcoholBaseline(drinkDays, avgDrinks, bingeDays);
         } else {
-          // Show success even if assessment fails
-          Alert.alert(
-            'Success',
-            'Your alcohol intake has been recorded successfully.',
-            [
-              {
-                text: 'OK',
-                onPress: () => navigation.goBack(),
-              },
-            ]
-          );
+          throw updateError;
         }
+      }
+
+      // Get risk assessment — returns raw assessment object (no .success/.data wrapper)
+      const assessmentResponse = await getAlcoholRiskAssessment();
+
+      if (assessmentResponse && assessmentResponse.risk_category !== undefined) {
+        setRiskAssessment(assessmentResponse);
+        setShowResults(true);
       } else {
-        throw new Error(response.message || 'Failed to save alcohol intake');
+        // Show success even if assessment fetch fails
+        Alert.alert(
+          'Success',
+          'Your alcohol intake has been recorded successfully.',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ]
+        );
       }
     } catch (error) {
       console.error('Error saving alcohol intake:', error);
@@ -321,23 +324,31 @@ const AlcoholIntakeScreen = ({ navigation }) => {
   const getRiskColor = (category) => {
     const colors = {
       none: '#27AE60',
+      low: '#3498DB',
       light: '#3498DB',
       moderate: '#F39C12',
+      high: '#E67E22',
       heavy: '#E67E22',
+      very_high: '#E74C3C',
+      very_heavy: '#E74C3C',
       binge: '#E74C3C',
     };
-    return colors[category] || '#95A5A6';
+    return colors[category?.toLowerCase()] || '#95A5A6';
   };
 
   const getRiskIcon = (category) => {
     const icons = {
       none: 'check-circle',
+      low: 'information',
       light: 'information',
       moderate: 'alert',
+      high: 'alert-circle',
       heavy: 'alert-circle',
+      very_high: 'alert-octagon',
+      very_heavy: 'alert-octagon',
       binge: 'alert-octagon',
     };
-    return icons[category] || 'help-circle';
+    return icons[category?.toLowerCase()] || 'help-circle';
   };
 
   // Define styles before any conditional returns
@@ -1003,7 +1014,7 @@ const AlcoholIntakeScreen = ({ navigation }) => {
   const renderResults = () => {
     if (!riskAssessment) return null;
 
-    const { current_consumption, risk_level, recommendations, trend } = riskAssessment;
+    const { current_consumption, risk_category: risk_level, recommendations, trend } = riskAssessment;
 
     // Check if user is diagnosed with prediabetes or type 2 diabetes
     const isDiagnosed = user?.diagnosis_status === 'prediabetes' || user?.diagnosis_status === 'type2_diabetes';

@@ -11,4 +11,8 @@
 -keep class com.swmansion.reanimated.** { *; }
 -keep class com.facebook.react.turbomodule.** { *; }
 
+# react-native-health-connect — prevent R8 from stripping Health Connect classes
+-keep class androidx.health.connect.** { *; }
+-keep class com.reactnativehealthconnect.** { *; }
+
 # Add any project specific keep options here:

@@ -733,7 +733,7 @@ class LifestyleRecommendationService:
                 "research": "Baliunas et al., 2009"
             })
         
-        # Binge drinking additional risk
+        # Binge drinking overrides risk category to very_high (matches _calculate_risk logic)
         if binge_episodes_monthly >= 1:
             predictions["risk_factors"].append({
                 "factor": "binge_drinking",
@@ -741,7 +741,9 @@ class LifestyleRecommendationService:
                 "risk_increase": "Additional 12% T2D risk",
                 "research": "NIAAA Binge Drinking Guidelines"
             })
-            predictions["risk_multiplier"] += 0.12
+            # Override category — binge alone is very high risk regardless of weekly drink count
+            predictions["risk_category"] = "very_high"
+            predictions["risk_multiplier"] = max(predictions["risk_multiplier"] + 0.12, 1.58)
             predictions["recommendations"].append({
                 "priority": "high",
                 "category": "Binge Drinking",
@@ -755,8 +757,8 @@ class LifestyleRecommendationService:
                 ]
             })
         
-        # Calculate timeline predictions for heavy/very heavy
-        if predictions["risk_category"] in ["heavy", "very_heavy"]:
+        # Calculate timeline predictions for heavy/very heavy/very high risk
+        if predictions["risk_category"] in ["heavy", "very_heavy", "very_high"]:
             predictions["timeline_predictions"] = {
                 "1_month": {
                     "impact": "Liver enzyme elevation likely",

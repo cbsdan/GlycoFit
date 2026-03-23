@@ -114,45 +114,17 @@ class FirebaseAuth:
             check_revoked: Whether to check if the token has been revoked
             clock_skew_seconds: Number of seconds of clock skew to tolerate (default: 60)
         """
-        import time as _time
-        import base64 as _base64
-        import json as _json
-
-        get_firebase_app()  # Ensure Firebase is initialized
-
         try:
+            get_firebase_app()  # Ensure Firebase is initialized
+            # Note: The Python Firebase Admin SDK doesn't directly expose clock_skew_seconds
+            # but it has a default tolerance of 5 minutes. However, we can use verify_id_token
+            # with check_revoked parameter which is supported.
             decoded_token = auth.verify_id_token(id_token, check_revoked=check_revoked)
             logging.info(f"Token verified for user: {decoded_token.get('uid')}")
             return decoded_token
         except Exception as e:
-            error_msg = str(e)
-            is_clock_skew = "Token used too early" in error_msg or (
-                "clock" in error_msg.lower() and ("iat" in error_msg or "early" in error_msg.lower())
-            )
-            if not is_clock_skew:
-                logging.error(f"Token verification failed: {error_msg}")
-                raise
-
-            # Decode JWT payload (no signature check) to find exact iat
-            try:
-                parts = id_token.split('.')
-                if len(parts) >= 2:
-                    padding = '=' * (4 - len(parts[1]) % 4)
-                    payload = _json.loads(_base64.urlsafe_b64decode(parts[1] + padding))
-                    iat = payload.get('iat', 0)
-                    skew = iat - int(_time.time())
-                    if 0 < skew <= clock_skew_seconds:
-                        logging.warning(f"Clock skew of {skew}s detected — waiting {skew + 1}s before retry")
-                        _time.sleep(skew + 1)
-                        decoded_token = auth.verify_id_token(id_token, check_revoked=check_revoked)
-                        logging.info(f"Token verified after clock-skew wait for user: {decoded_token.get('uid')}")
-                        return decoded_token
-            except Exception as inner:
-                logging.error(f"Token verification failed after clock-skew retry: {str(inner)}")
-                raise inner
-
-            logging.error(f"Token verification failed: {error_msg}")
-            raise
+            logging.error(f"Token verification failed: {str(e)}")
+            raise e
     
     @staticmethod
     def get_user(uid):

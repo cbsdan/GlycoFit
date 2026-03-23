@@ -27,7 +27,8 @@ export default ({ config }) => {
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON || "./google-services.json",
       permissions: [
         "android.permission.health.READ_STEPS",
-        "android.permission.health.WRITE_STEPS"
+        "android.permission.health.WRITE_STEPS",
+        "android.permission.health.READ_ACTIVE_CALORIES_BURNED"
       ],
       intentFilters: [
         {

@@ -24,7 +24,7 @@ import Slider from '@react-native-community/slider';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { createAlcoholBaseline, getAlcoholBaseline } from '../services/api';
+import { createAlcoholBaseline, updateAlcoholBaseline, getAlcoholBaseline } from '../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -183,14 +183,30 @@ const AlcoholBaselineScreen = ({ navigation, route }) => {
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      await createAlcoholBaseline(
-        baselineDrinkingDaysPerWeek,
-        baselineDrinksPerOccasion,
-        baselineBingeFrequencyPerMonth,
-        drinkingPattern,
-        yearsAtCurrentPattern,
-        drinksWithMeals
-      );
+      // Upsert: try update first, create only if no baseline exists yet
+      try {
+        await updateAlcoholBaseline(
+          baselineDrinkingDaysPerWeek,
+          baselineDrinksPerOccasion,
+          baselineBingeFrequencyPerMonth,
+          drinkingPattern,
+          yearsAtCurrentPattern,
+          drinksWithMeals
+        );
+      } catch (updateError) {
+        if (updateError?.response?.status === 404) {
+          await createAlcoholBaseline(
+            baselineDrinkingDaysPerWeek,
+            baselineDrinksPerOccasion,
+            baselineBingeFrequencyPerMonth,
+            drinkingPattern,
+            yearsAtCurrentPattern,
+            drinksWithMeals
+          );
+        } else {
+          throw updateError;
+        }
+      }
 
       Alert.alert(
         'Success',

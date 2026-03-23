@@ -2625,6 +2625,8 @@ export const getFoodBaselineQuestions = async () => {
 export const submitFoodBaseline = async (responses) => {
   try {
     const response = await api.post('/food-risk/baseline/submit', { responses });
+    // Invalidate cached baseline and assessment data so the next read reflects the new submission
+    await CacheService.invalidateMultiple(['food_baseline', 'food_assessment_7d']);
     return response.data;
   } catch (error) {
     console.error('Error submitting baseline:', error.response?.data || error.message);
