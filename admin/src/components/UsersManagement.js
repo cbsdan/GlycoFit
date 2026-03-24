@@ -57,7 +57,7 @@ function UsersManagement() {
     try {
       setLoading(true);
       const data = await userService.getAllUsers(0, 50);
-      setUsers(data.users || []);
+      setUsers((data.users || []).filter(u => (u.role || '').toLowerCase() !== 'physician'));
     } catch (error) {
       console.error('Error fetching users:', error);
     } finally {

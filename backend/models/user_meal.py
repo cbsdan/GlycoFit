@@ -184,6 +184,63 @@ class UserMeal:
             }
 
     @staticmethod
+    def get_user_meals_paginated(user_id, limit=10, offset=0):
+        """Get paginated meals for a specific user (admin use). Returns total count."""
+        try:
+            db = get_db()
+
+            query = {'user_id': ObjectId(user_id) if isinstance(user_id, str) else user_id}
+
+            total = db.user_meals.count_documents(query)
+
+            meals = list(
+                db.user_meals.find(query)
+                .sort('meal_datetime', -1)
+                .skip(offset)
+                .limit(limit)
+            )
+
+            log_database_operation('find', 'user_meals', query, meals)
+
+            meals_response = []
+            for meal in meals:
+                meal_data = {
+                    'id': str(meal['_id']),
+                    'user_id': str(meal['user_id']),
+                    'nutrients': meal.get('nutrients', {}),
+                    'image_url': meal.get('image_url'),
+                    'image_public_id': meal.get('image_public_id'),
+                    'meal_name': meal.get('meal_name'),
+                    'notes': meal.get('notes'),
+                    'food_type': meal.get('food_type', 'other'),
+                    'serving_size': meal.get('serving_size'),
+                    'confidence_rate': meal.get('confidence_rate'),
+                    'confidence_explanation': meal.get('confidence_explanation'),
+                    'health_assessment': meal.get('health_assessment'),
+                    'recipes': meal.get('recipes', []),
+                    'ingredient_nutrients': meal.get('ingredient_nutrients', []),
+                    'ingredient_proportions': meal.get('ingredient_proportions', {}),
+                    'meal_datetime': meal['meal_datetime'].isoformat() if meal.get('meal_datetime') else None,
+                    'created_at': meal['created_at'].isoformat() if meal.get('created_at') else None,
+                    'updated_at': meal['updated_at'].isoformat() if meal.get('updated_at') else None,
+                }
+                meals_response.append(meal_data)
+
+            return {
+                'success': True,
+                'meals': meals_response,
+                'count': len(meals_response),
+                'total': total,
+            }
+
+        except Exception as e:
+            logging.error(f"Error getting paginated meals for user {user_id}: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    @staticmethod
     def get_meal_by_id(meal_id, user_id=None):
         """Get a specific meal by ID"""
         try:

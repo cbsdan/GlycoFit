@@ -176,55 +176,6 @@ function SystemServicesPage() {
           </Paper>
         </Grid>
       </Grid>
-
-      {/* System Logs */}
-      <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0', mt: 3 }}>
-        <Typography variant="h6" gutterBottom fontWeight={600}>
-          <DescriptionIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          Recent System Logs
-        </Typography>
-        {logs.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">No logs available</Typography>
-        ) : (
-          <TableContainer sx={{ maxHeight: 400 }}>
-            <Table size="small" stickyHeader>
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 600, width: 160 }}>Timestamp</TableCell>
-                  <TableCell sx={{ fontWeight: 600, width: 80 }}>Level</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Message</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {logs.map((log, i) => (
-                  <TableRow key={i} hover>
-                    <TableCell>
-                      <Typography variant="caption" fontFamily="monospace">
-                        {log.timestamp ? new Date(log.timestamp).toLocaleString() : log.time || '—'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip label={log.level || 'INFO'} size="small"
-                        sx={{
-                          fontFamily: 'monospace', fontSize: '0.72rem',
-                          bgcolor: log.level === 'ERROR' ? '#fef2f2' : log.level === 'WARNING' ? '#fefce8' : '#f0fdf4',
-                          color: log.level === 'ERROR' ? '#ef4444' : log.level === 'WARNING' ? '#f59e0b' : '#10b981',
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" fontFamily="monospace" fontSize="0.78rem"
-                        sx={{ maxWidth: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {log.message || log.msg || '—'}
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-      </Paper>
     </Box>
   );
 }

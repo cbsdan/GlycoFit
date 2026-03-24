@@ -361,24 +361,26 @@ def get_user_assessment(uid):
         if not user:
             return jsonify(error='User not found'), 404
 
-        user_id_str = str(user._id)
-
+        # userId in diabetes_assessments is stored as ObjectId(_id of user)
         assessment = db.diabetes_assessments.find_one(
-            {"user_id": user_id_str},
-            sort=[("created_at", -1)]
+            {"userId": user._id},
+            sort=[("createdAt", -1)]
         )
 
         if not assessment:
             return jsonify({'has_assessment': False})
 
+        prediction = assessment.get('prediction') or {}
+        created_at = assessment.get('createdAt')
+
         return jsonify({
             'has_assessment': True,
             'answers': assessment.get('answers', {}),
-            'prediction': assessment.get('prediction', {}),
-            'risk_level': assessment.get('risk_level'),
-            'probability': assessment.get('probability'),
-            'confidence': assessment.get('confidence'),
-            'assessed_at': assessment.get('created_at').isoformat() if assessment.get('created_at') else None
+            'prediction': prediction,
+            'risk_level': prediction.get('risk_level'),
+            'probability': prediction.get('probability'),
+            'confidence': prediction.get('confidence'),
+            'assessed_at': created_at.isoformat() if created_at else None
         })
     except Exception as e:
         logging.error(f"[ADMIN] Error in user assessment: {e}", exc_info=True)
@@ -541,26 +543,26 @@ def get_physicians_list():
             uid = u.get('uid')
             user_id_str = str(u['_id'])
 
-            # Get physician profile
-            physician_profile = db.physicians.find_one({"user_id": user_id_str}) or \
+            # Get physician profile (stored with user_id as ObjectId)
+            physician_profile = db.physicians.find_one({"user_id": u['_id']}) or \
+                                db.physicians.find_one({"user_id": user_id_str}) or \
                                 db.physicians.find_one({"uid": uid}) or {}
+            phys_oid = physician_profile.get('_id')
 
-            # Count patients
-            patient_count = db.patient_physician.count_documents({
-                "$or": [
-                    {"physician_id": user_id_str},
-                    {"physician_id": uid}
-                ],
-                "status": "accepted"
+            # Count patients — physician_id in patient_physicians references Physician._id
+            phys_or = [{"physician_id": user_id_str}, {"physician_id": uid}]
+            if phys_oid:
+                phys_or += [{"physician_id": phys_oid}, {"physician_id": str(phys_oid)}]
+            patient_count = db.patient_physicians.count_documents({
+                "$or": phys_or,
+                "status": "active"
             })
 
-            # Count consultations
-            consult_count = db.consultations.count_documents({
-                "$or": [
-                    {"physician_id": u['_id']},
-                    {"physician_id": user_id_str}
-                ]
-            })
+            # Count consultations — physician_id in consultations references Physician._id
+            consult_or = [{"physician_id": u['_id']}, {"physician_id": user_id_str}]
+            if phys_oid:
+                consult_or += [{"physician_id": phys_oid}, {"physician_id": str(phys_oid)}]
+            consult_count = db.consultations.count_documents({"$or": consult_or})
 
             from models.user import User
             user_obj = User.from_dict(u)
@@ -570,14 +572,13 @@ def get_physicians_list():
                 **user_obj.to_safe_dict(),
                 'specialization': physician_profile.get('specialization'),
                 'license_number': physician_profile.get('license_number'),
-                'clinic_name': physician_profile.get('clinic_name'),
                 'consultation_fee': physician_profile.get('consultation_fee'),
-                'experience_years': physician_profile.get('experience_years'),
+                'years_of_experience': physician_profile.get('years_of_experience'),
                 'languages': physician_profile.get('languages', []),
                 'bio': physician_profile.get('bio'),
                 'total_patients': patient_count,
                 'total_consultations': consult_count,
-                'is_available': physician_profile.get('is_available', False),
+                'is_available': physician_profile.get('is_active', False),
             })
 
         return jsonify({
@@ -605,16 +606,20 @@ def get_physician_details(physician_id):
 
         user_id_str = str(user._id)
 
-        # Professional profile
-        profile = db.physicians.find_one({"user_id": user_id_str}) or \
+        # Professional profile (stored with user_id as ObjectId)
+        profile = db.physicians.find_one({"user_id": user._id}) or \
+                  db.physicians.find_one({"user_id": user_id_str}) or \
                   db.physicians.find_one({"uid": user.uid}) or {}
+        phys_oid = profile.get('_id')
+
+        # Build physician_id $or clauses covering all storage variants
+        phys_or = [{"physician_id": user._id}, {"physician_id": user_id_str}]
+        if phys_oid:
+            phys_or += [{"physician_id": phys_oid}, {"physician_id": str(phys_oid)}]
 
         # Consultation stats
         consult_pipeline = [
-            {"$match": {"$or": [
-                {"physician_id": user._id},
-                {"physician_id": user_id_str}
-            ]}},
+            {"$match": {"$or": phys_or}},
             {"$group": {"_id": "$status", "count": {"$sum": 1}}}
         ]
         consult_agg = list(db.consultations.aggregate(consult_pipeline))
@@ -623,35 +628,32 @@ def get_physician_details(physician_id):
         # Average rating
         rating_pipeline = [
             {"$match": {
-                "$or": [{"physician_id": user._id}, {"physician_id": user_id_str}],
+                "$or": phys_or,
                 "rating": {"$exists": True, "$ne": None}
             }},
             {"$group": {"_id": None, "avg": {"$avg": "$rating"}, "count": {"$sum": 1}}}
         ]
         rating_agg = list(db.consultations.aggregate(rating_pipeline))
 
-        # Patient count
-        patient_count = db.patient_physician.count_documents({
-            "$or": [{"physician_id": user_id_str}, {"physician_id": user.uid}],
-            "status": "accepted"
+        # Patient count — physician_id in patient_physicians references Physician._id
+        patient_count = db.patient_physicians.count_documents({
+            "$or": phys_or,
+            "status": "active"
         })
 
         # Prescriptions count
-        rx_count = db.prescriptions.count_documents({
-            "$or": [{"physician_id": user._id}, {"physician_id": user_id_str}]
-        })
+        rx_count = db.prescriptions.count_documents({"$or": phys_or})
 
         return jsonify({
             'user': user.to_safe_dict(),
             'profile': {
                 'specialization': profile.get('specialization'),
                 'license_number': profile.get('license_number'),
-                'clinic_name': profile.get('clinic_name'),
                 'consultation_fee': profile.get('consultation_fee'),
-                'experience_years': profile.get('experience_years'),
+                'years_of_experience': profile.get('years_of_experience'),
                 'languages': profile.get('languages', []),
                 'bio': profile.get('bio'),
-                'is_available': profile.get('is_available', False),
+                'is_available': profile.get('is_active', False),
             },
             'stats': {
                 'total_patients': patient_count,
@@ -679,14 +681,17 @@ def get_physician_patients(physician_id):
         if not user:
             return jsonify(error='Physician not found'), 404
 
-        user_id_str = str(user._id)
+        # physician_id in patient_physicians references Physician._id (profile), not user._id
+        physician_profile = db.physicians.find_one({"user_id": user._id}) or \
+                            db.physicians.find_one({"user_id": str(user._id)}) or \
+                            db.physicians.find_one({"uid": user.uid})
+        phys_oid = physician_profile['_id'] if physician_profile else None
 
-        connections = list(db.patient_physician.find({
-            "$or": [
-                {"physician_id": user_id_str},
-                {"physician_id": user.uid}
-            ]
-        }).sort("created_at", -1))
+        or_clauses = [{"physician_id": str(user._id)}, {"physician_id": user.uid}]
+        if phys_oid:
+            or_clauses += [{"physician_id": phys_oid}, {"physician_id": str(phys_oid)}]
+
+        connections = list(db.patient_physicians.find({"$or": or_clauses}).sort("created_at", -1))
 
         patients = []
         for conn in connections:
@@ -740,14 +745,20 @@ def get_physician_consultations(physician_id):
         if not user:
             return jsonify(error='Physician not found'), 404
 
+        # physician_id in consultations references Physician._id (profile), not user._id
+        physician_profile = db.physicians.find_one({"user_id": user._id}) or \
+                            db.physicians.find_one({"user_id": str(user._id)}) or \
+                            db.physicians.find_one({"uid": user.uid})
+        phys_oid = physician_profile['_id'] if physician_profile else None
+
         skip = request.args.get('skip', 0, type=int)
         limit = request.args.get('limit', 20, type=int)
         status_filter = request.args.get('status')
 
-        query = {"$or": [
-            {"physician_id": user._id},
-            {"physician_id": str(user._id)}
-        ]}
+        or_clauses = [{"physician_id": user._id}, {"physician_id": str(user._id)}]
+        if phys_oid:
+            or_clauses += [{"physician_id": phys_oid}, {"physician_id": str(phys_oid)}]
+        query = {"$or": or_clauses}
         if status_filter:
             query['status'] = status_filter
 
@@ -756,13 +767,23 @@ def get_physician_consultations(physician_id):
 
         results = []
         for c in consults:
-            patient = db.users.find_one({"_id": c.get('patient_id')}) if c.get('patient_id') else None
+            p_id = c.get('patient_id')
+            patient = None
+            if p_id:
+                if isinstance(p_id, ObjectId):
+                    patient = db.users.find_one({"_id": p_id})
+                else:
+                    try:
+                        patient = db.users.find_one({"_id": ObjectId(str(p_id))})
+                    except Exception:
+                        patient = db.users.find_one({"uid": str(p_id)})
             results.append({
                 'id': _safe_str(c['_id']),
                 'patient_name': _user_display(patient) if patient else 'Unknown',
                 'status': c.get('status'),
-                'mode': c.get('mode'),
-                'rating': c.get('rating'),
+                'mode': c.get('consultation_type') or c.get('mode'),
+                'rating': c.get('patient_rating') or c.get('rating'),
+                'scheduled_date': c.get('scheduled_date').isoformat() if c.get('scheduled_date') else None,
                 'diagnosis': c.get('diagnosis'),
                 'treatment_plan': c.get('treatment_plan'),
                 'meeting_link': c.get('meeting_link'),
@@ -787,14 +808,17 @@ def get_physician_availability(physician_id):
         if not user:
             return jsonify(error='Physician not found'), 404
 
-        user_id_str = str(user._id)
+        # physician_id in physician_availability references Physician._id (profile), not user._id
+        physician_profile = db.physicians.find_one({"user_id": user._id}) or \
+                            db.physicians.find_one({"user_id": str(user._id)}) or \
+                            db.physicians.find_one({"uid": user.uid})
+        phys_oid = physician_profile['_id'] if physician_profile else None
 
-        availability = list(db.physician_availability.find({
-            "$or": [
-                {"physician_id": user_id_str},
-                {"physician_id": user.uid}
-            ]
-        }))
+        or_clauses = [{"physician_id": str(user._id)}, {"physician_id": user.uid}]
+        if phys_oid:
+            or_clauses += [{"physician_id": phys_oid}, {"physician_id": str(phys_oid)}]
+
+        availability = list(db.physician_availability.find({"$or": or_clauses}))
 
         schedule = [{
             'day': a.get('day_of_week'),
@@ -949,9 +973,9 @@ def get_high_risk_patients():
             # Check physician connection
             physician_name = None
             if user:
-                conn = db.patient_physician.find_one({
+                conn = db.patient_physicians.find_one({
                     "patient_id": str(user['_id']),
-                    "status": "accepted"
+                    "status": "active"
                 })
                 if conn:
                     phys = db.users.find_one({"_id": ObjectId(conn['physician_id'])}) if conn.get('physician_id') else None
@@ -979,41 +1003,66 @@ def get_high_risk_patients():
 
 
 def get_assessment_stats():
-    """GET /admin/assessments/stats — Diabetes assessment completion stats."""
+    """GET /admin/assessments/stats — Diabetes assessment completion stats.
+    
+    NOTE: diabetes_assessments documents use camelCase fields:
+      userId (ObjectId), createdAt, updatedAt
+      prediction.risk_level, prediction.probability, prediction.confidence
+    """
     try:
         db = get_db()
         total_users = db.users.count_documents({"role": {"$in": ["user", "admin"]}})
 
-        # Unique users with assessments
-        unique_assessed = len(db.diabetes_assessments.distinct("user_id"))
+        # Total assessments (one per user — model enforces upsert)
+        total_assessments = db.diabetes_assessments.count_documents({})
 
-        # Risk level distribution
+        # Unique users with assessments (field is userId, not user_id)
+        unique_assessed = len(db.diabetes_assessments.distinct("userId"))
+
+        # Assessments submitted this calendar month
+        now = datetime.utcnow()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        this_month = db.diabetes_assessments.count_documents(
+            {"createdAt": {"$gte": month_start}}
+        )
+
+        # Risk level distribution — stored at prediction.risk_level, NOT root risk_level
         pipeline = [
-            {"$sort": {"created_at": -1}},
-            {"$group": {"_id": "$user_id", "doc": {"$first": "$$ROOT"}}},
+            {"$sort": {"createdAt": -1}},
+            {"$group": {"_id": "$userId", "doc": {"$first": "$$ROOT"}}},
             {"$replaceRoot": {"newRoot": "$doc"}},
-            {"$group": {"_id": "$risk_level", "count": {"$sum": 1}}}
+            {"$group": {"_id": "$prediction.risk_level", "count": {"$sum": 1}}}
         ]
         agg = list(db.diabetes_assessments.aggregate(pipeline))
         risk_distribution = {item['_id']: item['count'] for item in agg if item['_id']}
 
-        # Average probability
+        high_risk_count = (
+            risk_distribution.get('high', 0) + risk_distribution.get('very_high', 0)
+        )
+
+        # Average probability — stored at prediction.probability (0-1 float)
         prob_pipeline = [
-            {"$sort": {"created_at": -1}},
-            {"$group": {"_id": "$user_id", "doc": {"$first": "$$ROOT"}}},
+            {"$sort": {"createdAt": -1}},
+            {"$group": {"_id": "$userId", "doc": {"$first": "$$ROOT"}}},
             {"$replaceRoot": {"newRoot": "$doc"}},
-            {"$match": {"probability": {"$exists": True, "$ne": None}}},
-            {"$group": {"_id": None, "avg_prob": {"$avg": "$probability"}}}
+            {"$match": {"prediction.probability": {"$exists": True, "$ne": None}}},
+            {"$group": {"_id": None, "avg_prob": {"$avg": "$prediction.probability"}}}
         ]
         prob_result = list(db.diabetes_assessments.aggregate(prob_pipeline))
-        avg_probability = round(prob_result[0]['avg_prob'], 2) if prob_result else 0
+        avg_probability = prob_result[0]['avg_prob'] if prob_result else 0
+        # probability is 0-1; convert to percentage for the UI
+        avg_score = round(avg_probability * 100, 1)
 
         return jsonify({
             'total_users': total_users,
+            'total_assessments': total_assessments,
             'assessed_users': unique_assessed,
             'completion_rate': round(unique_assessed / total_users * 100, 1) if total_users > 0 else 0,
             'risk_distribution': risk_distribution,
-            'avg_probability': avg_probability
+            'high_risk_count': high_risk_count,
+            'avg_probability': round(avg_probability, 4),
+            'avg_score': avg_score,
+            'this_month': this_month,
         })
     except Exception as e:
         logging.error(f"[ADMIN] Error in assessment stats: {e}", exc_info=True)
@@ -1021,37 +1070,48 @@ def get_assessment_stats():
 
 
 def get_assessments_list():
-    """GET /admin/assessments/list — All diabetes assessments with user info."""
+    """GET /admin/assessments/list — All diabetes assessments with user info.
+    
+    NOTE: diabetes_assessments documents use camelCase fields:
+      userId (ObjectId), createdAt
+      prediction.risk_level, prediction.probability, prediction.confidence
+    """
     try:
         db = get_db()
         skip = request.args.get('skip', 0, type=int)
         limit = request.args.get('limit', 20, type=int)
         risk_filter = request.args.get('risk_level')
 
+        # risk_level lives at prediction.risk_level, not at document root
         query = {}
         if risk_filter:
-            query['risk_level'] = risk_filter
+            query['prediction.risk_level'] = risk_filter
 
-        assessments = list(db.diabetes_assessments.find(query).sort("created_at", -1).skip(skip).limit(limit))
+        assessments = list(db.diabetes_assessments.find(query).sort("createdAt", -1).skip(skip).limit(limit))
         total = db.diabetes_assessments.count_documents(query)
 
         results = []
         for a in assessments:
+            # userId is stored as ObjectId directly
             user = None
-            if a.get('user_id'):
+            user_id_val = a.get('userId')
+            if user_id_val:
                 try:
-                    user = db.users.find_one({"_id": ObjectId(a['user_id'])})
+                    user = db.users.find_one({"_id": user_id_val if isinstance(user_id_val, ObjectId) else ObjectId(str(user_id_val))})
                 except Exception:
                     pass
+
+            prediction = a.get('prediction') or {}
+            created_at = a.get('createdAt')
 
             results.append({
                 'id': _safe_str(a['_id']),
                 'user_name': _user_display(user) if user else 'Unknown',
                 'user_email': user.get('email') if user else None,
-                'risk_level': a.get('risk_level'),
-                'probability': a.get('probability'),
-                'confidence': a.get('confidence'),
-                'assessed_at': a.get('created_at').isoformat() if a.get('created_at') else None
+                'risk_level': prediction.get('risk_level'),
+                'probability': prediction.get('probability'),
+                'confidence': prediction.get('confidence'),
+                'assessed_at': created_at.isoformat() if created_at else None
             })
 
         return jsonify({'assessments': results, 'total': total})
@@ -1344,13 +1404,29 @@ def get_alcohol_tracker_stats():
 # ═══════════════════════════════════════════════════════════════════════════
 
 def get_meals_stats():
-    """GET /admin/meals/stats — Total meals, today's meals, food type distribution."""
+    """GET /admin/meals/stats — Total meals, avg nutrients, unique users, this week."""
     try:
         db = get_db()
         today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = today_start - timedelta(days=today_start.weekday())
 
         total_meals = db.user_meals.count_documents({})
         todays_meals = db.user_meals.count_documents({"meal_datetime": {"$gte": today_start}})
+        this_week = db.user_meals.count_documents({"meal_datetime": {"$gte": week_start}})
+        unique_users = len(db.user_meals.distinct("user_id"))
+
+        # Avg nutrients across all meals
+        avg_pipeline = [
+            {"$group": {
+                "_id": None,
+                "avg_calories": {"$avg": {"$toDouble": {"$ifNull": ["$nutrients.Calories", None]}}},
+                "avg_protein":  {"$avg": {"$toDouble": {"$ifNull": ["$nutrients.Protein (g)", None]}}},
+                "avg_carbs":    {"$avg": {"$toDouble": {"$ifNull": ["$nutrients.Carbs (g)", None]}}},
+                "avg_fat":      {"$avg": {"$toDouble": {"$ifNull": ["$nutrients.Fat (g)", None]}}},
+            }}
+        ]
+        avg_agg = list(db.user_meals.aggregate(avg_pipeline))
+        avg_data = avg_agg[0] if avg_agg else {}
 
         # Food type distribution
         type_pipeline = [
@@ -1371,6 +1447,12 @@ def get_meals_stats():
         return jsonify({
             'total_meals': total_meals,
             'todays_meals': todays_meals,
+            'this_week': this_week,
+            'unique_users': unique_users,
+            'avg_calories': round(avg_data.get('avg_calories') or 0, 1),
+            'avg_protein':  round(avg_data.get('avg_protein') or 0, 1),
+            'avg_carbs':    round(avg_data.get('avg_carbs') or 0, 1),
+            'avg_fat':      round(avg_data.get('avg_fat') or 0, 1),
             'food_type_distribution': food_types,
             'source_distribution': sources,
         })
@@ -1383,32 +1465,33 @@ def get_meals_nutrient_trends():
     """GET /admin/meals/nutrient-trends — Daily average nutrients over time."""
     try:
         db = get_db()
-        start, end = _parse_date_range(30)
+        days = request.args.get('days', 30, type=int)
+        start, end = _parse_date_range(days)
 
         pipeline = [
             {"$match": {"meal_datetime": {"$gte": start, "$lte": end}}},
             {"$group": {
                 "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$meal_datetime"}},
-                "avg_calories": {"$avg": {"$toDouble": {"$ifNull": ["$nutrients.Calories", 0]}}},
-                "avg_protein": {"$avg": {"$toDouble": {"$ifNull": ["$nutrients.Protein (g)", 0]}}},
-                "avg_carbs": {"$avg": {"$toDouble": {"$ifNull": ["$nutrients.Carbs (g)", 0]}}},
-                "avg_fat": {"$avg": {"$toDouble": {"$ifNull": ["$nutrients.Fat (g)", 0]}}},
+                "calories": {"$avg": {"$toDouble": {"$ifNull": ["$nutrients.Calories", 0]}}},
+                "protein":  {"$avg": {"$toDouble": {"$ifNull": ["$nutrients.Protein (g)", 0]}}},
+                "carbs":    {"$avg": {"$toDouble": {"$ifNull": ["$nutrients.Carbs (g)", 0]}}},
+                "fat":      {"$avg": {"$toDouble": {"$ifNull": ["$nutrients.Fat (g)", 0]}}},
                 "meal_count": {"$sum": 1}
             }},
             {"$sort": {"_id": 1}}
         ]
         agg = list(db.user_meals.aggregate(pipeline))
 
-        trends = [{
+        data_points = [{
             'date': item['_id'],
-            'avg_calories': round(item['avg_calories'], 1),
-            'avg_protein': round(item['avg_protein'], 1),
-            'avg_carbs': round(item['avg_carbs'], 1),
-            'avg_fat': round(item['avg_fat'], 1),
+            'calories': round(item['calories'], 1),
+            'protein':  round(item['protein'], 1),
+            'carbs':    round(item['carbs'], 1),
+            'fat':      round(item['fat'], 1),
             'meal_count': item['meal_count']
         } for item in agg]
 
-        return jsonify({'trends': trends})
+        return jsonify({'data_points': data_points})
     except Exception as e:
         logging.error(f"[ADMIN] Error in nutrient trends: {e}", exc_info=True)
         return jsonify(error=str(e)), 500
@@ -1418,8 +1501,9 @@ def browse_meals():
     """GET /admin/meals/browse — Paginated all-meals browser with filters."""
     try:
         db = get_db()
-        skip = request.args.get('skip', 0, type=int)
+        page = request.args.get('page', 1, type=int)
         limit = request.args.get('limit', 20, type=int)
+        skip = request.args.get('skip', (page - 1) * limit, type=int)
         search = request.args.get('search', '').strip()
         food_type = request.args.get('food_type')
 
@@ -1451,7 +1535,9 @@ def browse_meals():
                 'id': _safe_str(m['_id']),
                 'user_name': _user_display(user) if user else 'Unknown',
                 'meal_name': m.get('meal_name'),
+                'food_name': m.get('meal_name'),
                 'food_type': m.get('food_type'),
+                'meal_type': m.get('food_type'),
                 'calories': nutrients.get('Calories'),
                 'carbs': nutrients.get('Carbs (g)'),
                 'protein': nutrients.get('Protein (g)'),
@@ -1785,6 +1871,8 @@ def get_chatbot_stats():
         db = get_db()
         total_messages = db.chatbot_messages.count_documents({})
         unique_users = len(db.chatbot_messages.distinct("user_id"))
+        # Each unique user represents one conversation thread
+        total_conversations = unique_users
 
         # Today's users
         today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -1792,7 +1880,7 @@ def get_chatbot_stats():
             "created_at": {"$gte": today_start}
         }))
 
-        avg_per_user = round(total_messages / unique_users, 1) if unique_users > 0 else 0
+        avg_per_session = round(total_messages / unique_users, 1) if unique_users > 0 else 0
 
         # Daily usage (last 30 days)
         daily_pipeline = [
@@ -1819,10 +1907,11 @@ def get_chatbot_stats():
         peak_hours = [{"hour": item['_id'], "count": item['count']} for item in hour_agg]
 
         return jsonify({
+            'total_conversations': total_conversations,
             'total_messages': total_messages,
             'unique_users': unique_users,
             'active_today': active_today,
-            'avg_messages_per_user': avg_per_user,
+            'avg_messages_per_session': avg_per_session,
             'daily_usage': daily_usage,
             'peak_hours': peak_hours,
         })
@@ -1835,8 +1924,9 @@ def get_chatbot_conversations():
     """GET /admin/chatbot/conversations — Recent conversations grouped by user."""
     try:
         db = get_db()
-        skip = request.args.get('skip', 0, type=int)
+        page = request.args.get('page', 1, type=int)
         limit = request.args.get('limit', 20, type=int)
+        skip = request.args.get('skip', (page - 1) * limit, type=int)
 
         # Group by user
         pipeline = [
@@ -1866,9 +1956,11 @@ def get_chatbot_conversations():
             results.append({
                 'user_id': _safe_str(g['_id']),
                 'user_name': _user_display(user) if user else 'Unknown',
+                'message_count': g['total_messages'],
                 'total_messages': g['total_messages'],
                 'last_message': g.get('last_message', '')[:100],
                 'last_response': g.get('last_response', '')[:100],
+                'last_message_at': g['last_interaction'].isoformat() if g.get('last_interaction') else None,
                 'last_interaction': g['last_interaction'].isoformat() if g.get('last_interaction') else None,
             })
 
@@ -1887,8 +1979,17 @@ def get_ai_food_analysis_stats():
         # Count by image vs text
         image_analyses = db.user_meals.count_documents({"image_url": {"$exists": True, "$ne": None}})
         text_analyses = db.user_meals.count_documents({"image_url": {"$in": [None, ""]}})
+        total_analyses = image_analyses + text_analyses
 
-        # Average confidence
+        # This week
+        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = today - timedelta(days=today.weekday())
+        this_week = db.user_meals.count_documents({"meal_datetime": {"$gte": week_start}})
+
+        # Unique users
+        unique_users = len(db.user_meals.distinct("user_id"))
+
+        # Average confidence — confidence_rate is stored as 0-100
         conf_pipeline = [
             {"$match": {"confidence_rate": {"$exists": True, "$ne": None}}},
             {"$group": {
@@ -1900,13 +2001,29 @@ def get_ai_food_analysis_stats():
         ]
         conf_agg = list(db.user_meals.aggregate(conf_pipeline))
         conf_stats = conf_agg[0] if conf_agg else {}
+        avg_conf_raw = conf_stats.get('avg_confidence', 0) or 0
+        # Normalise: if stored as 0-100 keep as-is, convert to 0-1 fraction for the frontend
+        avg_confidence_pct = round(avg_conf_raw if avg_conf_raw <= 1 else avg_conf_raw / 100, 4)
+
+        # Top analyzed foods
+        top_foods_pipeline = [
+            {"$match": {"meal_name": {"$exists": True, "$ne": None}}},
+            {"$group": {"_id": "$meal_name", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 8}
+        ]
+        top_foods_agg = list(db.user_meals.aggregate(top_foods_pipeline))
+        top_foods = [{"name": item['_id'], "count": item['count']} for item in top_foods_agg]
 
         return jsonify({
             'image_analyses': image_analyses,
             'text_analyses': text_analyses,
-            'total_analyses': image_analyses + text_analyses,
-            'avg_confidence': round(conf_stats.get('avg_confidence', 0), 1),
+            'total_analyses': total_analyses,
+            'this_week': this_week,
+            'unique_users': unique_users,
+            'avg_confidence': avg_confidence_pct,
             'low_confidence_count': conf_stats.get('low_confidence', 0),
+            'top_foods': top_foods,
         })
     except Exception as e:
         logging.error(f"[ADMIN] Error in AI food analysis stats: {e}", exc_info=True)

@@ -26,8 +26,6 @@ function Sidebar({ open = true }) {
     { text: 'Risk & Assessments', icon: <WarningAmberIcon />, path: '/dashboard/risk' },
     { text: 'Health Trackers', icon: <MonitorHeartIcon />, path: '/dashboard/trackers' },
     { text: 'Nutrition & Meals', icon: <RestaurantIcon />, path: '/dashboard/meals' },
-    { text: 'Consultations', icon: <VideoCallIcon />, path: '/dashboard/consultations' },
-    { text: 'Chat', icon: <ChatIcon />, path: '/dashboard/chat' },
     { text: 'AI & Chatbot', icon: <SmartToyIcon />, path: '/dashboard/ai' },
     { text: 'System', icon: <SettingsIcon />, path: '/dashboard/system' },
   ];

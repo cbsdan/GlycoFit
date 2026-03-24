@@ -532,18 +532,25 @@ def create_user():
 
 @admin_bp.route("/users/<user_id>/meals", methods=["GET"])
 def get_user_meals_by_id(user_id):
-    """Get meals for a user by MongoDB user ID"""
+    """Get paginated meals for a user by MongoDB user ID"""
     try:
         user = User.find_by_id(user_id)
         if not user:
             return jsonify(error='User not found'), 404
-        
-        result = UserMeal.get_user_meals(user._id)
+
+        page = request.args.get('page', 1, type=int)
+        per_page = min(request.args.get('per_page', 10, type=int), 50)
+        offset = (page - 1) * per_page
+
+        result = UserMeal.get_user_meals_paginated(user._id, limit=per_page, offset=offset)
         if result.get('success'):
             return jsonify(
                 status='success',
                 meals=result['meals'],
-                count=result.get('count', 0)
+                count=result.get('count', 0),
+                total=result.get('total', 0),
+                page=page,
+                per_page=per_page,
             ), 200
         else:
             return jsonify(

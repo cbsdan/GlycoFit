@@ -110,13 +110,13 @@ function RiskAssessmentsPage() {
         <Grid item xs={12} md={4}>
           <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0', height: '100%' }}>
             <Typography variant="h6" gutterBottom fontWeight={600}>Component Averages</Typography>
-            {compAvg && compAvg.components ? (
+            {compAvg && compAvg.component_averages ? (
               <Bar
                 data={{
-                  labels: Object.keys(compAvg.components),
+                  labels: Object.keys(compAvg.component_averages),
                   datasets: [{
                     label: 'Avg Score',
-                    data: Object.values(compAvg.components),
+                    data: Object.values(compAvg.component_averages),
                     backgroundColor: '#667eea',
                     borderRadius: 6,
                   }],
@@ -138,13 +138,13 @@ function RiskAssessmentsPage() {
                 <MenuItem value="90">90 days</MenuItem>
               </TextField>
             </Box>
-            {trend && trend.data_points ? (
+            {trend && trend.trend ? (
               <Line
                 data={{
-                  labels: trend.data_points.map(d => d.date || d.label),
+                  labels: trend.trend.map(d => d.week || d.date),
                   datasets: [{
                     label: 'Avg Risk Score',
-                    data: trend.data_points.map(d => d.avg_score || d.value),
+                    data: trend.trend.map(d => d.avg_score),
                     borderColor: '#ef4444',
                     backgroundColor: 'rgba(239,68,68,0.1)',
                     fill: true,
@@ -189,14 +189,14 @@ function RiskAssessmentsPage() {
                   </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: 140 }}>
-                      <LinearProgress variant="determinate" value={Math.min(p.risk_score || 0, 100)}
+                      <LinearProgress variant="determinate" value={Math.min(p.overall_risk_score || 0, 100)}
                         sx={{ flex: 1, height: 8, borderRadius: 4, bgcolor: '#fee2e2', '& .MuiLinearProgress-bar': { bgcolor: '#ef4444', borderRadius: 4 } }}
                       />
-                      <Typography variant="body2" fontWeight={600}>{(p.risk_score || 0).toFixed(0)}%</Typography>
+                      <Typography variant="body2" fontWeight={600}>{(p.overall_risk_score || 0).toFixed(0)}%</Typography>
                     </Box>
                   </TableCell>
                   <TableCell>
-                    <Chip label={p.risk_level || 'High'} size="small" sx={{ bgcolor: '#fef2f2', color: '#ef4444', fontWeight: 600 }} />
+                    <Chip label={p.risk_category || 'High'} size="small" sx={{ bgcolor: '#fef2f2', color: '#ef4444', fontWeight: 600 }} />
                   </TableCell>
                   <TableCell>{p.last_assessed ? new Date(p.last_assessed).toLocaleDateString() : '—'}</TableCell>
                 </TableRow>
@@ -214,7 +214,6 @@ function RiskAssessmentsPage() {
             <TableHead>
               <TableRow sx={{ bgcolor: '#f8fafc' }}>
                 <TableCell sx={{ fontWeight: 600 }}>User</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Score</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Level</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
@@ -226,14 +225,13 @@ function RiskAssessmentsPage() {
               ) : assessments.map((a, i) => (
                 <TableRow key={i} hover>
                   <TableCell>{a.user_name || a.user || '—'}</TableCell>
-                  <TableCell>{a.type || 'Overall'}</TableCell>
-                  <TableCell>{(a.score || 0).toFixed(1)}%</TableCell>
+                  <TableCell>{((a.probability || 0) * 100).toFixed(1)}%</TableCell>
                   <TableCell>
                     <Chip label={a.risk_level === 'very_high' ? 'High' : (a.risk_level || '—')} size="small" variant="outlined"
                       color={(a.risk_level === 'high' || a.risk_level === 'very_high') ? 'error' : a.risk_level === 'moderate' ? 'warning' : 'success'}
                     />
                   </TableCell>
-                  <TableCell>{a.date ? new Date(a.date).toLocaleDateString() : '—'}</TableCell>
+                  <TableCell>{a.assessed_at ? new Date(a.assessed_at).toLocaleDateString() : '—'}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

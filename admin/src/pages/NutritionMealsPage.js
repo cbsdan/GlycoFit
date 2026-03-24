@@ -118,7 +118,7 @@ function NutritionMealsPage() {
           <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0', height: '100%' }}>
             <Typography variant="h6" gutterBottom fontWeight={600}>Avg Macro Split</Typography>
             {mealsStats && mealsStats.avg_protein !== undefined ? (
-              <Box sx={{ maxWidth: 240, mx: 'auto', mt: 2 }}>
+              <Box sx={{ mt: 2 }}>
                 <Bar
                   data={{
                     labels: ['Protein', 'Carbs', 'Fat'],

@@ -14,6 +14,9 @@ import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import adminService from '../services/adminService';
 import AdminCreatePhysician from '../components/AdminCreatePhysician';
 
+const physicianName = (p) =>
+  [p?.first_name, p?.last_name].filter(Boolean).join(' ') || p?.email || 'Unknown';
+
 function PhysicianManagementPage() {
   const [physicians, setPhysicians] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -103,21 +106,24 @@ function PhysicianManagementPage() {
                 <TableRow key={p._id || p.uid} hover>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Avatar sx={{ bgcolor: '#10b981', width: 36, height: 36 }}>
-                        {(p.name || p.displayName || '?').charAt(0).toUpperCase()}
+                      <Avatar
+                        src={p.avatar?.url || undefined}
+                        sx={{ bgcolor: '#10b981', width: 36, height: 36 }}
+                      >
+                        {physicianName(p).charAt(0).toUpperCase()}
                       </Avatar>
                       <Typography variant="body2" fontWeight={500}>
-                        {p.name || p.displayName || 'Unknown'}
+                        {physicianName(p)}
                       </Typography>
                     </Box>
                   </TableCell>
                   <TableCell>{p.email || '—'}</TableCell>
                   <TableCell>{p.specialization || p.specialty || '—'}</TableCell>
-                  <TableCell>{p.patient_count ?? '—'}</TableCell>
+                  <TableCell>{p.total_patients ?? '—'}</TableCell>
                   <TableCell>
                     <Chip
-                      label={p.disabled ? 'Disabled' : 'Active'}
-                      color={p.disabled ? 'error' : 'success'}
+                      label={p.is_disabled ? 'Disabled' : 'Active'}
+                      color={p.is_disabled ? 'error' : 'success'}
                       size="small" variant="outlined"
                     />
                   </TableCell>
@@ -150,7 +156,7 @@ function PhysicianManagementPage() {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <MedicalServicesIcon color="success" />
             <Typography variant="h6" fontWeight={600}>
-              {selectedPhysician?.name || selectedPhysician?.displayName || 'Physician Details'}
+              {physicianName(selectedPhysician) !== 'Unknown' ? physicianName(selectedPhysician) : 'Physician Details'}
             </Typography>
           </Box>
           <IconButton onClick={() => setDetailOpen(false)}><CloseIcon /></IconButton>
@@ -163,28 +169,58 @@ function PhysicianManagementPage() {
               <Tabs value={detailTab} onChange={(_, v) => setDetailTab(v)} sx={{ mb: 2 }}>
                 <Tab icon={<MedicalServicesIcon />} label="Profile" iconPosition="start" />
                 <Tab icon={<PeopleIcon />} label={`Patients (${detailData.patients.length})`} iconPosition="start" />
-                <Tab icon={<EventIcon />} label={`Consultations (${detailData.consultations.length})`} iconPosition="start" />
+                <Tab icon={<EventIcon />} label={`Appointments (${detailData.consultations.length})`} iconPosition="start" />
               </Tabs>
 
-              {detailTab === 0 && detailData.details && (
+              {detailTab === 0 && detailData.details && (() => {
+                const u = detailData.details.user || {};
+                const prof = detailData.details.profile || {};
+                const stats = detailData.details.stats || {};
+                return (
                 <Grid container spacing={2}>
                   {[
-                    ['Name', detailData.details.name || detailData.details.displayName],
-                    ['Email', detailData.details.email],
-                    ['Specialization', detailData.details.specialization || detailData.details.specialty],
-                    ['Phone', detailData.details.phone || detailData.details.phoneNumber],
-                    ['License', detailData.details.licenseNumber || detailData.details.license_number],
-                    ['Created', detailData.details.createdAt ? new Date(detailData.details.createdAt).toLocaleDateString() : '—'],
+                    ['Name', [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email],
+                    ['Email', u.email],
+                    ['Specialization', prof.specialization],
+                    ['License Number', prof.license_number],
+                    ['Consultation Fee', prof.consultation_fee != null ? `₱${prof.consultation_fee}` : null],
+                    ['Experience', prof.years_of_experience != null ? `${prof.years_of_experience} yr(s)` : null],
+                    ['Age', u.age],
+                    ['Sex', u.sex],
+                    ['Total Patients', stats.total_patients ?? '—'],
+                    ['Total Consultations', stats.total_consultations ?? '—'],
+                    ['Status', u.is_disabled ? 'Disabled' : 'Active'],
+                    ['Member Since', u.created_at ? new Date(u.created_at).toLocaleDateString() : null],
                   ].map(([label, value]) => (
                     <Grid item xs={6} key={label}>
                       <Card variant="outlined" sx={{ borderRadius: 2 }}>
                         <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                           <Typography variant="caption" color="text.secondary">{label}</Typography>
-                          <Typography variant="body2" fontWeight={500}>{value || '—'}</Typography>
+                          <Typography variant="body2" fontWeight={500}>{value != null && value !== '' ? value : '—'}</Typography>
                         </CardContent>
                       </Card>
                     </Grid>
                   ))}
+                  {prof.bio && (
+                    <Grid item xs={12}>
+                      <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                        <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                          <Typography variant="caption" color="text.secondary">Bio</Typography>
+                          <Typography variant="body2">{prof.bio}</Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  )}
+                  {prof.languages?.length > 0 && (
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Languages</Typography>
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        {prof.languages.map((lang, i) => (
+                          <Chip key={i} label={lang} size="small" variant="outlined" />
+                        ))}
+                      </Box>
+                    </Grid>
+                  )}
                   {detailData.availability.length > 0 && (
                     <Grid item xs={12}>
                       <Typography variant="subtitle2" sx={{ mt: 1, mb: 0.5 }}>Availability Slots</Typography>
@@ -196,7 +232,8 @@ function PhysicianManagementPage() {
                     </Grid>
                   )}
                 </Grid>
-              )}
+                );
+              })()}
 
               {detailTab === 1 && (
                 <List>
@@ -206,8 +243,8 @@ function PhysicianManagementPage() {
                     <React.Fragment key={i}>
                       <ListItem>
                         <ListItemText
-                          primary={pt.name || pt.displayName || pt.email || 'Unknown'}
-                          secondary={pt.email || ''}
+                          primary={pt.patient_name || pt.name || pt.displayName || pt.patient_email || 'Unknown'}
+                          secondary={pt.patient_email || pt.email || ''}
                         />
                       </ListItem>
                       {i < detailData.patients.length - 1 && <Divider />}
@@ -224,7 +261,6 @@ function PhysicianManagementPage() {
                         <TableCell>Patient</TableCell>
                         <TableCell>Date</TableCell>
                         <TableCell>Status</TableCell>
-                        <TableCell>Type</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -232,12 +268,11 @@ function PhysicianManagementPage() {
                         <TableRow><TableCell colSpan={4} align="center">No consultations</TableCell></TableRow>
                       ) : detailData.consultations.map((c, i) => (
                         <TableRow key={i}>
-                          <TableCell>{c.patient_name || c.patient || '—'}</TableCell>
-                          <TableCell>{c.date ? new Date(c.date).toLocaleDateString() : '—'}</TableCell>
+                          <TableCell>{c.patient_name || '—'}</TableCell>
+                          <TableCell>{(c.scheduled_date || c.date) ? new Date(c.scheduled_date || c.date).toLocaleDateString() : '—'}</TableCell>
                           <TableCell>
-                            <Chip label={c.status || '—'} size="small" color={c.status === 'completed' ? 'success' : c.status === 'pending' ? 'warning' : 'default'} variant="outlined" />
+                            <Chip label={c.status || '—'} size="small" color={c.status === 'completed' ? 'success' : c.status === 'pending' ? 'warning' : c.status === 'approved' ? 'info' : 'default'} variant="outlined" />
                           </TableCell>
-                          <TableCell>{c.type || c.consultation_type || '—'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

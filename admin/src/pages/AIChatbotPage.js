@@ -8,7 +8,7 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import QuestionAnswerIcon from '@mui/icons-material/QuestionAnswer';
 import adminService from '../services/adminService';
-import { Bar, Doughnut } from 'react-chartjs-2';
+import { Bar, Line } from 'react-chartjs-2';
 
 function AIChatbotPage() {
   const [loading, setLoading] = useState(true);
@@ -95,7 +95,7 @@ function AIChatbotPage() {
                     { label: 'Total Analyses', val: foodStats.total_analyses || 0 },
                     { label: 'This Week', val: foodStats.this_week || 0 },
                     { label: 'Unique Users', val: foodStats.unique_users || 0 },
-                    { label: 'Avg Confidence', val: `${((foodStats.avg_confidence || 0) * 100).toFixed(0)}%` },
+                    { label: 'Avg Confidence', val: `${((foodStats.avg_confidence || 0) * 100).toFixed(1)}%` },
                   ].map((s, i) => (
                     <Grid item xs={6} key={i}>
                       <Typography variant="caption" color="text.secondary">{s.label}</Typography>
@@ -125,32 +125,33 @@ function AIChatbotPage() {
           </Paper>
         </Grid>
 
-        {/* Chatbot Topic Distribution (if available) */}
+        {/* Chatbot Daily Activity */}
         <Grid item xs={12} md={6}>
           <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0', height: '100%' }}>
-            <Typography variant="h6" gutterBottom fontWeight={600}>Chatbot Usage Overview</Typography>
-            {chatbotStats && chatbotStats.topic_distribution ? (
-              <Box sx={{ maxWidth: 280, mx: 'auto' }}>
-                <Doughnut
-                  data={{
-                    labels: Object.keys(chatbotStats.topic_distribution),
-                    datasets: [{
-                      data: Object.values(chatbotStats.topic_distribution),
-                      backgroundColor: ['#8b5cf6', '#ec4899', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'],
-                    }],
-                  }}
-                  options={{ plugins: { legend: { position: 'bottom' } } }}
-                />
-              </Box>
+            <Typography variant="h6" gutterBottom fontWeight={600}>Chatbot Daily Activity (30 days)</Typography>
+            {chatbotStats && chatbotStats.daily_usage && chatbotStats.daily_usage.length > 0 ? (
+              <Line
+                data={{
+                  labels: chatbotStats.daily_usage.map(d => d.date),
+                  datasets: [{
+                    label: 'Messages',
+                    data: chatbotStats.daily_usage.map(d => d.count),
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139,92,246,0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 3,
+                  }],
+                }}
+                options={{
+                  plugins: { legend: { display: false } },
+                  scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+                }}
+              />
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
                 <SmartToyIcon sx={{ fontSize: 64, color: '#e0e0e0', mb: 2 }} />
-                <Typography variant="body2" color="text.secondary">
-                  {chatbotStats?.total_conversations || 0} total chatbot conversations
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {chatbotStats?.total_messages || 0} total messages exchanged
-                </Typography>
+                <Typography variant="body2" color="text.secondary">No activity in the last 30 days</Typography>
               </Box>
             )}
           </Paper>
