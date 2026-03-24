@@ -28,7 +28,8 @@ export default ({ config }) => {
       permissions: [
         "android.permission.health.READ_STEPS",
         "android.permission.health.WRITE_STEPS",
-        "android.permission.health.READ_ACTIVE_CALORIES_BURNED"
+        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
+        "android.permission.health.READ_SLEEP"
       ],
     },
     web: {
