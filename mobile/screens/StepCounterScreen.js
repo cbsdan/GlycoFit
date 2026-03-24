@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -35,6 +36,7 @@ const { width } = Dimensions.get('window');
 const SYNC_STEP_THRESHOLD = 50;
 const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const DAILY_GOAL = 10000;
+const ACHIEVEMENTS_STORAGE_KEY = 'step_counter_unlocked_achievements';
 
 // Achievements configuration
 const ACHIEVEMENTS = [
@@ -86,6 +88,8 @@ const StepCounterScreen = ({ navigation }) => {
   const lastAutoSyncRef = useRef(Date.now());
   const isMountedRef = useRef(true);
   const achievementAnimation = useRef(new Animated.Value(0)).current;
+  // Tracks unlocked achievements without stale-closure issues (mirrors unlockedAchievements state)
+  const unlockedAchievementsRef = useRef([]);
   // Keeps latest summary accessible inside callbacks without stale closure
   const summaryRef = useRef(null);
   // Keeps latest activityData accessible inside callbacks without stale closure
@@ -152,31 +156,47 @@ const StepCounterScreen = ({ navigation }) => {
   const checkAchievements = useCallback((steps) => {
     const newUnlocked = [];
     ACHIEVEMENTS.forEach(achievement => {
-      if (steps >= achievement.requirement && !unlockedAchievements.includes(achievement.id)) {
+      // Use the ref so we always check against the latest set, not a stale closure snapshot
+      if (steps >= achievement.requirement && !unlockedAchievementsRef.current.includes(achievement.id)) {
         newUnlocked.push(achievement.id);
-        // Animate achievement unlock
-        Animated.sequence([
-          Animated.timing(achievementAnimation, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-          Animated.delay(2000),
-          Animated.timing(achievementAnimation, {
-            toValue: 0,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-        ]).start();
-
-        toast.success(`🏆 Achievement Unlocked: ${achievement.name}!`);
       }
     });
 
-    if (newUnlocked.length > 0) {
-      setUnlockedAchievements(prev => [...prev, ...newUnlocked]);
-    }
-  }, [unlockedAchievements, achievementAnimation, toast]);
+    if (newUnlocked.length === 0) return;
+
+    // Update ref immediately (synchronous) to prevent duplicate fires from rapid re-calls
+    unlockedAchievementsRef.current = [...unlockedAchievementsRef.current, ...newUnlocked];
+
+    // Persist so achievements survive screen remounts
+    AsyncStorage.setItem(ACHIEVEMENTS_STORAGE_KEY, JSON.stringify(unlockedAchievementsRef.current))
+      .catch(() => {/* ignore write errors */});
+
+    // Update state for UI rendering
+    setUnlockedAchievements(unlockedAchievementsRef.current);
+
+    // Show one toast per newly-unlocked achievement
+    newUnlocked.forEach(id => {
+      const achievement = ACHIEVEMENTS.find(a => a.id === id);
+      if (!achievement) return;
+
+      // Animate achievement unlock
+      Animated.sequence([
+        Animated.timing(achievementAnimation, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.delay(2000),
+        Animated.timing(achievementAnimation, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      toast.success(`🏆 Achievement Unlocked: ${achievement.name}!`);
+    });
+  }, [achievementAnimation, toast]); // No longer depends on unlockedAchievements state
 
 
   // Predict end of day steps
@@ -969,9 +989,21 @@ const StepCounterScreen = ({ navigation }) => {
   useEffect(() => {
     let unsubscribe;
 
-    initializeServices().then(unsub => {
-      unsubscribe = unsub;
-    });
+    // Load persisted achievements first so checkAchievements never re-fires old ones
+    AsyncStorage.getItem(ACHIEVEMENTS_STORAGE_KEY)
+      .then(stored => {
+        if (stored) {
+          const ids = JSON.parse(stored);
+          unlockedAchievementsRef.current = ids;
+          if (isMountedRef.current) setUnlockedAchievements(ids);
+        }
+      })
+      .catch(() => {/* ignore read errors */})
+      .finally(() => {
+        initializeServices().then(unsub => {
+          unsubscribe = unsub;
+        });
+      });
 
     return () => {
       isMountedRef.current = false;

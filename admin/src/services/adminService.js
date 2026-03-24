@@ -103,6 +103,7 @@ const adminService = {
   getDatabaseStats: () => apiClient.get('/admin/system/database-stats').then(r => r.data),
   getPlatformConfig: () => apiClient.get('/admin/system/config').then(r => r.data),
   getSystemLogs: (limit = 50) => apiClient.get(`/admin/system/logs?limit=${limit}`).then(r => r.data),
+  getGeminiStatus: () => apiClient.get('/gemini/status').then(r => r.data),
 };
 
 export default adminService;

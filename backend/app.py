@@ -38,6 +38,7 @@ from services.gemini_service import init_gemini_service
 from services.groq_service import init_groq_service
 from services.diabetes_service import init_diabetes_service
 from models.chatbot_message import ChatbotMessage
+from models.gemini_usage import GeminiUsage
 from controllers.sleep_tracking_controller import init_sleep_tracking_indexes
 from controllers.alcohol_intake_controller import init_alcohol_tracking_indexes
 from controllers.smoking_tracking_controller import init_smoking_tracking_indexes
@@ -129,6 +130,14 @@ def create_app():
     except Exception as e:
         logging.error(f"Failed to create chatbot message indexes: {str(e)}")
         logging.warning("Chatbot message queries may be slower without indexes")
+
+    # Initialize Gemini Usage Tracking Indexes
+    try:
+        GeminiUsage.ensure_indexes()
+        logging.info("Gemini usage tracking indexes created successfully")
+    except Exception as e:
+        logging.error(f"Failed to create Gemini usage indexes: {str(e)}")
+        logging.warning("Gemini usage tracking may be slower without indexes")
     
     # Initialize Diabetes Prediction Service
     try:

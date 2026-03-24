@@ -4,7 +4,7 @@ import os
 import tempfile
 import time
 from datetime import datetime
-from services.gemini_service import get_gemini_service
+from services.gemini_service import get_gemini_service, GeminiQuotaExceededError
 from services.cloudinary_service import CloudinaryService
 from models.user_meal import UserMeal
 from middleware.firebase_auth import firebase_auth_required, get_current_user_id
@@ -144,6 +144,13 @@ class GeminiController:
                 logging.info(f"Food analysis completed successfully (Confidence: {analysis_result.get('confidence_percentage', 50)}%)")
                 return jsonify(response_data), 200
                 
+            except GeminiQuotaExceededError as quota_error:
+                logging.warning(f"Gemini quota exceeded: {str(quota_error)}")
+                return jsonify({
+                    'success': False,
+                    'error': 'Daily analysis limit reached. Please try again tomorrow.',
+                    'code': 'QUOTA_EXCEEDED'
+                }), 429
             except Exception as gemini_error:
                 logging.error(f"Gemini analysis error: {str(gemini_error)}")
                 return jsonify({
@@ -336,12 +343,20 @@ class GeminiController:
         try:
             gemini_service = get_gemini_service()
             is_ready = gemini_service and gemini_service.is_ready()
-            
+
+            usage_today = {}
+            try:
+                if gemini_service and is_ready:
+                    usage_today = gemini_service.get_usage_status()
+            except Exception:
+                pass
+
             return jsonify({
                 'success': True,
                 'gemini_ready': is_ready,
                 'message': 'Gemini AI is ready' if is_ready else 'Gemini AI is not available',
-                'model': 'gemini-2.5-flash-lite'
+                'model': 'gemini-2.5-flash / gemini-2.5-flash-lite',
+                'usage': usage_today
             }), 200
             
         except Exception as e:
@@ -431,6 +446,13 @@ class GeminiController:
                     }
                 }), 200
                 
+            except GeminiQuotaExceededError as quota_error:
+                logging.warning(f"Gemini quota exceeded (text): {str(quota_error)}")
+                return jsonify({
+                    'success': False,
+                    'error': 'Daily analysis limit reached. Please try again tomorrow.',
+                    'code': 'QUOTA_EXCEEDED'
+                }), 429
             except Exception as gemini_error:
                 logging.error(f"Gemini service error: {str(gemini_error)}")
                 return jsonify({

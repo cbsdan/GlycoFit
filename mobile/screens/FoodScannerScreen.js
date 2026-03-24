@@ -1769,7 +1769,7 @@ const FoodScannerScreen = ({ navigation }) => {
                 }}
               >
                 <Icon name="camera-retake" size={20} color={colors.text} />
-                <Text style={styles.retakeSmallButtonText}>Change Photo</Text>
+                <Text style={styles.retakeSmallButtonText}>Change</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.analyzeButton}

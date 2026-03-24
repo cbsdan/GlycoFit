@@ -4,32 +4,91 @@ import google.generativeai as genai
 from PIL import Image
 import io
 import json
+from datetime import datetime
+
+
+class GeminiQuotaExceededError(Exception):
+    """Raised when all Gemini model/API-key combinations have hit the daily cap."""
+    pass
+
 
 class GeminiService:
+    # Model fallback chains — ordered by preference (primary first, fallback second)
+    IMAGE_MODEL_CHAIN = ['gemini-2.5-flash', 'gemini-3-flash-preview']
+    TEXT_MODEL_CHAIN  = ['gemini-2.5-flash-lite', 'gemini-3.1-flash-preview']
+    DAILY_CAP = 20
+
     def __init__(self):
-        self.api_key = os.getenv('GEMINI_API_KEY')
-        self.model = None
-        self._initialize()
-    
-    def _initialize(self):
-        """Initialize Gemini API"""
-        try:
-            if not self.api_key:
-                raise ValueError("GEMINI_API_KEY not found in environment variables")
-            
-            genai.configure(api_key=self.api_key)
-            # Using gemini-2.0-flash-exp - Fast and capable model for food analysis
-            # This model supports generateContent and is available in your API
-            self.model = genai.GenerativeModel('gemini-2.5-flash-lite')
-            logging.info("Gemini AI service initialized successfully with model: gemini-2.5-flash-lite")
-            
-        except Exception as e:
-            logging.error(f"Failed to initialize Gemini AI: {str(e)}")
-            raise
-    
+        self.api_keys = self._load_api_keys()
+        self._initialized = len(self.api_keys) > 0
+        if not self._initialized:
+            raise ValueError("No GEMINI_API_KEY found in environment variables")
+        logging.info(
+            f"Gemini AI service initialized with {len(self.api_keys)} API key(s): "
+            f"{list(self.api_keys.keys())}"
+        )
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _load_api_keys(self) -> dict:
+        """
+        Scan environment for GEMINI_API_KEY, GEMINI_API_KEY_1, GEMINI_API_KEY_2, …
+        and return an ordered dict {key_name: key_value} for all non-empty values.
+        """
+        keys = {}
+        # Primary key (no suffix)
+        primary = os.getenv('GEMINI_API_KEY', '').strip()
+        if primary:
+            keys['GEMINI_API_KEY'] = primary
+        # Numbered keys _1, _2, … up to _9
+        for i in range(1, 10):
+            env_name = f'GEMINI_API_KEY_{i}'
+            value = os.getenv(env_name, '').strip()
+            if value:
+                keys[env_name] = value
+        return keys
+
+    def _select_model(self, model_chain: list) -> tuple:
+        """
+        Iterate over every (api_key, model) slot and return the first one
+        whose daily usage count is below DAILY_CAP.
+
+        Returns (key_name, model_name, GenerativeModel instance).
+        Raises GeminiQuotaExceededError if all slots are exhausted.
+        """
+        from models.gemini_usage import GeminiUsage
+        date_str = datetime.utcnow().strftime('%Y-%m-%d')
+
+        for key_name, key_value in self.api_keys.items():
+            for model_name in model_chain:
+                count = GeminiUsage.get_count(date_str, key_name, model_name)
+                if count < self.DAILY_CAP:
+                    genai.configure(api_key=key_value)
+                    logging.info(
+                        f"Selected model slot: {key_name}/{model_name} "
+                        f"(usage today: {count}/{self.DAILY_CAP})"
+                    )
+                    return key_name, model_name, genai.GenerativeModel(model_name)
+
+        raise GeminiQuotaExceededError(
+            f"All Gemini model slots have reached the daily cap of {self.DAILY_CAP} requests. "
+            f"Resets at midnight UTC."
+        )
+
+    def _record_usage(self, api_key_name: str, model_name: str) -> int:
+        """Atomically increment MongoDB usage counter and return the new count."""
+        from models.gemini_usage import GeminiUsage
+        return GeminiUsage.increment(api_key_name, model_name)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
     def is_ready(self):
-        """Check if Gemini service is ready"""
-        return self.model is not None
+        """Check if Gemini service is ready."""
+        return self._initialized
     
     def analyze_food_image(self, image_data, note=None):
         """
@@ -182,8 +241,12 @@ Confidence rating guidelines:
 Provide realistic nutritional estimates based on typical serving sizes. Return ONLY the JSON object.
 """
             
+            # Select the best available model slot (respects daily cap + API key fallback)
+            key_name, model_name, model = self._select_model(self.IMAGE_MODEL_CHAIN)
+            self._record_usage(key_name, model_name)
+
             # Generate content with the image
-            response = self.model.generate_content([prompt, image])
+            response = model.generate_content([prompt, image])
             
             # Parse the response
             response_text = response.text.strip()
@@ -293,9 +356,10 @@ Provide realistic nutritional estimates based on typical serving sizes. Return O
             if not self.is_ready():
                 raise Exception("Gemini service is not initialized")
             
-            # Use gemini-3.0-flash for text analysis
-            text_model = genai.GenerativeModel('gemini-2.5-flash')
-            
+            # Select the best available model slot (respects daily cap + API key fallback)
+            key_name, model_name, text_model = self._select_model(self.TEXT_MODEL_CHAIN)
+            self._record_usage(key_name, model_name)
+
             prompt = f"""
 You are a nutrition estimation model that analyzes food descriptions and provides nutritional values using realistic data referenced from common nutrition databases such as USDA, FDA, MyFitnessPal, or standard food labels.
 
@@ -483,6 +547,23 @@ Provide realistic nutritional estimates based on typical serving sizes. Return O
         except Exception as e:
             logging.error(f"Error analyzing food from text with Gemini: {str(e)}")
             raise
+
+    def get_usage_status(self) -> dict:
+        """
+        Return today's usage counters for all tracked (api_key, model) slots,
+        plus the configured cap, so callers can surface this in a status endpoint.
+        """
+        from models.gemini_usage import GeminiUsage
+        date_str = datetime.utcnow().strftime('%Y-%m-%d')
+        usage = GeminiUsage.get_all_usage(date_str)
+        return {
+            'date': date_str,
+            'daily_cap': self.DAILY_CAP,
+            'image_model_chain': self.IMAGE_MODEL_CHAIN,
+            'text_model_chain': self.TEXT_MODEL_CHAIN,
+            'api_keys_configured': list(self.api_keys.keys()),
+            'usage': usage
+        }
 
 
 # Global instance
