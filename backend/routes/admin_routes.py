@@ -71,12 +71,16 @@ def get_all_users():
         logging.info("=== [ADMIN] Fetching all users ===")
 
         skip = request.args.get('skip', 0, type=int)
-        limit = request.args.get('limit', 50, type=int)
+        limit = request.args.get('limit', 0, type=int)
 
         from config.database import get_db
         db = get_db()
-        raw_users = list(db.users.find().skip(skip).limit(limit))
-        logging.info(f"[ADMIN] Found {len(raw_users)} documents in database")
+        total_count = db.users.count_documents({})
+        query = db.users.find().skip(skip)
+        if limit > 0:
+            query = query.limit(limit)
+        raw_users = list(query)
+        logging.info(f"[ADMIN] Found {len(raw_users)} documents in database (total: {total_count})")
 
         users_data = []
         for idx, doc in enumerate(raw_users):
@@ -96,7 +100,7 @@ def get_all_users():
                 continue
 
         logging.info(f"[ADMIN] Successfully returning {len(users_data)} users")
-        return jsonify(users=users_data, total=len(users_data))
+        return jsonify(users=users_data, total=total_count)
 
     except Exception as e:
         logging.error(f"[ADMIN] Error in get_all_users: {str(e)}", exc_info=True)

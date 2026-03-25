@@ -7,8 +7,10 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   Paper,
   Button,
+  Chip,
   CircularProgress,
   Dialog,
   DialogTitle,
@@ -33,21 +35,78 @@ function UsersManagement() {
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [viewUser, setViewUser] = useState(null);
   const [query, setQuery] = useState('');
+  const [sortField, setSortField] = useState('name');
+  const [sortDirection, setSortDirection] = useState('asc');
+
+  const diagnosisLabel = (status) => {
+    switch (status) {
+      case 'type2_diabetes': return 'Type 2 Diabetes';
+      case 'prediabetes': return 'Pre-diabetes';
+      default: return 'Not Diagnosed';
+    }
+  };
+
+  const diagnosisColor = (status) => {
+    switch (status) {
+      case 'type2_diabetes': return 'error';
+      case 'prediabetes': return 'warning';
+      default: return 'success';
+    }
+  };
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
 
   const filteredUsers = useMemo(() => {
-    if (!query) return users;
-    const q = query.toLowerCase().trim();
-    const tokens = q.split(/\s+/).filter(Boolean);
-    return users.filter(u => {
-      const first = (u.first_name || '').toLowerCase();
-      const last = (u.last_name || '').toLowerCase();
-      const full = `${first} ${last}`.trim();
-      const email = (u.email || '').toLowerCase();
-      const role = (u.role || '').toLowerCase();
-      const id = (u._id || u.id || '').toString().toLowerCase();
-      return tokens.every(t => full.includes(t) || first.includes(t) || last.includes(t) || email.includes(t) || role.includes(t) || id.includes(t));
+    let list = users;
+    if (query) {
+      const q = query.toLowerCase().trim();
+      const tokens = q.split(/\s+/).filter(Boolean);
+      list = list.filter(u => {
+        const first = (u.first_name || '').toLowerCase();
+        const last = (u.last_name || '').toLowerCase();
+        const full = `${first} ${last}`.trim();
+        const email = (u.email || '').toLowerCase();
+        const role = (u.role || '').toLowerCase();
+        const id = (u._id || u.id || '').toString().toLowerCase();
+        return tokens.every(t => full.includes(t) || first.includes(t) || last.includes(t) || email.includes(t) || role.includes(t) || id.includes(t));
+      });
+    }
+
+    const diagnosisOrder = { type2_diabetes: 2, prediabetes: 1, not_diagnosed: 0 };
+    const dir = sortDirection === 'asc' ? 1 : -1;
+    list = [...list].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'name':
+          cmp = `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`);
+          break;
+        case 'email':
+          cmp = (a.email || '').localeCompare(b.email || '');
+          break;
+        case 'role':
+          cmp = (a.role || '').localeCompare(b.role || '');
+          break;
+        case 'diagnosis':
+          cmp = (diagnosisOrder[a.diagnosis_status] || 0) - (diagnosisOrder[b.diagnosis_status] || 0);
+          break;
+        case 'status':
+          cmp = (a.is_disabled === b.is_disabled) ? 0 : a.is_disabled ? 1 : -1;
+          break;
+        default:
+          break;
+      }
+      return cmp * dir;
     });
-  }, [users, query]);
+
+    return list;
+  }, [users, query, sortField, sortDirection]);
 
   useEffect(() => {
     fetchUsers();
@@ -56,7 +115,7 @@ function UsersManagement() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const data = await userService.getAllUsers(0, 50);
+      const data = await userService.getAllUsers(0, 0);
       setUsers((data.users || []).filter(u => (u.role || '').toLowerCase() !== 'physician'));
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -137,10 +196,23 @@ function UsersManagement() {
         <Table>
           <TableHead sx={{ bgcolor: '#f5f5f5' }}>
             <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Email</TableCell>
-              <TableCell>Role</TableCell>
-              <TableCell>Status</TableCell>
+              {[
+                { id: 'name', label: 'Name' },
+                { id: 'email', label: 'Email' },
+                { id: 'role', label: 'Role' },
+                { id: 'diagnosis', label: 'Diagnosis' },
+                { id: 'status', label: 'Status' },
+              ].map((col) => (
+                <TableCell key={col.id} sortDirection={sortField === col.id ? sortDirection : false}>
+                  <TableSortLabel
+                    active={sortField === col.id}
+                    direction={sortField === col.id ? sortDirection : 'asc'}
+                    onClick={() => handleSort(col.id)}
+                  >
+                    {col.label}
+                  </TableSortLabel>
+                </TableCell>
+              ))}
               <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -150,6 +222,14 @@ function UsersManagement() {
                 <TableCell>{`${user.first_name} ${user.last_name}`}</TableCell>
                 <TableCell>{user.email}</TableCell>
                 <TableCell>{user.role}</TableCell>
+                <TableCell>
+                  <Chip
+                    label={diagnosisLabel(user.diagnosis_status)}
+                    color={diagnosisColor(user.diagnosis_status)}
+                    size="small"
+                    variant="outlined"
+                  />
+                </TableCell>
                 <TableCell sx={{ color: user.is_disabled ? 'red' : 'green' }}>
                   {user.is_disabled ? 'Disabled' : 'Active'}
                 </TableCell>
