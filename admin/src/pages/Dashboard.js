@@ -15,6 +15,10 @@ import VideoCallIcon from '@mui/icons-material/VideoCall';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import DownloadIcon from '@mui/icons-material/Download';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+
 import StatCard from '../components/common/StatCard';
 import UsersStatsModal from '../components/UsersStatsModal';
 import ActiveUsersModal from '../components/ActiveUsersModal';
@@ -158,6 +162,109 @@ function Dashboard() {
   const highRiskAlerts = recentActivity?.high_risk_alerts || [];
 
   const riskColor = (cat) => ({ low: '#10b981', moderate: '#f59e0b', high: '#ef4444' }[cat] || '#9ca3af');
+
+  const handleDownloadPDF = async () => {
+    try {
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      
+      pdf.setFontSize(22);
+      pdf.setTextColor('#764ba2');
+      pdf.text('GlycoFit Dashboard Detailed Report', 10, 20);
+      
+      pdf.setFontSize(12);
+      pdf.setTextColor('#333333');
+      pdf.text(`Report Generated: ${new Date().toLocaleDateString()}`, 10, 30);
+      pdf.text(`Total Users: ${stats?.total_users || 0}   |   Active Users: ${stats?.active_users || 0}   |   Physicians: ${stats?.physicians || 0}`, 10, 38);
+      
+      let currentY = 50;
+
+      const addChartToPdf = async (elementId, title, summaryText) => {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+
+        // Check if we need to add a new page (rough estimate)
+        if (currentY > pdfHeight - 80) {
+          pdf.addPage();
+          currentY = 20;
+        }
+
+        pdf.setFontSize(14);
+        pdf.setTextColor('#333333');
+        pdf.text(title, 10, currentY);
+        currentY += 8;
+
+        pdf.setFontSize(10);
+        pdf.setTextColor('#555555');
+        const splitText = pdf.splitTextToSize(summaryText, pdfWidth - 20);
+        pdf.text(splitText, 10, currentY);
+        currentY += (splitText.length * 5) + 5;
+
+        const canvas = await html2canvas(el, { scale: 1.5, useCORS: true });
+        const imgData = canvas.toDataURL('image/png');
+        
+        // Make image 2/3 of the page width and center it
+        const usableWidth = pdfWidth - 20;
+        const imgWidth = usableWidth * 0.66;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        
+        // Calculate X offset to center the image
+        const imgX = (pdfWidth - imgWidth) / 2;
+        
+        if (currentY + imgHeight > pdfHeight - 20) {
+           pdf.addPage();
+           currentY = 20;
+        }
+
+        pdf.addImage(imgData, 'PNG', imgX, currentY, imgWidth, imgHeight);
+        currentY += imgHeight + 20;
+      };
+
+      // 1. Risk Distribution
+      let riskDistText = "No risk distribution data available. Users need to complete assessments to populate this section.";
+      if (riskDist) {
+        riskDistText = `Risk Distribution Analysis: A total of ${totalAssessed} users have successfully completed their diabetes risk assessments, while ${unassessed} users remain unassessed. `;
+        const details = riskLabels.map(k => `${distMap[k] || 0} individuals are classified as carrying '${k}' risk`).join(', ');
+        riskDistText += `A breakdown of the assessed population reveals that ${details}. `;
+        
+        if (totalAssessed > 0) {
+          const maxVal = Math.max(...riskValues);
+          const dominant = riskLabels[riskValues.indexOf(maxVal)];
+          const majPct = Math.round((maxVal / totalAssessed) * 100);
+          riskDistText += `The majority of the user base (${majPct}%) falls into the ${dominant} risk category. Consistent tracking and targeted interventions should be prioritized for patients in the moderate to high risk brackets to proactively improve overall community health outcomes.`;
+        }
+      }
+      await addChartToPdf('chart-risk-dist', 'Risk Distribution', riskDistText);
+
+      // 2. Risk Score Trend
+      await addChartToPdf('chart-risk-trend', 'Risk Score Trend', 'Risk Score Trend Analysis: This chart visualizes the average diabetes risk score of the platform\'s user base over a specified chronological period. Tracking this trend provides immediate insights into how cumulative health risk is evolving across all onboarded patients. A descending, stable trendline points towards a successful population-level response to health regimens, indicating that users are effectively managing their lifestyle choices. Conversely, an upward trajectory calls for a clinical review of current engagement strategies and suggests sending targeted broad-scale health advice or requiring high-risk users to undergo immediate consultation bookings.');
+
+      // 3. Risk Component Averages
+      await addChartToPdf('chart-risk-components', 'Average Risk Components', 'Risk Component Averages Analysis: By dissecting the aggregate risk score into individual causative factors—such as BMI, Physical Activity, Fasting Glucose, Blood Pressure, and sleep quality—this breakdown highlights the specific metrics that most strongly drive systemic health risk among the assessed users. Health practitioners can use this granular data to formulate focused public health campaigns or directly calibrate automated app-based health recommendations. Identifying widespread poor metrics early effectively highlights which dietary guidelines, exercise programs, or specialized medical features demand higher visibility within the standard user interface.');
+
+      // 4. Tracker Adoption
+      let trackerAdoptionText = "No tracker adoption data is currently available. Users must interact with their daily health logging tools for data to aggregate.";
+      if (trackerAdoption && totalUsers > 0) {
+        const topAdoptionVal = Math.max(...adoptionValues);
+        const topIdx = adoptionValues.indexOf(topAdoptionVal);
+        const topAdoptionLabel = adoptionLabels[topIdx];
+        const topPct = Math.round((topAdoptionVal / totalUsers) * 100);
+
+        const bottomAdoptionVal = Math.min(...adoptionValues);
+        const bottomIdx = adoptionValues.indexOf(bottomAdoptionVal);
+        const bottomAdoptionLabel = adoptionLabels[bottomIdx];
+        const bottomPct = Math.round((bottomAdoptionVal / totalUsers) * 100);
+
+        trackerAdoptionText = `Tracker Adoption Analysis: Monitoring active feature interaction among the full cohort of ${totalUsers} total users highlights the tools successfully retaining user engagement versus those requiring UI optimization. Currently, a substantial ${topPct}% of the user community is actively utilizing the ${topAdoptionLabel} tracker, establishing it as the highest-performing module with excellent consistent engagement. On the opposite end of the spectrum, the ${bottomAdoptionLabel} tracker demonstrates the lowest uptake, with only ${bottomPct}% utilization. Expanding notifications, improving onboarding awareness, or adjusting the logging complexity for the less adopted trackers may help stabilize platform-wide holistic health logging.`;
+      }
+      await addChartToPdf('chart-tracker-adoption', 'Tracker Adoption', trackerAdoptionText);
+
+      pdf.save('GlycoFit_Dashboard_Report_Detailed.pdf');
+    } catch (error) {
+      console.error('Error generating detailed PDF', error);
+    }
+  };
 
   return (
     <Box>
@@ -338,28 +445,46 @@ function Dashboard() {
       </Dialog>
 
       {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography
-          variant="h4"
-          gutterBottom
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box>
+          <Typography
+            variant="h4"
+            gutterBottom
+            sx={{
+              fontWeight: 700,
+              mb: 0.5,
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}
+          >
+            Dashboard Overview
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Monitor and manage your GlycoFit platform
+          </Typography>
+        </Box>
+        <Button 
+          variant="contained" 
+          startIcon={<DownloadIcon />}
+          onClick={handleDownloadPDF}
           sx={{
-            fontWeight: 700,
-            mb: 0.5,
             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            backgroundClip: 'text',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
+            color: '#fff',
+            fontWeight: 600,
+            borderRadius: 2,
+            px: 3,
+            py: 1
           }}
         >
-          Dashboard Overview
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Monitor and manage your GlycoFit platform
-        </Typography>
+          Download PDF
+        </Button>
       </Box>
 
-      {/* ── Row 1: Stat Cards ─────────────────────────────────────────────── */}
-      <Grid container spacing={3}>
+      <Box id="dashboard-content">
+        {/* ── Row 1: Stat Cards ─────────────────────────────────────────────── */}
+        <Grid container spacing={3}>
         <Grid item xs={12} sm={6} lg={3}>
           <StatCard
             title="Total Users"
@@ -406,7 +531,7 @@ function Dashboard() {
       <Grid container spacing={3} sx={{ mt: 2 }}>
 
         {/* Risk Distribution Doughnut */}
-        <Grid item xs={12} md={6} lg={4}>
+        <Grid item xs={12} md={6} lg={4} id="chart-risk-dist">
           <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0', height: '100%' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -455,8 +580,20 @@ function Dashboard() {
           </Paper>
         </Grid>
 
-        {/* Tracker Adoption Bar */}
-        <Grid item xs={12} md={6} lg={4}>
+        {/* Risk Score Trend */}
+        <Grid item xs={12} md={6} lg={4} id="chart-risk-trend">
+          <RiskTrendChart />
+        </Grid>
+
+        <Grid item xs={12} md={12} lg={4} id="chart-risk-components">
+          <RiskComponentsChart />
+        </Grid>
+
+      </Grid>
+
+      {/* ── Row 3: Tracker Adoption + Consultations / Recent Activity ── */}
+      <Grid container spacing={3} sx={{ mt: 2, alignItems: "start" }}>
+        <Grid item xs={12} md={8} id="chart-tracker-adoption">
           <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0', height: '100%' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -507,18 +644,6 @@ function Dashboard() {
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress size={32} /></Box>
             )}
           </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={12} lg={4}>
-          <RiskComponentsChart />
-        </Grid>
-
-      </Grid>
-
-      {/* ── Row 3: Risk Score Trend + Consultations / Recent Activity ── */}
-      <Grid container spacing={3} sx={{ mt: 2, alignItems: "start" }}>
-        <Grid item xs={12} md={8}>
-          <RiskTrendChart />
         </Grid>
         <Grid item xs={12} md={4}>
             {/* Consultations Summary */}
@@ -683,6 +808,7 @@ function Dashboard() {
             </Paper>
         </Grid>
       </Grid>
+      </Box>
     </Box>
   );
 }
