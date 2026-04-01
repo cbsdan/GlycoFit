@@ -51,6 +51,7 @@ class Consultation:
         self.soap_plan = ""         # Treatment / lifestyle advice
         self.soap_prescriptions = [] # Prescription list from plan
         self.consultation_mode = "full"  # 'quick_vitals' or 'full'
+        self.diagnosis_status = "not_diagnosed"  # 'not_diagnosed', 'prediabetes', 'type2_diabetes'
         
         # Extracted source info for quick vitals
         self.source = "physician"  # 'physician' or 'user'
@@ -98,6 +99,7 @@ class Consultation:
             'soap_plan': self.soap_plan,
             'soap_prescriptions': self.soap_prescriptions,
             'consultation_mode': self.consultation_mode,
+            'diagnosis_status': getattr(self, 'diagnosis_status', 'not_diagnosed'),
             'source': self.source,
             'source_id': self.source_id,
             'source_name': self.source_name,
@@ -141,6 +143,7 @@ class Consultation:
         consultation.soap_plan = data.get('soap_plan', '')
         consultation.soap_prescriptions = data.get('soap_prescriptions', [])
         consultation.consultation_mode = data.get('consultation_mode', 'full')
+        consultation.diagnosis_status = data.get('diagnosis_status', 'not_diagnosed')
         
         consultation.source = data.get('source', 'physician')
         consultation.source_id = data.get('source_id')
@@ -333,6 +336,7 @@ class Consultation:
             'soap_plan': self.soap_plan,
             'soap_prescriptions': self.soap_prescriptions,
             'consultation_mode': self.consultation_mode,
+            'diagnosis_status': getattr(self, 'diagnosis_status', 'not_diagnosed'),
             'source': self.source,
             'source_id': self.source_id,
             'source_name': self.source_name,

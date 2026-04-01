@@ -102,12 +102,20 @@ def create_soap_note():
             consultation.soap_plan = data.get('plan', '')
             consultation.soap_prescriptions = data.get('prescriptions', [])
             consultation.follow_up_required = data.get('follow_up_required', False)
+            consultation.diagnosis_status = data.get('diagnosis_status', getattr(patient, 'diagnosis_status', 'not_diagnosed'))
             # Map to legacy fields too for backward compat
             consultation.diagnosis = data.get('assessment', '')
             consultation.treatment_plan = data.get('plan', '')
             consultation.notes = data.get('subjective', '')
 
         consultation.save()
+
+        if mode == 'full' and 'diagnosis_status' in data:
+            new_status = data['diagnosis_status']
+            current_status = getattr(patient, 'diagnosis_status', 'not_diagnosed')
+            if new_status and new_status != current_status:
+                patient.update_profile(diagnosis_status=new_status)
+                patient.save()
 
         # Update physician stats
         physician.total_consultations = getattr(physician, 'total_consultations', 0) + 1
@@ -178,6 +186,22 @@ def update_soap_note(note_id):
                 update_fields['soap_prescriptions'] = data['prescriptions']
             if 'follow_up_required' in data:
                 update_fields['follow_up_required'] = data['follow_up_required']
+            if 'diagnosis_status' in data:
+                update_fields['diagnosis_status'] = data['diagnosis_status']
+                
+                # Also update user profile
+                try:
+                    patient_id = note.get('patient_id')
+                    if patient_id:
+                        patient = User.find_by_id(str(patient_id))
+                        if patient:
+                            new_status = data['diagnosis_status']
+                            current_status = getattr(patient, 'diagnosis_status', 'not_diagnosed')
+                            if new_status and new_status != current_status:
+                                patient.update_profile(diagnosis_status=new_status)
+                                patient.save()
+                except Exception as e:
+                    logging.error(f"Error updating patient diagnosis_status: {str(e)}")
 
         db.consultations.update_one({'_id': ObjectId(note_id)}, {'$set': update_fields})
 

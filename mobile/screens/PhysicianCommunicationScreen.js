@@ -506,10 +506,29 @@ const PhysicianCommunicationScreen = ({ route, navigation }) => {
                       <Text style={[styles.detailText, { color: colors.text }]}>{note.soap_objective.physical_exam_findings}</Text>
                     </View>
                   ) : null}
-                  {note.soap_assessment ? (
+                  {(note.diagnosis_status && note.diagnosis_status !== 'not_diagnosed') || note.soap_assessment ? (
                     <View style={{ marginBottom: 8 }}>
                       <Text style={[styles.soapSectionLabel, { color: SOAP_COLOR }]}>Assessment</Text>
-                      <Text style={[styles.detailText, { color: colors.text }]}>{note.soap_assessment}</Text>
+                      {note.diagnosis_status && note.diagnosis_status !== 'not_diagnosed' && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: note.soap_assessment ? 6 : 0, marginTop: 2 }}>
+                          <Text style={[styles.detailText, { color: colors.text, fontWeight: '600' }]}>Classification: </Text>
+                          <View style={{ 
+                            backgroundColor: note.diagnosis_status === 'type2_diabetes' ? (colors.error || '#E74C3C') + '20' : (colors.warning || '#F39C12') + '20',
+                            paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6
+                          }}>
+                            <Text style={{ 
+                              color: note.diagnosis_status === 'type2_diabetes' ? (colors.error || '#E74C3C') : (colors.warning || '#F39C12'), 
+                              fontSize: 12, fontWeight: '600' 
+                            }}>
+                              {note.diagnosis_status === 'type2_diabetes' ? 'Type 2 Diabetic' : 
+                               note.diagnosis_status === 'prediabetes' ? 'Prediabetic' : 'Normal / Not Diagnosed'}
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+                      {note.soap_assessment ? (
+                        <Text style={[styles.detailText, { color: colors.text }]}>{note.soap_assessment}</Text>
+                      ) : null}
                     </View>
                   ) : null}
                   {note.soap_plan ? (

@@ -249,6 +249,7 @@ export default function PatientDetailScreen({ route, navigation }) {
     plan: '',
     prescriptions: [],
     follow_up_required: false,
+    diagnosis_status: 'not_diagnosed',
   });
   const [newRx, setNewRx] = useState({ medication: '', dosage: '', frequency: '', duration: '' });
   const [showMedSuggestions, setShowMedSuggestions] = useState(false);
@@ -474,6 +475,7 @@ export default function PatientDetailScreen({ route, navigation }) {
               plan: tplData.plan || '',
               prescriptions: tplData.prescriptions ? [...tplData.prescriptions] : [],
               follow_up_required: tplData.follow_up_required || false,
+              diagnosis_status: patient?.diagnosis_status || 'not_diagnosed',
             });
             setShowSoapModal(true);
           } catch (e) {
@@ -1439,6 +1441,7 @@ export default function PatientDetailScreen({ route, navigation }) {
         plan: note.soap_plan || '',
         prescriptions: note.soap_prescriptions ? [...note.soap_prescriptions] : [],
         follow_up_required: note.follow_up_required || false,
+        diagnosis_status: note.diagnosis_status || patient?.diagnosis_status || 'not_diagnosed',
       });
       setShowSoapModal(true);
     }
@@ -1459,6 +1462,7 @@ export default function PatientDetailScreen({ route, navigation }) {
         plan: soapForm.plan,
         prescriptions: soapForm.prescriptions,
         follow_up_required: soapForm.follow_up_required,
+        diagnosis_status: soapForm.diagnosis_status,
       };
       let res;
       if (editingNote && editingNote.consultation_mode === 'full') {
@@ -1476,9 +1480,14 @@ export default function PatientDetailScreen({ route, navigation }) {
           plan: '',
           prescriptions: [],
           follow_up_required: false,
+          diagnosis_status: soapForm.diagnosis_status,
         });
         setEditingNote(null);
         fetchSoapNotes();
+        // Option to optimistically refresh patientData
+        if (patientData) {
+          setPatientData(prev => ({ ...prev, diagnosis_status: soapForm.diagnosis_status }));
+        }
       }
     } catch (e) {
       showToast('Failed to create note', 'error');
@@ -1643,6 +1652,17 @@ export default function PatientDetailScreen({ route, navigation }) {
                         {/* A */}
                         <View style={styles.soapSection}>
                           <Text style={[styles.soapSectionLabel, { color: theme.error }]}>A — Assessment</Text>
+                          {note.diagnosis_status && (
+                            <View style={{ marginBottom: 4 }}>
+                              <Text style={{ color: theme.primary, fontWeight: 'bold' }}>
+                                Classification: {
+                                  note.diagnosis_status === 'type2_diabetes' ? 'Type 2 Diabetic' :
+                                  note.diagnosis_status === 'prediabetes' ? 'Prediabetic' :
+                                  'Normal / Not Diagnosed'
+                                }
+                              </Text>
+                            </View>
+                          )}
                           <Text style={[styles.soapSectionText, { color: theme.text }]}>
                             {note.soap_assessment || 'N/A'}
                           </Text>
@@ -1875,6 +1895,7 @@ export default function PatientDetailScreen({ route, navigation }) {
                         plan: data.plan || '',
                         prescriptions: data.prescriptions ? [...data.prescriptions] : [],
                         follow_up_required: data.follow_up_required || false,
+                        diagnosis_status: patient?.diagnosis_status || 'not_diagnosed',
                       });
                       setShowTemplatePicker(false);
                       setShowSoapModal(true);
@@ -1944,10 +1965,44 @@ export default function PatientDetailScreen({ route, navigation }) {
 
                 {/* A — Assessment */}
                 <Text style={[styles.soapFormSectionTitle, { color: theme.error }]}>A — Assessment</Text>
-                <Text style={[styles.inputLabel, { color: theme.secondary }]}>Diagnosis</Text>
+                
+                <Text style={[styles.inputLabel, { color: theme.secondary, marginBottom: 8 }]}>Diagnosis Classification</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                  {[
+                    { val: 'not_diagnosed', label: 'Normal / Not Diagnosed' },
+                    { val: 'prediabetes', label: 'Prediabetic' },
+                    { val: 'type2_diabetes', label: 'Type 2 Diabetic' }
+                  ].map((statusObj) => {
+                    const isSelected = soapForm.diagnosis_status === statusObj.val;
+                    return (
+                      <TouchableOpacity
+                        key={statusObj.val}
+                        style={{
+                          paddingVertical: 8,
+                          paddingHorizontal: 16,
+                          borderRadius: 20,
+                          backgroundColor: isSelected ? theme.primary : theme.background,
+                          borderWidth: 1,
+                          borderColor: isSelected ? theme.primary : theme.border,
+                        }}
+                        onPress={() => setSoapForm(p => ({ ...p, diagnosis_status: statusObj.val }))}
+                      >
+                        <Text style={{
+                          color: isSelected ? '#FFF' : theme.text,
+                          fontWeight: isSelected ? '600' : '400',
+                          fontSize: 14
+                        }}>
+                          {statusObj.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={[styles.inputLabel, { color: theme.secondary }]}>Assessment Notes (Optional)</Text>
                 <TextInput
                   style={[styles.textArea, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                  placeholder="Enter diagnosis..."
+                  placeholder="Enter assessment details..."
                   placeholderTextColor={theme.secondary}
                   multiline
                   numberOfLines={3}
