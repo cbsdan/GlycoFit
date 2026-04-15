@@ -249,28 +249,28 @@ const PredictionScreen = ({ navigation }) => {
     switch (riskLevel) {
       case 'low':
         return {
-          title: 'Low Risk',
+          title: 'Normal Profile',
           color: '#27AE60',
           icon: 'check-circle',
-          message: 'Your diabetes risk is currently low',
+          message: 'Current pattern is closest to the normal-risk class',
         };
       case 'moderate':
         return {
-          title: 'Moderate Risk',
+          title: 'Prediabetic Profile',
           color: '#F39C12',
           icon: 'alert-circle',
-          message: 'You have a moderate risk of diabetes',
+          message: 'Current pattern aligns with the prediabetic class',
         };
       case 'high':
         return {
-          title: 'High Risk',
+          title: 'Diabetic Profile',
           color: '#E74C3C',
           icon: 'alert',
-          message: 'Your diabetes risk is high',
+          message: 'Current pattern aligns with the diabetic-risk class',
         };
       case 'very_high':
         return {
-          title: 'Very High Risk',
+          title: 'Severe High Risk',
           color: '#C0392B',
           icon: 'alert',
           message: 'Your diabetes risk is very high',
@@ -1401,45 +1401,52 @@ const PredictionScreen = ({ navigation }) => {
     : 0;
 
   const formulaRowMeta = {
-    bmi: {
-      label: 'BMI / Obesity',
-      note: 'Strongest predictor in this Health Summary path; uses WHO Asian cutoffs (>=23 = overweight for Filipinos).',
+    bmxbmi: {
+      label: 'BMXBMI (Body Mass Index)',
+      note: 'Strongest contributor in the updated model; higher BMI increases metabolic risk.',
       url: 'https://doi.org/10.1016/S0140-6736(03)15268-3',
-      fallbackWeight: '40.01%',
+      fallbackWeight: '38.1725%',
+      componentScoreKey: 'bmi',
     },
-    age: {
-      label: 'Age',
-      note: 'Risk rises with age and is treated as a major non-modifiable predictor in this trained-model path.',
+    ridageyr: {
+      label: 'RIDAGEYR (Age)',
+      note: 'Age remains a major non-modifiable predictor of progression risk.',
       url: 'https://doi.org/10.1371/journal.pone.0194127',
-      fallbackWeight: '36.54%',
+      fallbackWeight: '27.3090%',
+      componentScoreKey: 'age',
     },
-    food: {
-      label: 'Food Intake Quality',
-      note: 'Food pattern contribution from glycemic load, fiber, added sugar, and calorie patterns.',
+    drxtsugr: {
+      label: 'DRXTSUGR (Added Sugars)',
+      note: 'Higher daily sugar exposure raises glycemic stress and diabetes risk.',
       url: 'https://doi.org/10.2337/dc10-1079',
-      fallbackWeight: '11.75%',
+      fallbackWeight: '9.2315%',
     },
-    activity: {
-      label: 'Physical Activity (Steps)',
-      note: 'Physical inactivity is a key modifiable diabetes risk factor.',
+    drxtkcal: {
+      label: 'DRXTKCAL (Daily Calories)',
+      note: 'Excess daily energy intake contributes to long-term metabolic burden.',
+      url: 'https://doi.org/10.2337/dc10-1079',
+      fallbackWeight: '8.7651%',
+    },
+    paq605: {
+      label: 'PAQ605 (Physical Activity)',
+      note: 'Lower physical activity is a key modifiable risk factor.',
       url: 'https://doi.org/10.1007/s10654-015-0056-z',
-      fallbackWeight: '5.98%',
+      fallbackWeight: '8.4193%',
+      componentScoreKey: 'activity',
     },
-    alcohol: {
-      label: 'Alcohol Consumption',
-      note: 'Alcohol contributes with a smaller but meaningful weighted impact in this model path.',
+    alq130: {
+      label: 'ALQ130 (Alcohol Intake)',
+      note: 'Alcohol contributes a smaller but clinically meaningful risk share.',
       url: 'https://doi.org/10.2337/dc09-0227',
-      fallbackWeight: '5.72%',
+      fallbackWeight: '8.1027%',
+      componentScoreKey: 'alcohol',
     },
   };
 
-  const formulaDisplayOrder = ['bmi', 'age', 'food', 'activity', 'alcohol'];
+  const formulaDisplayOrder = ['bmxbmi', 'ridageyr', 'drxtsugr', 'drxtkcal', 'paq605', 'alq130'];
   const formulaRows = formulaDisplayOrder.map((componentKey) => {
     const meta = formulaRowMeta[componentKey];
-    const weightValue = Number(overallRisk?.component_scores?.[componentKey]?.weight);
-    const weight = Number.isFinite(weightValue) && weightValue > 0
-      ? `${(weightValue * 100).toFixed(2)}%`
-      : meta.fallbackWeight;
+    const weight = meta.fallbackWeight;
 
     return {
       label: meta.label,
@@ -1518,9 +1525,9 @@ const PredictionScreen = ({ navigation }) => {
                       <Text style={styles.classificationLegendTitle}>Score Classification</Text>
                       <View style={styles.classificationRow}>
                         {[
-                          { label: 'Low', range: '0 – 33', color: '#10B981', prob: '<33%' },
-                          { label: 'Moderate', range: '34 – 66', color: '#F59E0B', prob: '33–66%' },
-                          { label: 'High', range: '67 – 100', color: '#EF4444', prob: '>66%' },
+                          { label: 'Normal', range: '0 – 33', color: '#10B981', prob: 'Class: low' },
+                          { label: 'Prediabetic', range: '34 – 66', color: '#F59E0B', prob: 'Class: moderate' },
+                          { label: 'Diabetic', range: '67 – 100', color: '#EF4444', prob: 'Class: high' },
                         ].map((tier) => (
                           <View
                             key={tier.label}
@@ -1543,7 +1550,7 @@ const PredictionScreen = ({ navigation }) => {
                         ))}
                       </View>
                       <Text style={styles.classificationNote}>
-                        Score reflects 10-year diabetes development probability based on BMI, age, diet, physical activity, and alcohol consumption.
+                        Score is a weighted model index using BMXBMI, RIDAGEYR, DRXTSUGR, DRXTKCAL, PAQ605, and ALQ130.
                       </Text>
                     </View>
                   )}
@@ -1977,10 +1984,12 @@ const PredictionScreen = ({ navigation }) => {
               <View style={styles.computationDisclaimer}>
                 <Icon name="information-outline" size={16} color={colors.primary} />
                 <Text style={styles.computationDisclaimerText}>
-                  This computation estimates the risk of developing{' '}
-                  <Text style={{ fontWeight: '700' }}>pre-diabetes or Type 2 diabetes</Text>.
-                  In this Health Summary view, weighted contributions are aligned with the trained
-                  model components: BMI, Age, Food Intake, Physical Activity, and Alcohol.
+                  This computation summarizes your current metabolic risk profile into{' '}
+                  <Text style={{ fontWeight: '700' }}>Normal, Prediabetic, or Diabetic</Text>{' '}
+                  likelihood bands.
+                  In this Health Summary view, weighted contributions remain aligned with
+                  the updated model features: BMXBMI, RIDAGEYR, DRXTSUGR, DRXTKCAL,
+                  PAQ605, and ALQ130.
                 </Text>
               </View>
 
@@ -1988,27 +1997,26 @@ const PredictionScreen = ({ navigation }) => {
               <View style={styles.computationDisclaimer}>
                 <Icon name="database" size={16} color={colors.primary} />
                 <Text style={styles.computationDisclaimerText}>
-                  The lifestyle risk tracker model is trained on a balanced BRFSS-based dataset
-                  (438,842 rows; 219,421 healthy and 219,421 at-risk), then applied in-app using
-                  component weighting for BMI, Age, Food Intake, Physical Activity, and Alcohol.
-                  Philippine context is incorporated in interpretation and references (for example,
-                  Asian BMI cutoffs and Philippine surveillance reports) to support local relevance.
+                  The current GlycoFit model is trained on{' '}
+                  <Text style={{ fontWeight: '700' }}>22,116 rows</Text> with three classes
+                  (Normal, Prediabetic, Diabetic), including visceral/metabolic feature engineering.
+                  Final validation reported 75.75% accuracy on a 6,635-row holdout set, with
+                  strong diabetic class capture for critical warning support.
                 </Text>
               </View>
 
               <Text style={styles.computationSectionLabel}>Model Validation Snapshot</Text>
               <View style={styles.tableContainer}>
                 <View style={[styles.tableRow, styles.tableHeaderRow]}>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.1 }]}>Metric</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.1 }]}>Baseline</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.2 }]}>Enhanced</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2.2 }]}>Metric</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.2 }]}>Value</Text>
                 </View>
                 {[
-                  { metric: 'Accuracy', baseline: '70.43%', enhanced: '72.48%' },
-                  { metric: 'Healthy Precision', baseline: '0.72', enhanced: '0.74' },
-                  { metric: 'Healthy Recall', baseline: '0.68', enhanced: '0.70' },
-                  { metric: 'At-Risk Precision', baseline: '0.69', enhanced: '0.71' },
-                  { metric: 'At-Risk Recall', baseline: '0.73', enhanced: '0.75' },
+                  { metric: 'Training Rows', value: '22,116' },
+                  { metric: 'Evaluation Rows (Holdout)', value: '6,635' },
+                  { metric: 'Final Accuracy', value: '75.75%' },
+                  { metric: 'Cross-Validation Mean Accuracy', value: '78.48%' },
+                  { metric: 'Cross-Validation Std. Deviation', value: '0.45%' },
                 ].map((row, idx) => (
                   <View
                     key={row.metric}
@@ -2017,33 +2025,57 @@ const PredictionScreen = ({ navigation }) => {
                       idx % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
                     ]}
                   >
-                    <Text style={[styles.tableCell, { flex: 2.1 }]}>{row.metric}</Text>
-                    <Text style={[styles.tableCell, { flex: 1.1 }]}>{row.baseline}</Text>
-                    <Text style={[styles.tableCell, { flex: 1.2, fontWeight: '700', color: '#1F618D' }]}>{row.enhanced}</Text>
+                    <Text style={[styles.tableCell, { flex: 2.2 }]}>{row.metric}</Text>
+                    <Text style={[styles.tableCell, { flex: 1.2, fontWeight: '700', color: '#1F618D' }]}>{row.value}</Text>
+                  </View>
+                ))}
+              </View>
+
+              <Text style={styles.computationSectionLabel}>Class Performance Report (Holdout)</Text>
+              <View style={styles.tableContainer}>
+                <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.6 }]}>Class</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Precision</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Recall</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 0.8 }]}>F1</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Support</Text>
+                </View>
+                {[
+                  { label: 'Normal', precision: '0.73', recall: '0.73', f1: '0.73', support: '2211' },
+                  { label: 'Prediabetic', precision: '0.67', recall: '0.67', f1: '0.67', support: '2212' },
+                  { label: 'Diabetic', precision: '0.86', recall: '0.88', f1: '0.87', support: '2212' },
+                  { label: 'Macro Avg', precision: '0.76', recall: '0.76', f1: '0.76', support: '6635' },
+                  { label: 'Weighted Avg', precision: '0.76', recall: '0.76', f1: '0.76', support: '6635' },
+                ].map((row, idx) => (
+                  <View
+                    key={row.label}
+                    style={[
+                      styles.tableRow,
+                      idx % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
+                    ]}
+                  >
+                    <Text style={[styles.tableCell, { flex: 1.6, fontWeight: idx >= 3 ? '700' : '500' }]}>{row.label}</Text>
+                    <Text style={[styles.tableCell, { flex: 1 }]}>{row.precision}</Text>
+                    <Text style={[styles.tableCell, { flex: 1 }]}>{row.recall}</Text>
+                    <Text style={[styles.tableCell, { flex: 0.8 }]}>{row.f1}</Text>
+                    <Text style={[styles.tableCell, { flex: 1 }]}>{row.support}</Text>
                   </View>
                 ))}
               </View>
               <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
-                Balanced dataset: 438,842 rows (219,421 Healthy, 219,421 At-Risk). Enhanced confusion matrix: 30,762 true healthy, 32,851 true at-risk, 13,123 false positives, 11,033 false negatives.
+                Overall holdout accuracy: 75.75% across 6,635 rows.
               </Text>
 
-              <Text style={styles.computationSectionLabel}>Dataset Risk Profiles (Observed)</Text>
+              <Text style={styles.computationSectionLabel}>Per-Class Clinical Sensitivity (Recall)</Text>
               <View style={styles.tableContainer}>
                 <View style={[styles.tableRow, styles.tableHeaderRow]}>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 2 }]}>Segment</Text>
-                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.3 }]}>At-Risk Rate</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.8 }]}>Class</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.2 }]}>Capture Rate</Text>
                 </View>
                 {[
-                  { segment: 'Age: Under 30', rate: '14.3%' },
-                  { segment: 'Age: 30-44', rate: '21.1%' },
-                  { segment: 'Age: 45-59', rate: '35.2%' },
-                  { segment: 'Age: 60+', rate: '42.3%' },
-                  { segment: 'BMI: Normal (<25)', rate: '12.4%' },
-                  { segment: 'BMI: Overweight (25-29.9)', rate: '28.4%' },
-                  { segment: 'BMI: Obese I (30-34.9)', rate: '36.9%' },
-                  { segment: 'BMI: Obese II+ (35+)', rate: '46.6%' },
-                  { segment: 'Activity: Active (Level 1)', rate: '30.0%' },
-                  { segment: 'Activity: Sedentary (Level 2)', rate: '23.9%' },
+                  { segment: 'Normal', rate: '73.0%' },
+                  { segment: 'Prediabetic (Early Detection)', rate: '66.7%' },
+                  { segment: 'Diabetic (Critical Warning)', rate: '87.5%' },
                 ].map((row, idx) => (
                   <View
                     key={row.segment}
@@ -2052,13 +2084,44 @@ const PredictionScreen = ({ navigation }) => {
                       idx % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
                     ]}
                   >
-                    <Text style={[styles.tableCell, { flex: 2 }]}>{row.segment}</Text>
-                    <Text style={[styles.tableCell, { flex: 1.3, fontWeight: '700' }]}>{row.rate}</Text>
+                    <Text style={[styles.tableCell, { flex: 1.8 }]}>{row.segment}</Text>
+                    <Text style={[styles.tableCell, { flex: 1.2, fontWeight: '700' }]}>{row.rate}</Text>
                   </View>
                 ))}
               </View>
               <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
-                These are observed cohort rates used for transparency and context; they are not direct per-user probability outputs.
+                Higher diabetic recall supports safety-oriented alerts, while prediabetic recall supports earlier lifestyle intervention.
+              </Text>
+
+              <Text style={styles.computationSectionLabel}>Final Confusion Matrix (With Visceral Data)</Text>
+              <View style={styles.tableContainer}>
+                <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.8 }]}>Actual \ Pred</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Normal</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1.2 }]}>Prediabetic</Text>
+                  <Text style={[styles.tableCell, styles.tableCellHeader, { flex: 1 }]}>Diabetic</Text>
+                </View>
+                {[
+                  { label: 'Normal', normal: '1615', prediabetic: '502', diabetic: '94' },
+                  { label: 'Prediabetic', normal: '522', prediabetic: '1475', diabetic: '215' },
+                  { label: 'Diabetic', normal: '61', prediabetic: '215', diabetic: '1936' },
+                ].map((row, idx) => (
+                  <View
+                    key={row.label}
+                    style={[
+                      styles.tableRow,
+                      idx % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
+                    ]}
+                  >
+                    <Text style={[styles.tableCell, { flex: 1.8, fontWeight: '700' }]}>{row.label}</Text>
+                    <Text style={[styles.tableCell, { flex: 1 }]}>{row.normal}</Text>
+                    <Text style={[styles.tableCell, { flex: 1.2 }]}>{row.prediabetic}</Text>
+                    <Text style={[styles.tableCell, { flex: 1 }]}>{row.diabetic}</Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 5, marginBottom: 2, fontStyle: 'italic' }}>
+                Rows = actual class, columns = predicted class. Holdout support totals: Normal 2,211; Prediabetic 2,212; Diabetic 2,212.
               </Text>
 
               {/* ── Formula ── */}
