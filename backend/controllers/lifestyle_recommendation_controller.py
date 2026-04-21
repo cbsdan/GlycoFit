@@ -416,35 +416,45 @@ def get_unified_recommendations():
                 except Exception:
                     age_value = None
 
-            bmi_value = _user_field(user, 'bmi')
+            # Always prefer recomputing BMI from latest height/weight so profile updates
+            # immediately affect lifestyle risk calculations.
+            bmi_value = None
+            try:
+                weight_kg = None
+                if _user_field(user, 'weight_kg') is not None:
+                    weight_kg = float(_user_field(user, 'weight_kg'))
+                elif _user_field(user, 'weight') is not None:
+                    weight_kg = float(_user_field(user, 'weight'))
+
+                height_cm = None
+                if _user_field(user, 'height_cm') is not None:
+                    height_cm = float(_user_field(user, 'height_cm'))
+                elif _user_field(user, 'height') is not None:
+                    # Assume meters for typical profile `height` values <= 3, otherwise cm.
+                    raw_height = float(_user_field(user, 'height'))
+                    height_cm = raw_height * 100.0 if raw_height <= 3 else raw_height
+
+                if weight_kg and height_cm and height_cm > 0:
+                    bmi_value = weight_kg / ((height_cm / 100.0) ** 2)
+            except Exception:
+                bmi_value = None
+
+            # Fall back to legacy stored BMI fields only when height/weight are unavailable.
+            if bmi_value is None:
+                bmi_value = _user_field(user, 'bmi')
             if bmi_value is None:
                 bmi_value = _user_field(user, 'body_mass_index')
 
-            if bmi_value is None:
-                try:
-                    weight_kg = None
-                    if _user_field(user, 'weight_kg') is not None:
-                        weight_kg = float(_user_field(user, 'weight_kg'))
-                    elif _user_field(user, 'weight') is not None:
-                        weight_kg = float(_user_field(user, 'weight'))
-
-                    height_cm = None
-                    if _user_field(user, 'height_cm') is not None:
-                        height_cm = float(_user_field(user, 'height_cm'))
-                    elif _user_field(user, 'height') is not None:
-                        # Assume meters for typical profile `height` values <= 3, otherwise cm.
-                        raw_height = float(_user_field(user, 'height'))
-                        height_cm = raw_height * 100.0 if raw_height <= 3 else raw_height
-
-                    if weight_kg and height_cm and height_cm > 0:
-                        bmi_value = weight_kg / ((height_cm / 100.0) ** 2)
-                except Exception:
-                    bmi_value = None
+            waist_value = _user_field(user, 'waist')
+            if waist_value is None:
+                waist_value = _user_field(user, 'waist_cm')
 
             if age_value is not None:
                 ml_inputs['profile']['age'] = age_value
             if bmi_value is not None:
                 ml_inputs['profile']['bmi'] = bmi_value
+            if waist_value is not None:
+                ml_inputs['profile']['waist'] = waist_value
 
         if use_mock:
             profile_mock = mock_values.get('profile', {})
@@ -701,7 +711,8 @@ def get_unified_recommendations():
                 'model_inputs': {
                     'profile': {
                         'age': ml_inputs.get('profile', {}).get('age'),
-                        'bmi': ml_inputs.get('profile', {}).get('bmi')
+                        'bmi': ml_inputs.get('profile', {}).get('bmi'),
+                        'waist': ml_inputs.get('profile', {}).get('waist')
                     }
                 },
                 'mock_info': {

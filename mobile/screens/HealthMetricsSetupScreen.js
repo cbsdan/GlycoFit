@@ -28,6 +28,8 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
   const [inches, setInches] = useState('');
   const [weight, setWeight] = useState('');
   const [weightUnit, setWeightUnit] = useState('kg');
+  const [waist, setWaist] = useState('');
+  const [waistUnit, setWaistUnit] = useState('cm');
   const [diagnosisStatus, setDiagnosisStatus] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({});
@@ -59,6 +61,16 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
       return (parseFloat(weight) || 0) * 0.453592;
     } else if (weightUnit === 'stone') {
       return (parseFloat(weight) || 0) * 6.35029;
+    }
+    return 0;
+  };
+
+  // Convert waist circumference to cm based on selected unit
+  const convertWaistToCm = () => {
+    if (waistUnit === 'cm') {
+      return parseFloat(waist) || 0;
+    } else if (waistUnit === 'in') {
+      return (parseFloat(waist) || 0) * 2.54;
     }
     return 0;
   };
@@ -148,6 +160,19 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
       }
     }
 
+    if (!waist) {
+      newErrors.waist = 'Waist circumference is required';
+    } else {
+      const waistValue = parseFloat(waist);
+      if (isNaN(waistValue)) {
+        newErrors.waist = 'Please enter a valid number for waist circumference';
+      } else if (waistUnit === 'cm' && (waistValue < 30 || waistValue > 250)) {
+        newErrors.waist = 'Please enter a valid waist circumference (30-250 cm)';
+      } else if (waistUnit === 'in' && (waistValue < 12 || waistValue > 100)) {
+        newErrors.waist = 'Please enter a valid waist circumference (12-100 in)';
+      }
+    }
+
     if (!diagnosisStatus) {
       newErrors.diagnosisStatus = 'Please select your diagnosis status';
     }
@@ -167,12 +192,14 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
       
       const heightInCm = convertHeightToCm();
       const weightInKg = convertWeightToKg();
+      const waistInCm = convertWaistToCm();
 
       const response = await api.updateHealthMetrics(
         parseInt(age),
         sex.toLowerCase(),
         heightInCm,
         weightInKg,
+        waistInCm,
         diagnosisStatus
       );
 
@@ -505,6 +532,65 @@ export default function HealthMetricsSetupScreen({ onComplete, onSkip, navigatio
             {errors.weight && (
               <Text style={[styles.errorText, { color: theme.error }]}>
                 {errors.weight}
+              </Text>
+            )}
+          </View>
+
+          {/* Waist Circumference Input */}
+          <View style={styles.inputContainer}>
+            <Text style={[styles.label, { color: theme.text }]}>Waist Circumference</Text>
+
+            <View style={styles.unitSelectorContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.unitButton,
+                  { backgroundColor: waistUnit === 'cm' ? theme.primary : theme.inputBackground, borderColor: waistUnit === 'cm' ? theme.primary : theme.inputBorder }
+                ]}
+                onPress={() => setWaistUnit('cm')}
+              >
+                <Text style={[styles.unitButtonText, { color: waistUnit === 'cm' ? '#FFFFFF' : theme.text }]}>cm</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.unitButton,
+                  { backgroundColor: waistUnit === 'in' ? theme.primary : theme.inputBackground, borderColor: waistUnit === 'in' ? theme.primary : theme.inputBorder }
+                ]}
+                onPress={() => setWaistUnit('in')}
+              >
+                <Text style={[styles.unitButtonText, { color: waistUnit === 'in' ? '#FFFFFF' : theme.text }]}>in</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View
+              style={[
+                styles.inputWrapper,
+                {
+                  backgroundColor: theme.inputBackground,
+                  borderColor: errors.waist ? theme.error : theme.inputBorder,
+                },
+              ]}
+            >
+              <Ionicons
+                name="body-outline"
+                size={20}
+                color={theme.secondary}
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={[styles.input, { color: theme.inputText }]}
+                placeholder={`Enter waist circumference in ${waistUnit}`}
+                placeholderTextColor={theme.inputPlaceholder}
+                value={waist}
+                onChangeText={(text) => {
+                  setWaist(text);
+                  if (errors.waist) setErrors({ ...errors, waist: null });
+                }}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            {errors.waist && (
+              <Text style={[styles.errorText, { color: theme.error }]}>
+                {errors.waist}
               </Text>
             )}
           </View>
