@@ -1580,9 +1580,9 @@ export const getHealthMetrics = async (forceRefresh = false) => {
   );
 };
 
-export const updateHealthMetrics = async (age, sex, height, weight, diagnosis_status = null) => {
+export const updateHealthMetrics = async (age, sex, height, weight, waist, diagnosis_status = null) => {
   try {
-    const payload = { age, sex, height, weight };
+    const payload = { age, sex, height, weight, waist };
     if (diagnosis_status !== null) {
       payload.diagnosis_status = diagnosis_status;
     }
@@ -1640,6 +1640,7 @@ export const updateProfile = async (profileData) => {
     if (profileData.sex) formData.append('sex', profileData.sex);
     if (profileData.height !== undefined) formData.append('height', profileData.height);
     if (profileData.weight !== undefined) formData.append('weight', profileData.weight);
+    if (profileData.waist !== undefined) formData.append('waist', profileData.waist);
     if (profileData.diagnosis_status) formData.append('diagnosis_status', profileData.diagnosis_status);
     
     // Handle avatar upload if provided

@@ -453,6 +453,22 @@ class AuthController:
                     update_data['weight'] = float(data['weight'])
                 except (ValueError, TypeError):
                     pass
+
+            waist_value = None
+            if 'waist' in data:
+                waist_value = data.get('waist')
+            elif 'waistLine' in data:
+                waist_value = data.get('waistLine')
+            elif 'waist_line' in data:
+                waist_value = data.get('waist_line')
+
+            if waist_value is not None:
+                try:
+                    waist = float(waist_value)
+                    if waist > 0 and waist <= 300:
+                        update_data['waist'] = waist
+                except (ValueError, TypeError):
+                    pass
             
             if 'diagnosis_status' in data:
                 # Validate diagnosis_status

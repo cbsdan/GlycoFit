@@ -306,7 +306,8 @@ const HomeScreen = ({ navigation }) => {
         metrics.age !== null && metrics.age !== undefined &&
         metrics.sex !== null && metrics.sex !== undefined &&
         metrics.height !== null && metrics.height !== undefined &&
-        metrics.weight !== null && metrics.weight !== undefined;
+        metrics.weight !== null && metrics.weight !== undefined &&
+        metrics.waist !== null && metrics.waist !== undefined;
       
       // Show prompt if metrics are incomplete
       setShowHealthMetricsPrompt(!hasAllMetrics);

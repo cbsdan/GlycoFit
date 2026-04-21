@@ -460,7 +460,7 @@ class UserInfoController:
     @staticmethod
     @firebase_auth_required
     def update_health_metrics():
-        """Update user health metrics (age, sex, height, weight)"""
+        """Update user health metrics (age, sex, height, weight, waist)"""
         try:
             user_id = request.current_user_id
             data = request.get_json()
@@ -517,6 +517,16 @@ class UserInfoController:
                     update_data['weight'] = float(weight)
                 else:
                     update_data['weight'] = None
+
+            # Waist circumference validation (in cm)
+            if 'waist' in data:
+                waist = data.get('waist')
+                if waist is not None:
+                    if not isinstance(waist, (int, float)) or waist < 0 or waist > 250:
+                        return jsonify({'error': 'Waist circumference must be a number between 0 and 250 cm'}), 400
+                    update_data['waist'] = float(waist)
+                else:
+                    update_data['waist'] = None
             
             # Diagnosis status validation
             if 'diagnosis_status' in data:
@@ -590,6 +600,7 @@ class UserInfoController:
                 'sex': user.sex,
                 'height': user.height,
                 'weight': user.weight,
+                'waist': getattr(user, 'waist', None),
                 'bmi': bmi,
                 'bmi_category': bmi_category,
                 'diagnosis_status': getattr(user, 'diagnosis_status', 'not_diagnosed')

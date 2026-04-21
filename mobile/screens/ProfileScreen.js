@@ -38,6 +38,7 @@ const ProfileScreen = ({ navigation }) => {
     sex: '',
     height: '',
     weight: '',
+    waist: '',
     diagnosis_status: '',
     avatar: null,
   });
@@ -45,10 +46,12 @@ const ProfileScreen = ({ navigation }) => {
   const [avatarUri, setAvatarUri] = useState(null);
   const [heightUnit, setHeightUnit] = useState('cm');
   const [weightUnit, setWeightUnit] = useState('kg');
+  const [waistUnit, setWaistUnit] = useState('cm');
   const [feet, setFeet] = useState('');
   const [inches, setInches] = useState('');
   const [heightInput, setHeightInput] = useState('');
   const [weightInput, setWeightInput] = useState('');
+  const [waistInput, setWaistInput] = useState('');
 
   useEffect(() => {
     loadProfile();
@@ -99,6 +102,20 @@ const ProfileScreen = ({ navigation }) => {
     }
   }, [weightUnit, isEditing]);
 
+  // Handle unit switching for waist circumference
+  useEffect(() => {
+    if (isEditing && profileData.waist) {
+      const cm = parseFloat(profileData.waist);
+      if (!cm || isNaN(cm)) return;
+
+      if (waistUnit === 'cm') {
+        setWaistInput(cm.toFixed(2));
+      } else if (waistUnit === 'in') {
+        setWaistInput((cm / 2.54).toFixed(2));
+      }
+    }
+  }, [waistUnit, isEditing]);
+
   const loadProfile = async () => {
     setIsLoading(true);
     try {
@@ -116,6 +133,7 @@ const ProfileScreen = ({ navigation }) => {
           sex: userData.sex || '',
           height: userData.height?.toString() || '',
           weight: userData.weight?.toString() || '',
+          waist: userData.waist?.toString() || '',
           diagnosis_status: userData.diagnosis_status || 'not_diagnosed',
           avatar: userData.avatar || null,
         });
@@ -128,6 +146,14 @@ const ProfileScreen = ({ navigation }) => {
         if (userData.weight) {
           const kg = parseFloat(userData.weight);
           setWeightInput(kg.toFixed(2));
+        }
+        if (userData.waist) {
+          const cm = parseFloat(userData.waist);
+          if (waistUnit === 'cm') {
+            setWaistInput(cm.toFixed(2));
+          } else if (waistUnit === 'in') {
+            setWaistInput((cm / 2.54).toFixed(2));
+          }
         }
         
         if (userData.avatar?.url) {
@@ -202,6 +228,16 @@ const ProfileScreen = ({ navigation }) => {
     return 0;
   };
 
+  // Convert waist circumference to cm based on selected unit
+  const convertWaistToCm = () => {
+    if (waistUnit === 'cm') {
+      return parseFloat(waistInput) || 0;
+    } else if (waistUnit === 'in') {
+      return (parseFloat(waistInput) || 0) * 2.54;
+    }
+    return 0;
+  };
+
   const handlePickImage = async () => {
     try {
       // Request permission
@@ -268,6 +304,13 @@ const ProfileScreen = ({ navigation }) => {
       return;
     }
 
+    // Validate waist circumference based on selected unit
+    const waistInCm = convertWaistToCm();
+    if (waistInput && (isNaN(parseFloat(waistInput)) || waistInCm <= 0 || waistInCm > 300)) {
+      toast.error(`Please enter a valid waist circumference in ${waistUnit}`);
+      return;
+    }
+
     setIsSaving(true);
     try {
       const updateData = {
@@ -286,6 +329,10 @@ const ProfileScreen = ({ navigation }) => {
       // Convert weight to kg before saving
       const weightInKg = convertWeightToKg();
       if (weightInKg > 0) updateData.weight = parseFloat(weightInKg.toFixed(2));
+
+      // Convert waist circumference to cm before saving
+      if (waistInCm > 0) updateData.waist = parseFloat(waistInCm.toFixed(2));
+
       if (profileData.diagnosis_status !== undefined && profileData.diagnosis_status !== '') {
         updateData.diagnosis_status = profileData.diagnosis_status;
       }
@@ -322,6 +369,7 @@ const ProfileScreen = ({ navigation }) => {
     // Reset inputs to stored values
     setHeightInput(profileData.height);
     setWeightInput(profileData.weight);
+    setWaistInput(profileData.waist);
     setFeet('');
     setInches('');
     loadProfile(); // Reload original data
@@ -1042,6 +1090,37 @@ const ProfileScreen = ({ navigation }) => {
                     editable={!isSaving}
                   />
                 </View>
+
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>Waist Circumference</Text>
+
+                  <View style={styles.unitSelectorContainer}>
+                    <TouchableOpacity
+                      style={[styles.unitButton, { backgroundColor: waistUnit === 'cm' ? colors.primary : colors.surface, borderColor: waistUnit === 'cm' ? colors.primary : colors.border }]}
+                      onPress={() => setWaistUnit('cm')}
+                      disabled={isSaving}
+                    >
+                      <Text style={[styles.unitButtonText, { color: waistUnit === 'cm' ? '#FFFFFF' : colors.text }]}>cm</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.unitButton, { backgroundColor: waistUnit === 'in' ? colors.primary : colors.surface, borderColor: waistUnit === 'in' ? colors.primary : colors.border }]}
+                      onPress={() => setWaistUnit('in')}
+                      disabled={isSaving}
+                    >
+                      <Text style={[styles.unitButtonText, { color: waistUnit === 'in' ? '#FFFFFF' : colors.text }]}>in</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <TextInput
+                    style={styles.input}
+                    value={waistInput}
+                    onChangeText={(text) => setWaistInput(text)}
+                    placeholder={`Enter waist circumference in ${waistUnit}`}
+                    placeholderTextColor={colors.secondary}
+                    keyboardType="decimal-pad"
+                    editable={!isSaving}
+                  />
+                </View>
               </>
             ) : (
               <>
@@ -1068,6 +1147,13 @@ const ProfileScreen = ({ navigation }) => {
                     {profileData.diagnosis_status === 'prediabetes' && 'Prediabetes'}
                     {profileData.diagnosis_status === 'type2_diabetes' && 'Type 2 Diabetes'}
                     {!profileData.diagnosis_status && '-'}
+                  </Text>
+                </View>
+
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>Waist Circumference</Text>
+                  <Text style={styles.fieldValue}>
+                    {profileData.waist ? `${parseFloat(profileData.waist).toFixed(2)} cm` : '-'}
                   </Text>
                 </View>
               </>
