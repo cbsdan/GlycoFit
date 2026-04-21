@@ -507,15 +507,16 @@ def get_unified_recommendations():
             overall_assessment['overall_risk_category'] = model_prediction.get('risk_level', overall_assessment['overall_risk_category'])
 
         # Build assessment-tab compatible structure.
-        # Calibrated to your trained model's feature-importance profile:
-        # BMI ~40.02%, Age ~36.54%, Daily food (sugar+calories) ~11.75%,
-        # Activity ~5.98%, Alcohol ~5.72%.
+        # Calibrated to your updated trained model feature-importance profile:
+        # BMXBMI 0.381725, RIDAGEYR 0.273090, DRXTSUGR 0.092315,
+        # DRXTKCAL 0.087651, PAQ605 0.084193, ALQ130 0.081027.
+        # Food tracker is represented as a combined sugar+calorie contribution.
         component_weights = {
-            'food': 0.1175,
-            'activity': 0.0598,
-            'alcohol': 0.0572,
-            'age': 0.3654,
-            'bmi': 0.4001,
+            'food': 0.179966,      # DRXTSUGR + DRXTKCAL
+            'activity': 0.084193,  # PAQ605
+            'alcohol': 0.081027,   # ALQ130
+            'age': 0.273090,       # RIDAGEYR
+            'bmi': 0.381725,       # BMXBMI
         }
 
         food_raw = trackers_data.get('food', {}).get('risk_score', 0) if trackers_data.get('food', {}).get('has_data') else 0

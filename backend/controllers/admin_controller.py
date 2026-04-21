@@ -46,7 +46,7 @@ def _user_display(user_doc):
 def get_risk_distribution():
     """GET /admin/risk/distribution — Count of users per overall risk category.
     
-    The active XGBoost lifestyle ML model outputs three categories: low, moderate, high.
+    The active meta-ensemble lifestyle ML model outputs three categories: low, moderate, high.
     Legacy records may still contain very_high; these are folded into 'high' for consistency.
     """
     try:
@@ -935,7 +935,7 @@ def get_high_risk_patients():
     """GET /admin/risk/high-risk-patients — Paginated high-risk users.
     
     Matches both 'high' and legacy 'very_high' categories so no data is lost
-    when transitioning from the old rule-based model to the XGBoost ML model.
+    when transitioning from the old rule-based model to the current ML model.
     """
     try:
         db = get_db()
