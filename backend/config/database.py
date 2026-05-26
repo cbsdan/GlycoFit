@@ -1,6 +1,7 @@
 from pymongo import MongoClient
 from flask import current_app
 import logging
+import certifi
 
 # Global database connection
 db = None
@@ -14,8 +15,8 @@ def init_db(app):
         mongodb_uri = app.config['DB_URI']
         logging.info(f"Connecting to MongoDB: {mongodb_uri.split('@')[-1] if '@' in mongodb_uri else mongodb_uri}")
         
-        client = MongoClient(mongodb_uri)
-        
+        client = MongoClient(mongodb_uri, tlsCAFile=certifi.where())
+
         # Extract database name from URI or use default
         if mongodb_uri.endswith('/'):
             db_name = 'glycofit'
