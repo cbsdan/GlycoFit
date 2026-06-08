@@ -8,8 +8,8 @@ import {
   WarningAmber, Android, Menu
 } from '@mui/icons-material';
 
-const GLYCOFIT_APK = 'https://glycofit-downloads.nyc3.cdn.digitaloceanspaces.com/GlycoFit.apk';
-const PHYSICIAN_APK = 'https://glycofit-downloads.nyc3.cdn.digitaloceanspaces.com/GlycoFitPhysician.apk';
+const GLYCOFIT_APK = process.env.REACT_APP_GLYCOFIT_APK;
+const PHYSICIAN_APK = process.env.REACT_APP_PHYSICIAN_APK;
 
 const NAV_LINKS = ['Watch Demo', 'About', 'Features', 'How it Works', 'Download'];
 
